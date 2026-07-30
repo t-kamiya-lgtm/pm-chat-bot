@@ -21,6 +21,7 @@
 - 会員情報移行: 決済完了後、スマレジ会員登録I/Fへ連携(当面モック実装、メールアドレスで名寄せ)
 - ユーザー権限: 管理者 / 一般ユーザー(商品・シナリオ登録可)の2層
 - 管理画面ログイン: Googleログイン(自社ドメイン限定)
+- 商品QA: 商品仕様情報からQAを事前生成し管理画面でレビューした上で公開。ユーザーはFAQ一覧からの選択のみ(自由入力なし)、該当がなければチャット内埋め込みの問い合わせフォームへ
 
 ### 次フェーズ以降(MVP対象外)
 - LINE公式アカウント連携
@@ -102,13 +103,27 @@
 - 一般ユーザー: 商品登録・シナリオ登録のみ(ユーザー管理・システム設定は不可)
 - Googleログイン(自社ドメイン制限)。初回ログイン時は権限なし状態で作成され、管理者が権限付与
 
+### 4.7 商品QA機能
+- 商品ごとに詳細仕様情報(原材料・アレルギー・容量・使い方等)を管理画面から登録できる
+- 商品登録・仕様情報の登録/更新をトリガーに、LLMでQ&A候補をバッチ生成する
+- 生成されたQ&A候補は「下書き」状態で保存され、管理画面で内容確認・修正・却下を行った上で公開する(未レビューのQAはチャットに表示しない)
+- チャット上でのアクセス経路は2通り
+  - シナリオ内の1ノード種別として「商品QA」を配置し、シナリオ作成者が任意の分岐先に組み込める
+  - シナリオの進行状況によらず常時表示されるメニューから直接アクセスできる
+- ユーザーは公開済みFAQの一覧からタップして選択する方式のみ(自由入力は受け付けない)
+- 該当するFAQがない場合は、一覧内の「その他のご質問」等の選択肢からチャット内埋め込みの問い合わせフォームに遷移する
+- 問い合わせフォーム: チャットを離脱せずに入力(氏名・メールアドレス・問い合わせ内容等)。送信されるとDB保存は行わず、指定の担当者メールアドレスへ通知メールを送信するのみ(管理画面での一覧確認は対象外)
+
 ## 5. データモデル(主要テーブル、概略)
 
 - `users` : id, email, role(admin/staff), created_at
 - `products` : id, name, description, price, image_url, smaregi_product_id(nullable),
   is_subscription_available, subscription_intervals(jsonb), stripe_product_id, stripe_price_id
+- `product_specs` : id, product_id, ingredients(原材料), allergens(アレルギー), volume(容量), usage(使い方), その他仕様(jsonb)
+- `product_faqs` : id, product_id, question, answer, status(draft/published/rejected), source(generated/manual), generated_from_spec_id, reviewed_by, reviewed_at
+- 問い合わせフォームの内容はDBに永続化せず、受信後にメール送信APIへ渡してそのまま担当者へ通知する(テーブルなし)
 - `scenarios` : id, name, status(draft/published), version, created_by
-- `scenario_nodes` : id, scenario_id, type(message/choice/product/checkout), content(jsonb), next_node_map(jsonb)
+- `scenario_nodes` : id, scenario_id, type(message/choice/product/checkout/product_qa), content(jsonb), next_node_map(jsonb)
 - `customers` : id, email, name, phone, address(jsonb), smaregi_member_id(nullable), stripe_customer_id
 - `orders` : id, customer_id, product_id, type(one_time/subscription), amount, status,
   stripe_payment_intent_id, stripe_subscription_id
@@ -136,6 +151,15 @@ interface CoreSystemAdapter {
 }
 ```
 定期注文の与信・後払い請求フローの仕様確定後にI/Fを見直す前提のプレースホルダー。
+
+### 6.3 商品QA生成(LLM連携)
+```
+interface ProductQaGenerator {
+  generateCandidates(productId: string, spec: ProductSpec): Promise<QaCandidate[]>
+}
+```
+商品情報・仕様情報の登録/更新をトリガーに呼び出し、生成結果は `product_faqs` に `draft` として保存する。
+管理画面でのレビュー(承認/修正/却下)を経て `published` になったもののみチャットに表示する。
 
 ## 7. 非機能要件
 - 決済情報(カード番号等)は自社サーバーで保持せず、Stripeに委譲(PCI DSS SAQ A準拠)
