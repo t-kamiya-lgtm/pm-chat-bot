@@ -37,7 +37,6 @@
 |---|---|---|
 | スマレジ・プラットフォームAPI | 利用契約・APIキー取得状況が未確認 | インターフェースを定義しモック実装。契約確定後に接続 |
 | 基幹システム(スコアあと払い・代金引換)連携仕様 | 顧客情報・注文内容の連携方法(API有無、データ形式)が未確認 | 本システムは注文データ連携までを担う想定で仮設計。仕様確認後にI/Fを確定 |
-| 代引手数料のルール | 金額帯ごとの手数料テーブルの具体値が未確定 | `cod_fee_rules`テーブルとして設計、具体値は運用側でヒアリング後に登録 |
 | StripeアカウントのPayPay審査状況 | 追加情報提出済み、Stripe側の審査完了待ち | 承認され次第、決済手段として有効化。MVP実装はPayPay有無どちらでも動くよう設計 |
 | Stripeアカウントのレビュー(本人確認)状況 | ダッシュボード上で「レビュー中(2〜3日)」表示中 | 本番リリース前に完了しているか要確認 |
 
@@ -80,8 +79,15 @@
 - 単発購入 / 定期購入(周期選択: 例 2週間・1ヶ月・2ヶ月)を選べる
 - 支払い方法として「即時決済(カード等)」「後払い」「代金引換」を選択できる
 - 即時決済を選んだ場合: Stripe Payment Elementをチャット内に埋め込み、離脱せず決済完了
-- 後払いを選んだ場合: カード情報入力は行わず、チャット内で必要な会員情報を入力し、注文内容とともに基幹システムへ連携(与信結果・請求書発行は基幹システム側の後続処理)
-- 代金引換を選んだ場合: カード情報入力は行わず、注文金額に代引手数料を加算した合計金額をチャット上に表示した上で、会員情報・注文内容を基幹システムへ連携(配送時の代金徴収は基幹システム・配送業者側の後続処理)
+- 後払いを選んだ場合: カード情報入力は行わず、商品代金と後払い手数料を分けて明示した上で合計金額を表示し、会員情報・注文内容を基幹システムへ連携(与信結果・請求書発行は基幹システム側の後続処理)
+- 代金引換を選んだ場合: カード情報入力は行わず、商品代金と代引手数料を分けて明示した上で合計金額を表示し、会員情報・注文内容を基幹システムへ連携(配送時の代金徴収は基幹システム・配送業者側の後続処理)
+- 手数料が発生する支払い方法(後払い・代金引換)の金額表示フォーマット:
+  ```
+  商品代金 3,000円
+  ○○手数料 330円(税込)
+  ─────────────
+  合計 3,330円
+  ```
 - 決済結果/受付結果(成功/失敗)をチャット内に表示
 
 ### 4.2 決済・定期注文
@@ -93,15 +99,19 @@
   `customer.subscription.updated/deleted` 等)を受信し、注文・サブスク状態をDBに反映
 - 定期注文の一覧・次回課金日・停止/解約は管理画面またはチャット上のマイページ導線から確認可能(MVPでは管理画面のみ)
 
-#### 後払い(スコアあと払い、コンビニ払い等)
+#### 後払い(スコアあと払い: 郵便局・コンビニ後払い)
+- 手数料: 単発注文 550円(税込)、定期購入商品 220円(税込)。`payment_method_fees`テーブルから
+  `payment_method=deferred_invoice` かつ注文タイプ(one_time/subscription)に応じた金額を取得し、
+  商品代金と分けてチャット上に明示した上で合計金額を表示する
 - 本システムでは与信・請求処理を行わない。チャットボットは顧客情報・注文内容(単発/定期の別、商品、周期等)を
   基幹システム連携アダプタ経由で連携するのみ
 - 与信結果・請求書発行・入金確認・定期注文の継続課金判断はすべて基幹システムが担当する
 - チャット上には「基幹システムへ注文を受け付けた」旨を表示し、以降の請求案内は基幹システム側のフロー(郵送/メール等)に委ねる
 
 #### 代金引換
-- 与信は不要。チャットボットは商品代金と代引手数料(`cod_fee_rules`で定義する金額帯別の手数料テーブルから算出)の
-  合計金額をチャット上に表示し、顧客情報・注文内容を基幹システム連携アダプタ経由で連携する
+- 手数料: 330円(税込)の固定額(注文金額・単発/定期を問わず一律)。`payment_method_fees`テーブルから
+  `payment_method=cod` の金額を取得し、商品代金と分けてチャット上に明示した上で合計金額を表示する
+- 与信は不要。顧客情報・注文内容を基幹システム連携アダプタ経由で連携する
 - 単発注文・定期注文どちらにも適用可能。定期注文の場合、発送のたびに代引手数料が発生する前提で、次回発送分の
   金額案内も基幹システム側の運用に委ねる
 - 実際の代金徴収(配送員による集金・配送業者への手数料精算)は基幹システム・配送業者側の後続処理とする
@@ -144,7 +154,8 @@
 - `users` : id, email, role(admin/staff), created_at
 - `products` : id, name, description, price, image_url, smaregi_product_id(nullable),
   is_subscription_available, subscription_intervals(jsonb), stripe_product_id, stripe_price_id
-- `cod_fee_rules` : id, min_amount, max_amount(nullable), fee — 代引手数料の金額帯別ルール(全商品共通)
+- `payment_method_fees` : id, payment_method(cod/deferred_invoice), order_type(one_time/subscription/nullable=共通),
+  fee — 決済手段別の手数料。初期値: cod=330円(単発・定期共通), deferred_invoice=550円(単発)/220円(定期)
 - `product_specs` : id, product_id, ingredients(原材料), allergens(アレルギー), volume(容量), usage(使い方), その他仕様(jsonb)
 - `product_faqs` : id, product_id, question, answer, status(draft/published/rejected), source(generated/manual), generated_from_spec_id, reviewed_by, reviewed_at
 - 問い合わせフォームの内容はDBに永続化せず、受信後にメール送信APIへ渡してそのまま担当者へ通知する(テーブルなし)
@@ -152,7 +163,7 @@
 - `scenario_nodes` : id, scenario_id, type(message/choice/product/checkout/product_qa), content(jsonb), next_node_map(jsonb)
 - `customers` : id, email, name, phone, address(jsonb), smaregi_member_id(nullable), stripe_customer_id
 - `orders` : id, customer_id, product_id, type(one_time/subscription), payment_method(stripe/deferred_invoice/cod),
-  amount, cod_fee(nullable), status, stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
+  amount, fee(nullable) — 後払い/代引手数料, status, stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
 - `subscriptions` : id, order_id, interval, next_billing_date, status(active/paused/canceled)
 - `smaregi_sync_logs` : id, order_id, payload(jsonb), status, error(nullable) — モック連携の送信ログ
 
@@ -183,7 +194,7 @@ interface CoreSystemOrderInput {
   product: { id: string; quantity: number }
   subscriptionInterval?: string // orderType が subscription の場合のみ
   amount: number
-  codFee?: number // paymentMethod が cod の場合のみ(cod_fee_rulesから算出した値)
+  fee: number // paymentMethod・orderTypeに応じてpayment_method_feesから算出した手数料
 }
 ```
 - `deferred_invoice`: 与信判定・請求書発行・入金確認・定期注文の継続課金はすべて基幹システム側の責務
