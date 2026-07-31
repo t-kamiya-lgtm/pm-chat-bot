@@ -8,8 +8,8 @@
 
 - 対象サイト: スマレジEC(埋め込みポップアップウィジェット)
 - 即時決済: Stripe(カード, Apple Pay/Google Pay, PayPayは申請・審査中)
-- 後払い(コンビニ払い等): Stripeでは扱わず、自社基幹システムの「スコアあと払い」を利用。
-  チャットボットは与信・請求を行わず、顧客情報・注文内容を基幹システムに連携するのみ
+- 後払い(コンビニ払い等)・代金引換: Stripeでは扱わず、自社基幹システムを利用。
+  チャットボットは与信・請求・代引金額の徴収を行わず、顧客情報・注文内容を基幹システムに連携するのみ
 - 将来対応: LINE公式アカウント連携
 
 ## 2. スコープ
@@ -18,7 +18,8 @@
 - チャネル: Web埋め込みポップアップウィジェットのみ(LINEは次フェーズ)
 - 即時決済手段: カード決済(Stripe Payment Element) + Apple Pay/Google Pay。PayPayは申請中(追加情報提出済み、Stripe審査完了後に有効化)
 - 後払い(コンビニ払い等): Stripeでは扱わず、自社基幹システムの「スコアあと払い」を利用。チャットボットは基幹システム連携アダプタ経由で顧客情報・注文内容を連携するのみで、与信・請求は基幹システムが担当
-- 定期注文: カード決済分はStripe Billingで自動課金。後払い(スコアあと払い)による定期注文は基幹システム側で継続管理
+- 代金引換: 自社基幹システムを利用(単発・定期両方に適用)。チャットボットは商品代金+代引手数料の合計金額を表示し、代引手数料の徴収・配送業者への連携は基幹システムが担当
+- 定期注文: カード決済分はStripe Billingで自動課金。後払い(スコアあと払い)・代金引換による定期注文は基幹システム側で継続管理
 - シナリオ: 選択肢分岐型トークフロー(管理画面でノーコード作成)
 - 商品登録: チャットボット内に商品マスタを保持し、スマレジ商品IDで紐付け(連携は当面モック)
 - 会員情報移行: 決済完了後、スマレジ会員登録I/Fへ連携(当面モック実装、メールアドレスで名寄せ)
@@ -35,7 +36,8 @@
 | 項目 | 内容 | 対応方針 |
 |---|---|---|
 | スマレジ・プラットフォームAPI | 利用契約・APIキー取得状況が未確認 | インターフェースを定義しモック実装。契約確定後に接続 |
-| 基幹システム(スコアあと払い)連携仕様 | 顧客情報・注文内容の連携方法(API有無、データ形式)が未確認 | 本システムは注文データ連携までを担う想定で仮設計。仕様確認後にI/Fを確定 |
+| 基幹システム(スコアあと払い・代金引換)連携仕様 | 顧客情報・注文内容の連携方法(API有無、データ形式)が未確認 | 本システムは注文データ連携までを担う想定で仮設計。仕様確認後にI/Fを確定 |
+| 代引手数料のルール | 金額帯ごとの手数料テーブルの具体値が未確定 | `cod_fee_rules`テーブルとして設計、具体値は運用側でヒアリング後に登録 |
 | StripeアカウントのPayPay審査状況 | 追加情報提出済み、Stripe側の審査完了待ち | 承認され次第、決済手段として有効化。MVP実装はPayPay有無どちらでも動くよう設計 |
 | Stripeアカウントのレビュー(本人確認)状況 | ダッシュボード上で「レビュー中(2〜3日)」表示中 | 本番リリース前に完了しているか要確認 |
 
@@ -56,7 +58,7 @@
              ├─ Stripe Webhook受信 → 注文確定処理
              ├─ スマレジ連携アダプタ (モック → 本実装)
              └─ 基幹システム連携アダプタ (モック → 本実装)
-                  ※後払い(スコアあと払い)注文は与信・請求を行わず、
+                  ※後払い(スコアあと払い)・代金引換の注文は与信・請求・代引金額の徴収を行わず、
                     顧客情報・注文内容を渡すのみ
                      │
                      ▼
@@ -76,9 +78,10 @@
 - シナリオに沿って選択肢を提示し、商品提案・購入導線を表示
 - 商品詳細(画像・価格・説明)をチャット内カード形式で表示
 - 単発購入 / 定期購入(周期選択: 例 2週間・1ヶ月・2ヶ月)を選べる
-- 支払い方法として「即時決済(カード等)」「後払い」を選択できる
+- 支払い方法として「即時決済(カード等)」「後払い」「代金引換」を選択できる
 - 即時決済を選んだ場合: Stripe Payment Elementをチャット内に埋め込み、離脱せず決済完了
 - 後払いを選んだ場合: カード情報入力は行わず、チャット内で必要な会員情報を入力し、注文内容とともに基幹システムへ連携(与信結果・請求書発行は基幹システム側の後続処理)
+- 代金引換を選んだ場合: カード情報入力は行わず、注文金額に代引手数料を加算した合計金額をチャット上に表示した上で、会員情報・注文内容を基幹システムへ連携(配送時の代金徴収は基幹システム・配送業者側の後続処理)
 - 決済結果/受付結果(成功/失敗)をチャット内に表示
 
 ### 4.2 決済・定期注文
@@ -95,6 +98,13 @@
   基幹システム連携アダプタ経由で連携するのみ
 - 与信結果・請求書発行・入金確認・定期注文の継続課金判断はすべて基幹システムが担当する
 - チャット上には「基幹システムへ注文を受け付けた」旨を表示し、以降の請求案内は基幹システム側のフロー(郵送/メール等)に委ねる
+
+#### 代金引換
+- 与信は不要。チャットボットは商品代金と代引手数料(`cod_fee_rules`で定義する金額帯別の手数料テーブルから算出)の
+  合計金額をチャット上に表示し、顧客情報・注文内容を基幹システム連携アダプタ経由で連携する
+- 単発注文・定期注文どちらにも適用可能。定期注文の場合、発送のたびに代引手数料が発生する前提で、次回発送分の
+  金額案内も基幹システム側の運用に委ねる
+- 実際の代金徴収(配送員による集金・配送業者への手数料精算)は基幹システム・配送業者側の後続処理とする
 
 ### 4.3 会員情報移行
 - 決済完了時に以下をスマレジ連携アダプタ経由で送信(モック実装。本番はスマレジAPI)
@@ -134,14 +144,15 @@
 - `users` : id, email, role(admin/staff), created_at
 - `products` : id, name, description, price, image_url, smaregi_product_id(nullable),
   is_subscription_available, subscription_intervals(jsonb), stripe_product_id, stripe_price_id
+- `cod_fee_rules` : id, min_amount, max_amount(nullable), fee — 代引手数料の金額帯別ルール(全商品共通)
 - `product_specs` : id, product_id, ingredients(原材料), allergens(アレルギー), volume(容量), usage(使い方), その他仕様(jsonb)
 - `product_faqs` : id, product_id, question, answer, status(draft/published/rejected), source(generated/manual), generated_from_spec_id, reviewed_by, reviewed_at
 - 問い合わせフォームの内容はDBに永続化せず、受信後にメール送信APIへ渡してそのまま担当者へ通知する(テーブルなし)
 - `scenarios` : id, name, status(draft/published), version, created_by
 - `scenario_nodes` : id, scenario_id, type(message/choice/product/checkout/product_qa), content(jsonb), next_node_map(jsonb)
 - `customers` : id, email, name, phone, address(jsonb), smaregi_member_id(nullable), stripe_customer_id
-- `orders` : id, customer_id, product_id, type(one_time/subscription), payment_method(stripe/deferred),
-  amount, status, stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
+- `orders` : id, customer_id, product_id, type(one_time/subscription), payment_method(stripe/deferred_invoice/cod),
+  amount, cod_fee(nullable), status, stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
 - `subscriptions` : id, order_id, interval, next_billing_date, status(active/paused/canceled)
 - `smaregi_sync_logs` : id, order_id, payload(jsonb), status, error(nullable) — モック連携の送信ログ
 
@@ -159,21 +170,25 @@ interface SmaregiAdapter {
 MVPでは `MockSmaregiAdapter` を実装し、DB内に疑似レスポンスを保存。
 本番接続時は同インターフェースを満たす `SmaregiApiAdapter` に差し替える。
 
-### 6.2 基幹システム連携アダプタ(スコアあと払い)
+### 6.2 基幹システム連携アダプタ(スコアあと払い・代金引換)
 ```
 interface CoreSystemAdapter {
-  submitDeferredOrder(order: DeferredOrderInput): Promise<{ accepted: boolean }>
+  submitOrder(order: CoreSystemOrderInput): Promise<{ accepted: boolean }>
 }
 
-interface DeferredOrderInput {
+interface CoreSystemOrderInput {
   customer: { name: string; email: string; phone: string; address: Address }
   orderType: "one_time" | "subscription"
+  paymentMethod: "deferred_invoice" | "cod" // deferred_invoice = スコアあと払い、cod = 代金引換
   product: { id: string; quantity: number }
   subscriptionInterval?: string // orderType が subscription の場合のみ
+  amount: number
+  codFee?: number // paymentMethod が cod の場合のみ(cod_fee_rulesから算出した値)
 }
 ```
-与信判定・請求書発行・入金確認・定期注文の継続課金はすべて基幹システム側の責務。
-本システムは `submitDeferredOrder` で注文データを渡すところまでを担う。
+- `deferred_invoice`: 与信判定・請求書発行・入金確認・定期注文の継続課金はすべて基幹システム側の責務
+- `cod`: 与信は不要。代引金額(商品代金+代引手数料)の徴収・配送業者への手数料精算は基幹システム・配送業者側の責務
+- 本システムは `submitOrder` で注文データを渡すところまでを担う。
 連携方式(REST API/ファイル連携等)は基幹システムの仕様確認後に確定する前提のプレースホルダー。
 
 ### 6.3 商品QA生成(LLM連携)
