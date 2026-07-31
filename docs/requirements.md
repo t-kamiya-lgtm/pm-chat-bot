@@ -7,15 +7,18 @@
 商品・トークシナリオは管理画面から登録でき、管理者と一般ユーザーで権限を分ける。
 
 - 対象サイト: スマレジEC(埋め込みポップアップウィジェット)
-- 決済: Stripe(カード, Apple Pay/Google Pay)
-- 将来対応: LINE公式アカウント連携、コンビニ払い/PayPay
+- 即時決済: Stripe(カード, Apple Pay/Google Pay, PayPayは申請・審査中)
+- 後払い(コンビニ払い等): Stripeでは扱わず、自社基幹システムの「スコアあと払い」を利用。
+  チャットボットは与信・請求を行わず、顧客情報・注文内容を基幹システムに連携するのみ
+- 将来対応: LINE公式アカウント連携
 
 ## 2. スコープ
 
 ### MVP範囲
 - チャネル: Web埋め込みポップアップウィジェットのみ(LINEは次フェーズ)
-- 決済手段: カード決済(Stripe Payment Element) + Apple Pay/Google Pay
-- 定期注文: Stripe Billingによるカード定期課金のみ
+- 即時決済手段: カード決済(Stripe Payment Element) + Apple Pay/Google Pay。PayPayは申請中(追加情報提出済み、Stripe審査完了後に有効化)
+- 後払い(コンビニ払い等): Stripeでは扱わず、自社基幹システムの「スコアあと払い」を利用。チャットボットは基幹システム連携アダプタ経由で顧客情報・注文内容を連携するのみで、与信・請求は基幹システムが担当
+- 定期注文: カード決済分はStripe Billingで自動課金。後払い(スコアあと払い)による定期注文は基幹システム側で継続管理
 - シナリオ: 選択肢分岐型トークフロー(管理画面でノーコード作成)
 - 商品登録: チャットボット内に商品マスタを保持し、スマレジ商品IDで紐付け(連携は当面モック)
 - 会員情報移行: 決済完了後、スマレジ会員登録I/Fへ連携(当面モック実装、メールアドレスで名寄せ)
@@ -25,16 +28,16 @@
 
 ### 次フェーズ以降(MVP対象外)
 - LINE公式アカウント連携
-- コンビニ払い・PayPay等の決済手段追加
-- コンビニ払い/PayPay定期注文と基幹システムの後払い与信フローとの連携
+- 楽天ペイ(対応断念)、Amazon Pay(現時点で不要。必要になれば再検討)
 - AIによる自由対話接客
 
 ### 未確定事項(要確認・モックで進行)
 | 項目 | 内容 | 対応方針 |
 |---|---|---|
 | スマレジ・プラットフォームAPI | 利用契約・APIキー取得状況が未確認 | インターフェースを定義しモック実装。契約確定後に接続 |
-| 基幹システムの後払い与信フロー | 定期注文の与信・請求を基幹システムが担っている可能性 | 本システムは初回受注データ連携までを担う想定で仮設計。仕様確認後に確定 |
-| コンビニ払い/PayPayの定期注文対応範囲 | 自動課金不可のため運用方式が未確定 | MVPでは対象外とし、次フェーズで再設計 |
+| 基幹システム(スコアあと払い)連携仕様 | 顧客情報・注文内容の連携方法(API有無、データ形式)が未確認 | 本システムは注文データ連携までを担う想定で仮設計。仕様確認後にI/Fを確定 |
+| StripeアカウントのPayPay審査状況 | 追加情報提出済み、Stripe側の審査完了待ち | 承認され次第、決済手段として有効化。MVP実装はPayPay有無どちらでも動くよう設計 |
+| Stripeアカウントのレビュー(本人確認)状況 | ダッシュボード上で「レビュー中(2〜3日)」表示中 | 本番リリース前に完了しているか要確認 |
 
 ## 3. システム構成
 
@@ -53,6 +56,8 @@
              ├─ Stripe Webhook受信 → 注文確定処理
              ├─ スマレジ連携アダプタ (モック → 本実装)
              └─ 基幹システム連携アダプタ (モック → 本実装)
+                  ※後払い(スコアあと払い)注文は与信・請求を行わず、
+                    顧客情報・注文内容を渡すのみ
                      │
                      ▼
         [Supabase (Postgres / Auth / Storage)]
@@ -71,15 +76,25 @@
 - シナリオに沿って選択肢を提示し、商品提案・購入導線を表示
 - 商品詳細(画像・価格・説明)をチャット内カード形式で表示
 - 単発購入 / 定期購入(周期選択: 例 2週間・1ヶ月・2ヶ月)を選べる
-- Stripe Payment Elementをチャット内に埋め込み、離脱せず決済完了
-- 決済結果(成功/失敗)をチャット内に表示
+- 支払い方法として「即時決済(カード等)」「後払い」を選択できる
+- 即時決済を選んだ場合: Stripe Payment Elementをチャット内に埋め込み、離脱せず決済完了
+- 後払いを選んだ場合: カード情報入力は行わず、チャット内で必要な会員情報を入力し、注文内容とともに基幹システムへ連携(与信結果・請求書発行は基幹システム側の後続処理)
+- 決済結果/受付結果(成功/失敗)をチャット内に表示
 
 ### 4.2 決済・定期注文
-- 単発注文: Stripe PaymentIntentで都度決済
+
+#### 即時決済(Stripe)
+- 単発注文: Stripe PaymentIntentで都度決済(カード, Apple Pay/Google Pay。PayPayは審査完了後に追加)
 - 定期注文: Stripe Billing(Subscription)で作成し、以後の周期課金はStripeが自動実行
 - Stripe Webhook(`payment_intent.succeeded`, `invoice.paid`, `invoice.payment_failed`,
   `customer.subscription.updated/deleted` 等)を受信し、注文・サブスク状態をDBに反映
 - 定期注文の一覧・次回課金日・停止/解約は管理画面またはチャット上のマイページ導線から確認可能(MVPでは管理画面のみ)
+
+#### 後払い(スコアあと払い、コンビニ払い等)
+- 本システムでは与信・請求処理を行わない。チャットボットは顧客情報・注文内容(単発/定期の別、商品、周期等)を
+  基幹システム連携アダプタ経由で連携するのみ
+- 与信結果・請求書発行・入金確認・定期注文の継続課金判断はすべて基幹システムが担当する
+- チャット上には「基幹システムへ注文を受け付けた」旨を表示し、以降の請求案内は基幹システム側のフロー(郵送/メール等)に委ねる
 
 ### 4.3 会員情報移行
 - 決済完了時に以下をスマレジ連携アダプタ経由で送信(モック実装。本番はスマレジAPI)
@@ -125,8 +140,8 @@
 - `scenarios` : id, name, status(draft/published), version, created_by
 - `scenario_nodes` : id, scenario_id, type(message/choice/product/checkout/product_qa), content(jsonb), next_node_map(jsonb)
 - `customers` : id, email, name, phone, address(jsonb), smaregi_member_id(nullable), stripe_customer_id
-- `orders` : id, customer_id, product_id, type(one_time/subscription), amount, status,
-  stripe_payment_intent_id, stripe_subscription_id
+- `orders` : id, customer_id, product_id, type(one_time/subscription), payment_method(stripe/deferred),
+  amount, status, stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
 - `subscriptions` : id, order_id, interval, next_billing_date, status(active/paused/canceled)
 - `smaregi_sync_logs` : id, order_id, payload(jsonb), status, error(nullable) — モック連携の送信ログ
 
@@ -144,13 +159,22 @@ interface SmaregiAdapter {
 MVPでは `MockSmaregiAdapter` を実装し、DB内に疑似レスポンスを保存。
 本番接続時は同インターフェースを満たす `SmaregiApiAdapter` に差し替える。
 
-### 6.2 基幹システム連携アダプタ
+### 6.2 基幹システム連携アダプタ(スコアあと払い)
 ```
 interface CoreSystemAdapter {
-  submitSubscriptionOrder(order: SubscriptionOrderInput): Promise<{ accepted: boolean }>
+  submitDeferredOrder(order: DeferredOrderInput): Promise<{ accepted: boolean }>
+}
+
+interface DeferredOrderInput {
+  customer: { name: string; email: string; phone: string; address: Address }
+  orderType: "one_time" | "subscription"
+  product: { id: string; quantity: number }
+  subscriptionInterval?: string // orderType が subscription の場合のみ
 }
 ```
-定期注文の与信・後払い請求フローの仕様確定後にI/Fを見直す前提のプレースホルダー。
+与信判定・請求書発行・入金確認・定期注文の継続課金はすべて基幹システム側の責務。
+本システムは `submitDeferredOrder` で注文データを渡すところまでを担う。
+連携方式(REST API/ファイル連携等)は基幹システムの仕様確認後に確定する前提のプレースホルダー。
 
 ### 6.3 商品QA生成(LLM連携)
 ```
@@ -175,6 +199,7 @@ interface ProductQaGenerator {
 
 ## 9. 今後のステップ
 1. スマレジ・プラットフォームAPI利用契約・APIキー取得状況の確認
-2. 基幹システムの定期注文与信・後払い請求フロー仕様のヒアリング
-3. 上記確定後、スマレジ/基幹システム連携アダプタの本実装
-4. MVP実装(管理画面・チャットウィジェット・Stripe連携)
+2. 基幹システム(スコアあと払い)への注文データ連携方式(API有無、データ形式)のヒアリング
+3. StripeアカウントのPayPay審査完了、および本人確認(アカウントレビュー)完了の確認
+4. 上記確定後、スマレジ/基幹システム連携アダプタの本実装
+5. MVP実装(管理画面・チャットウィジェット・Stripe連携)
