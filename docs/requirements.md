@@ -81,12 +81,14 @@
 - 即時決済を選んだ場合: Stripe Payment Elementをチャット内に埋め込み、離脱せず決済完了
 - 後払いを選んだ場合: カード情報入力は行わず、商品代金と後払い手数料を分けて明示した上で合計金額を表示し、会員情報・注文内容を基幹システムへ連携(与信結果・請求書発行は基幹システム側の後続処理)
 - 代金引換を選んだ場合: カード情報入力は行わず、商品代金と代引手数料を分けて明示した上で合計金額を表示し、会員情報・注文内容を基幹システムへ連携(配送時の代金徴収は基幹システム・配送業者側の後続処理)
-- 手数料が発生する支払い方法(後払い・代金引換)の金額表示フォーマット:
+- 送料は商品ごとに設定した金額(`products.shipping_fee`、0円=送料無料)を商品代金とは別行で表示する
+- 金額表示フォーマット(送料・決済手数料がある場合はそれぞれ別行で表示し、最後に合計を表示):
   ```
   商品代金 3,000円
+  送料 500円
   ○○手数料 330円(税込)
   ─────────────
-  合計 3,330円
+  合計 3,830円
   ```
 - 決済結果/受付結果(成功/失敗)をチャット内に表示
 
@@ -124,7 +126,7 @@
 - 既存会員判定: メールアドレス一致で既存スマレジ会員と紐付け。一致しない場合は新規会員として登録
 
 ### 4.4 商品登録機能(管理画面)
-- 商品名・説明・価格・画像・スマレジ商品ID(紐付け用)・定期注文可否・周期選択肢を登録
+- 商品名・説明・価格・画像・スマレジ商品ID(紐付け用)・定期注文可否・周期選択肢・送料(商品ごとに設定、0円=送料無料)を登録
 - Stripe Price/Productの作成・同期(単発用Price, 定期用Price)
 
 ### 4.5 シナリオ登録機能(管理画面)
@@ -152,7 +154,7 @@
 ## 5. データモデル(主要テーブル、概略)
 
 - `users` : id, email, role(admin/staff), created_at
-- `products` : id, name, description, price, image_url, smaregi_product_id(nullable),
+- `products` : id, name, description, price, shipping_fee(0=送料無料), image_url, smaregi_product_id(nullable),
   is_subscription_available, subscription_intervals(jsonb), stripe_product_id, stripe_price_id
 - `payment_method_fees` : id, payment_method(cod/deferred_invoice), order_type(one_time/subscription/nullable=共通),
   fee — 決済手段別の手数料。初期値: cod=330円(単発・定期共通), deferred_invoice=550円(単発)/220円(定期)
@@ -163,7 +165,8 @@
 - `scenario_nodes` : id, scenario_id, type(message/choice/product/checkout/product_qa), content(jsonb), next_node_map(jsonb)
 - `customers` : id, email, name, phone, address(jsonb), smaregi_member_id(nullable), stripe_customer_id
 - `orders` : id, customer_id, product_id, type(one_time/subscription), payment_method(stripe/deferred_invoice/cod),
-  amount, fee(nullable) — 後払い/代引手数料, status, stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
+  amount(商品代金), shipping_fee, payment_fee(nullable) — 後払い/代引手数料, status,
+  stripe_payment_intent_id(nullable), stripe_subscription_id(nullable)
 - `subscriptions` : id, order_id, interval, next_billing_date, status(active/paused/canceled)
 - `smaregi_sync_logs` : id, order_id, payload(jsonb), status, error(nullable) — モック連携の送信ログ
 
@@ -197,8 +200,9 @@ interface CoreSystemOrderInput {
   paymentMethod: "deferred_invoice" | "cod" // deferred_invoice = スコアあと払い、cod = 代金引換
   product: { id: string; quantity: number }
   subscriptionInterval?: string // orderType が subscription の場合のみ
-  amount: number
-  fee: number // paymentMethod・orderTypeに応じてpayment_method_feesから算出した手数料
+  amount: number // 商品代金
+  shippingFee: number // 商品ごとに設定された送料
+  paymentFee: number // paymentMethod・orderTypeに応じてpayment_method_feesから算出した手数料
 }
 ```
 - `deferred_invoice`: 与信判定・請求書発行・入金確認・定期注文の継続課金はすべて基幹システム側の責務
