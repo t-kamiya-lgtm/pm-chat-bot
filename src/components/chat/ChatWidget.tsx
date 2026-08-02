@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChoiceButtons, type ChoiceOption } from "@/components/chat/ChoiceButtons";
-import { ProductCard } from "@/components/chat/ProductCard";
+import { ProductCarousel } from "@/components/chat/ProductCarousel";
 import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 
@@ -19,7 +19,13 @@ type TimelineItem =
       options: ChoiceOption[];
       resolved: boolean;
     }
-  | { id: string; kind: "product"; nodeId: string; productId: string; resolved: boolean }
+  | { id: string; kind: "product"; nodeId: string; productIds: string[]; resolved: boolean }
+  | {
+      id: string;
+      kind: "faq-prompt";
+      productId: string;
+      resolved: boolean;
+    }
   | { id: string; kind: "checkout"; nodeId: string; productId: string }
   | { id: string; kind: "checkout-result"; ok: boolean; text: string }
   | { id: string; kind: "faq"; productId: string };
@@ -34,8 +40,6 @@ export function ChatWidget() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
-  const [lastProductId, setLastProductId] = useState<string | null>(null);
-  const [showPersistentFaq, setShowPersistentFaq] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +80,7 @@ export function ChatWidget() {
     const content = node.content as {
       text?: string;
       productId?: string;
+      productIds?: string[];
       options?: ChoiceOption[];
     };
 
@@ -102,25 +107,47 @@ export function ChatWidget() {
       }
       case "product":
       case "checkout": {
-        const productId = content.productId;
-        if (!productId || !productMap[productId]) {
+        const productIds = Array.isArray(content.productIds)
+          ? content.productIds
+          : content.productId
+            ? [content.productId]
+            : [];
+        const validIds = productIds.filter((id) => productMap[id]);
+
+        if (validIds.length === 0) {
           setTimeline((prev) => [
             ...prev,
             { id: nextId(), kind: "bot-text", text: "商品情報の読み込みに失敗しました。" },
           ]);
           break;
         }
-        setLastProductId(productId);
+
+        if (node.type === "checkout") {
+          setTimeline((prev) => [
+            ...prev,
+            { id: nextId(), kind: "checkout", nodeId: node.id, productId: validIds[0] },
+          ]);
+          break;
+        }
+
         setTimeline((prev) => [
           ...prev,
-          node.type === "product"
-            ? { id: nextId(), kind: "product", nodeId: node.id, productId, resolved: false }
-            : { id: nextId(), kind: "checkout", nodeId: node.id, productId },
+          { id: nextId(), kind: "product", nodeId: node.id, productIds: validIds, resolved: false },
         ]);
+
+        // 単一商品の場合のみ、任意でチャット内から商品QAに進めるボタンを表示する
+        if (validIds.length === 1) {
+          setTimeout(() => {
+            setTimeline((prev) => [
+              ...prev,
+              { id: nextId(), kind: "faq-prompt", productId: validIds[0], resolved: false },
+            ]);
+          }, 300);
+        }
         break;
       }
       case "product_qa": {
-        const productId = content.productId ?? lastProductId;
+        const productId = content.productId;
         if (!productId) {
           setTimeline((prev) => [
             ...prev,
@@ -147,7 +174,7 @@ export function ChatWidget() {
     if (next) advance(next);
   }
 
-  function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>) {
+  function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>, productId: string) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
 
     const node = nodesById[item.nodeId];
@@ -158,9 +185,18 @@ export function ChatWidget() {
       // シナリオ側で決済導線への接続が未設定でも購入導線を提供する
       setTimeline((prev) => [
         ...prev,
-        { id: nextId(), kind: "checkout", nodeId: item.nodeId, productId: item.productId },
+        { id: nextId(), kind: "checkout", nodeId: item.nodeId, productId },
       ]);
     }
+  }
+
+  function handleFaqPromptSelect(item: Extract<TimelineItem, { kind: "faq-prompt" }>) {
+    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+    setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId: item.productId }]);
+  }
+
+  function handleCheckoutBack(itemId: string) {
+    setTimeline((prev) => prev.filter((i) => i.id !== itemId));
   }
 
   function handleCheckoutComplete(result: { ok: boolean; message: string }) {
@@ -171,7 +207,7 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col bg-yellow-50">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {loadError && (
           <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
@@ -192,21 +228,34 @@ export function ChatWidget() {
                 </div>
               );
             case "product": {
-              const product = productsById[item.productId];
-              if (!product) return null;
+              const products = item.productIds.map((id) => productsById[id]).filter(Boolean);
+              if (products.length === 0) return null;
               return (
-                <ProductCard
+                <ProductCarousel
                   key={item.id}
-                  product={product}
-                  onSelect={item.resolved ? undefined : () => handleProductSelect(item)}
+                  products={products}
+                  onSelect={item.resolved ? undefined : (productId) => handleProductSelect(item, productId)}
                 />
               );
             }
+            case "faq-prompt":
+              return item.resolved ? null : (
+                <ChoiceButtons
+                  key={item.id}
+                  options={[{ label: "この商品について質問する", value: "faq" }]}
+                  onSelect={() => handleFaqPromptSelect(item)}
+                />
+              );
             case "checkout": {
               const product = productsById[item.productId];
               if (!product) return null;
               return (
-                <CheckoutForm key={item.id} product={product} onComplete={handleCheckoutComplete} />
+                <CheckoutForm
+                  key={item.id}
+                  product={product}
+                  onComplete={handleCheckoutComplete}
+                  onBack={() => handleCheckoutBack(item.id)}
+                />
               );
             }
             case "faq":
@@ -215,7 +264,7 @@ export function ChatWidget() {
                   key={item.id}
                   productId={item.productId}
                   productName={productsById[item.productId]?.name}
-                  onClose={() => setShowPersistentFaq(false)}
+                  onClose={() => setTimeline((prev) => prev.filter((i) => i.id !== item.id))}
                 />
               );
             case "checkout-result":
@@ -234,26 +283,6 @@ export function ChatWidget() {
           }
         })}
       </div>
-
-      {lastProductId && (
-        <div className="border-t border-neutral-200 p-2">
-          {showPersistentFaq ? (
-            <FaqPanel
-              productId={lastProductId}
-              productName={productsById[lastProductId]?.name}
-              onClose={() => setShowPersistentFaq(false)}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowPersistentFaq(true)}
-              className="w-full rounded-md border border-neutral-300 py-2 text-sm text-neutral-600 hover:bg-neutral-50"
-            >
-              この商品について質問する
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -35,7 +35,11 @@ export async function GET(request: Request) {
     new Set(
       (nodes ?? [])
         .filter((n) => n.type === "product" || n.type === "checkout" || n.type === "product_qa")
-        .map((n) => (n.content as { productId?: string })?.productId)
+        .flatMap((n) => {
+          const content = n.content as { productId?: string; productIds?: string[] };
+          if (Array.isArray(content?.productIds)) return content.productIds;
+          return content?.productId ? [content.productId] : [];
+        })
         .filter((id): id is string => Boolean(id)),
     ),
   );

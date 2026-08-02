@@ -140,9 +140,12 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         </label>
 
         <p className="text-xs text-neutral-500">
-          商品ID一覧(product/checkout/product_qaノードのcontentで
+          商品ID一覧(productノードのcontentで単一商品なら
           {" "}
-          {"{\"productId\": \"...\"}"} として指定):
+          {"{\"productId\": \"...\"}"}、複数商品をカルーセル表示するなら
+          {" "}
+          {"{\"productIds\": [\"...\", \"...\"]}"} として指定。
+          checkout/product_qaノードは単一商品(productId)のみ対応):
           {" "}
           {products.map((p) => `${p.name}=${p.id}`).join(", ") || "商品なし"}
         </p>

@@ -12,18 +12,31 @@ const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
   bimonthly: "2ヶ月ごと",
 };
 
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  stripe: "即時決済(カード)",
-  deferred_invoice: "後払い(郵便局・コンビニ後払い)",
-  cod: "代金引換",
-};
+const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description: string }[] = [
+  {
+    value: "stripe",
+    label: "クレジットカード / Apple Pay / Google Pay / PayPay",
+    description: "画面内でそのままお支払いいただけます",
+  },
+  {
+    value: "deferred_invoice",
+    label: "後払い(郵便局・コンビニ後払い)",
+    description: "商品と一緒に届く請求書でお支払いいただけます",
+  },
+  {
+    value: "cod",
+    label: "代金引換",
+    description: "商品お届け時に配送員へお支払いいただけます",
+  },
+];
 
 interface Props {
   product: WidgetProduct;
   onComplete: (result: { ok: boolean; message: string }) => void;
+  onBack: () => void;
 }
 
-export function CheckoutForm({ product, onComplete }: Props) {
+export function CheckoutForm({ product, onComplete, onBack }: Props) {
   const [orderType, setOrderType] = useState<OrderType>("one_time");
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
     product.subscription_intervals[0] ?? "monthly",
@@ -36,6 +49,9 @@ export function CheckoutForm({ product, onComplete }: Props) {
   const [prefecture, setPrefecture] = useState("");
   const [city, setCity] = useState("");
   const [line1, setLine1] = useState("");
+  const [addressLookupStatus, setAddressLookupStatus] = useState<"idle" | "loading" | "not_found">(
+    "idle",
+  );
   const [paymentFee, setPaymentFee] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +64,38 @@ export function CheckoutForm({ product, onComplete }: Props) {
       .then((body) => setPaymentFee(body.fee ?? 0))
       .catch(() => setPaymentFee(0));
   }, [paymentMethod, orderType]);
+
+  useEffect(() => {
+    const digitsOnly = postalCode.replace(/[^0-9]/g, "");
+    if (digitsOnly.length !== 7) return;
+
+    let cancelled = false;
+
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setAddressLookupStatus("loading");
+      })
+      .then(() => fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${digitsOnly}`))
+      .then((res) => res.json())
+      .then((body: { results?: { address1: string; address2: string }[] }) => {
+        if (cancelled) return;
+        const result = body.results?.[0];
+        if (result) {
+          setPrefecture(result.address1);
+          setCity(result.address2);
+          setAddressLookupStatus("idle");
+        } else {
+          setAddressLookupStatus("not_found");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAddressLookupStatus("idle");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [postalCode]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -124,7 +172,16 @@ export function CheckoutForm({ product, onComplete }: Props) {
       onSubmit={handleSubmit}
       className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm"
     >
-      <p className="font-medium">{product.name} のご注文</p>
+      <div className="flex items-center justify-between">
+        <p className="font-medium">{product.name} のご注文</p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-xs text-neutral-400 hover:text-neutral-600"
+        >
+          ← 戻る
+        </button>
+      </div>
 
       {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
@@ -163,17 +220,30 @@ export function CheckoutForm({ product, onComplete }: Props) {
         </select>
       )}
 
-      <select
-        className="input"
-        value={paymentMethod}
-        onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-      >
-        {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((method) => (
-          <option key={method} value={method}>
-            {PAYMENT_METHOD_LABELS[method]}
-          </option>
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-neutral-700">お支払い方法</p>
+        {PAYMENT_METHOD_OPTIONS.map((option) => (
+          <label
+            key={option.value}
+            className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
+              paymentMethod === option.value
+                ? "border-neutral-900 bg-neutral-50"
+                : "border-neutral-200"
+            }`}
+          >
+            <input
+              type="radio"
+              className="mt-1"
+              checked={paymentMethod === option.value}
+              onChange={() => setPaymentMethod(option.value)}
+            />
+            <span>
+              <span className="block">{option.label}</span>
+              <span className="block text-xs text-neutral-500">{option.description}</span>
+            </span>
+          </label>
         ))}
-      </select>
+      </div>
 
       <AmountBreakdown
         amount={product.price}
@@ -204,13 +274,23 @@ export function CheckoutForm({ product, onComplete }: Props) {
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
-        <input
-          required
-          placeholder="郵便番号"
-          className="input"
-          value={postalCode}
-          onChange={(e) => setPostalCode(e.target.value)}
-        />
+        <div className="col-span-2">
+          <input
+            required
+            placeholder="郵便番号(ハイフンなしでも可)"
+            className="input"
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+          />
+          {addressLookupStatus === "loading" && (
+            <p className="mt-1 text-xs text-neutral-400">住所を検索中...</p>
+          )}
+          {addressLookupStatus === "not_found" && (
+            <p className="mt-1 text-xs text-neutral-400">
+              住所が見つかりませんでした。都道府県以下を入力してください。
+            </p>
+          )}
+        </div>
         <input
           required
           placeholder="都道府県"
