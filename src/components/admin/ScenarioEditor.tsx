@@ -120,6 +120,17 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
                 削除
               </button>
             </div>
+            <div className="mb-2 flex items-center gap-2 text-xs text-neutral-500">
+              <span>ノードID:</span>
+              <code className="select-all rounded bg-neutral-100 px-1.5 py-0.5">{node.id}</code>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(node.id)}
+                className="text-blue-600 hover:underline"
+              >
+                コピー
+              </button>
+            </div>
             <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
               content: {JSON.stringify(node.content)}
             </pre>
