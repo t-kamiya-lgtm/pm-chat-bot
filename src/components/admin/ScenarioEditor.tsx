@@ -106,38 +106,12 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
 
       <div className="mb-8 space-y-3">
         {nodes.map((node) => (
-          <div key={node.id} className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs">
-                {NODE_TYPE_LABELS[node.type]}
-                {node.isEntry && " ・開始ノード"}
-              </span>
-              <button
-                type="button"
-                onClick={() => handleDeleteNode(node.id)}
-                className="text-xs text-red-600 hover:underline"
-              >
-                削除
-              </button>
-            </div>
-            <div className="mb-2 flex items-center gap-2 text-xs text-neutral-500">
-              <span>ノードID:</span>
-              <code className="select-all rounded bg-neutral-100 px-1.5 py-0.5">{node.id}</code>
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(node.id)}
-                className="text-blue-600 hover:underline"
-              >
-                コピー
-              </button>
-            </div>
-            <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
-              content: {JSON.stringify(node.content)}
-            </pre>
-            <pre className="mt-1 overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
-              nextNodeMap: {JSON.stringify(node.nextNodeMap)}
-            </pre>
-          </div>
+          <NodeCard
+            key={node.id}
+            scenarioId={scenario.id}
+            node={node}
+            onDelete={() => handleDeleteNode(node.id)}
+          />
         ))}
         {nodes.length === 0 && (
           <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
@@ -216,6 +190,146 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           ノードを追加
         </button>
       </form>
+    </div>
+  );
+}
+
+function NodeCard({
+  scenarioId,
+  node,
+  onDelete,
+}: {
+  scenarioId: string;
+  node: ScenarioNode;
+  onDelete: () => void;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [contentText, setContentText] = useState(JSON.stringify(node.content));
+  const [nextMapText, setNextMapText] = useState(JSON.stringify(node.nextNodeMap));
+  const [isEntry, setIsEntry] = useState(node.isEntry);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function startEditing() {
+    setContentText(JSON.stringify(node.content));
+    setNextMapText(JSON.stringify(node.nextNodeMap));
+    setIsEntry(node.isEntry);
+    setError(null);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setError(null);
+    let content: Record<string, unknown>;
+    let nextNodeMap: Record<string, string>;
+    try {
+      content = JSON.parse(contentText || "{}");
+      nextNodeMap = JSON.parse(nextMapText || "{}");
+    } catch {
+      setError("content / nextNodeMap はJSON形式で入力してください");
+      return;
+    }
+
+    setSaving(true);
+    const res = await fetch(`/api/scenarios/${scenarioId}/nodes/${node.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content, nextNodeMap, isEntry }),
+    });
+    setSaving(false);
+
+    if (!res.ok) {
+      setError("更新に失敗しました");
+      return;
+    }
+    setEditing(false);
+    router.refresh();
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs">
+          {NODE_TYPE_LABELS[node.type]}
+          {node.isEntry && " ・開始ノード"}
+        </span>
+        <div className="flex gap-3 text-xs">
+          {!editing && (
+            <button type="button" onClick={startEditing} className="text-blue-600 hover:underline">
+              編集
+            </button>
+          )}
+          <button type="button" onClick={onDelete} className="text-red-600 hover:underline">
+            削除
+          </button>
+        </div>
+      </div>
+      <div className="mb-2 flex items-center gap-2 text-xs text-neutral-500">
+        <span>ノードID:</span>
+        <code className="select-all rounded bg-neutral-100 px-1.5 py-0.5">{node.id}</code>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(node.id)}
+          className="text-blue-600 hover:underline"
+        >
+          コピー
+        </button>
+      </div>
+
+      {editing ? (
+        <div className="space-y-2">
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <label className="block text-xs">
+            <span className="mb-1 block text-neutral-500">content(JSON)</span>
+            <textarea
+              className="input font-mono"
+              rows={3}
+              value={contentText}
+              onChange={(e) => setContentText(e.target.value)}
+            />
+          </label>
+          <label className="block text-xs">
+            <span className="mb-1 block text-neutral-500">nextNodeMap(JSON)</span>
+            <textarea
+              className="input font-mono"
+              rows={2}
+              value={nextMapText}
+              onChange={(e) => setNextMapText(e.target.value)}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={isEntry} onChange={(e) => setIsEntry(e.target.checked)} />
+            このノードを開始ノードにする
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {saving ? "保存中..." : "更新する"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
+            content: {JSON.stringify(node.content)}
+          </pre>
+          <pre className="mt-1 overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
+            nextNodeMap: {JSON.stringify(node.nextNodeMap)}
+          </pre>
+        </>
+      )}
     </div>
   );
 }
