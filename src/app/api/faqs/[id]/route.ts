@@ -6,12 +6,13 @@ import { requireCatalogRole } from "@/lib/require-role";
 const updateSchema = z.object({
   question: z.string().min(1).optional(),
   answer: z.string().min(1).optional(),
+  categoryId: z.string().uuid().optional(),
   status: z.enum(["draft", "published", "rejected"]).optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
 
-/** 商品QA候補のレビュー(内容修正・承認/却下)。要件定義書 4.7。 */
+/** 商品QA候補のレビュー(内容修正・カテゴリ変更・承認/却下)。要件定義書 4.7。 */
 export async function PATCH(request: Request, { params }: RouteParams) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
@@ -31,6 +32,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     .update({
       ...(input.question !== undefined && { question: input.question }),
       ...(input.answer !== undefined && { answer: input.answer }),
+      ...(input.categoryId !== undefined && { category_id: input.categoryId }),
       ...(input.status !== undefined && { status: input.status }),
       ...(isReviewDecision && {
         reviewed_by: roleCheck.user.id,

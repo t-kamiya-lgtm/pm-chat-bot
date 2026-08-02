@@ -4,10 +4,12 @@ import { getCurrentAppUser, canManageUsers } from "@/lib/auth";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "ダッシュボード" },
-  { href: "/admin/products", label: "商品" },
+  { href: "/admin/product-groups", label: "商品種類" },
+  { href: "/admin/products", label: "商品(品番)" },
   { href: "/admin/scenarios", label: "シナリオ" },
   { href: "/admin/faqs", label: "商品QA" },
   { href: "/admin/orders", label: "注文" },
+  { href: "/admin/checkout-fields", label: "決済フォーム設定" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

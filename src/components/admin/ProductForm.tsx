@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { SubscriptionInterval } from "@/lib/types";
+import type { ProductOrderType, SubscriptionInterval } from "@/lib/types";
 
 const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
   biweekly: "2週間ごと",
@@ -12,30 +12,44 @@ const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
 
 export interface ProductFormValues {
   id?: string;
+  productGroupId: string;
   name: string;
   description: string;
   price: number;
   shippingFee: number;
   imageUrl: string;
   smaregiProductId: string;
-  isSubscriptionAvailable: boolean;
+  orderType: ProductOrderType;
   subscriptionIntervals: SubscriptionInterval[];
 }
 
-const EMPTY_VALUES: ProductFormValues = {
-  name: "",
-  description: "",
-  price: 0,
-  shippingFee: 0,
-  imageUrl: "",
-  smaregiProductId: "",
-  isSubscriptionAvailable: false,
-  subscriptionIntervals: [],
-};
+function emptyValues(defaultProductGroupId?: string): ProductFormValues {
+  return {
+    productGroupId: defaultProductGroupId ?? "",
+    name: "",
+    description: "",
+    price: 0,
+    shippingFee: 0,
+    imageUrl: "",
+    smaregiProductId: "",
+    orderType: "one_time",
+    subscriptionIntervals: [],
+  };
+}
 
-export function ProductForm({ initialValues }: { initialValues?: ProductFormValues }) {
+export function ProductForm({
+  initialValues,
+  productGroups,
+  lockProductGroup,
+}: {
+  initialValues?: ProductFormValues;
+  productGroups: { id: string; name: string }[];
+  lockProductGroup?: boolean;
+}) {
   const router = useRouter();
-  const [values, setValues] = useState<ProductFormValues>(initialValues ?? EMPTY_VALUES);
+  const [values, setValues] = useState<ProductFormValues>(
+    initialValues ?? emptyValues(productGroups[0]?.id),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -55,15 +69,27 @@ export function ProductForm({ initialValues }: { initialValues?: ProductFormValu
     setSubmitting(true);
     setErrorMessage(null);
 
+    if (!values.productGroupId) {
+      setSubmitting(false);
+      setErrorMessage("商品種類(親品番)を選択してください");
+      return;
+    }
+    if (values.orderType === "subscription" && values.subscriptionIntervals.length === 0) {
+      setSubmitting(false);
+      setErrorMessage("定期購入の場合は周期を1つ以上選択してください");
+      return;
+    }
+
     const payload = {
+      productGroupId: values.productGroupId,
       name: values.name,
       description: values.description || undefined,
       price: Number(values.price),
       shippingFee: Number(values.shippingFee),
       imageUrl: values.imageUrl || undefined,
       smaregiProductId: values.smaregiProductId || undefined,
-      isSubscriptionAvailable: values.isSubscriptionAvailable,
-      subscriptionIntervals: values.subscriptionIntervals,
+      orderType: values.orderType,
+      subscriptionIntervals: values.orderType === "subscription" ? values.subscriptionIntervals : [],
     };
 
     const res = await fetch(isEdit ? `/api/products/${values.id}` : "/api/products", {
@@ -80,7 +106,7 @@ export function ProductForm({ initialValues }: { initialValues?: ProductFormValu
       return;
     }
 
-    router.push("/admin/products");
+    router.push(isEdit ? `/admin/product-groups/${values.productGroupId}` : "/admin/products");
     router.refresh();
   }
 
@@ -90,7 +116,26 @@ export function ProductForm({ initialValues }: { initialValues?: ProductFormValu
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{errorMessage}</p>
       )}
 
-      <Field label="商品名">
+      <Field label="商品種類(親品番)">
+        <select
+          required
+          disabled={lockProductGroup}
+          value={values.productGroupId}
+          onChange={(e) => setValues((p) => ({ ...p, productGroupId: e.target.value }))}
+          className="input"
+        >
+          <option value="" disabled>
+            選択してください
+          </option>
+          {productGroups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="商品名(品番ごとの名称)">
         <input
           required
           value={values.name}
@@ -147,17 +192,26 @@ export function ProductForm({ initialValues }: { initialValues?: ProductFormValu
       </Field>
 
       <div>
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={values.isSubscriptionAvailable}
-            onChange={(e) =>
-              setValues((p) => ({ ...p, isSubscriptionAvailable: e.target.checked }))
-            }
-          />
-          定期購入を許可する
-        </label>
-        {values.isSubscriptionAvailable && (
+        <span className="mb-2 block text-sm font-medium text-neutral-700">注文タイプ</span>
+        <div className="flex gap-4 text-sm">
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={values.orderType === "one_time"}
+              onChange={() => setValues((p) => ({ ...p, orderType: "one_time" }))}
+            />
+            単品(単発購入のみ)
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={values.orderType === "subscription"}
+              onChange={() => setValues((p) => ({ ...p, orderType: "subscription" }))}
+            />
+            定期(定期購入のみ)
+          </label>
+        </div>
+        {values.orderType === "subscription" && (
           <div className="mt-2 flex gap-4 pl-6 text-sm">
             {(Object.keys(INTERVAL_LABELS) as SubscriptionInterval[]).map((interval) => (
               <label key={interval} className="flex items-center gap-1">

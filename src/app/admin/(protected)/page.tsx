@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 const CARDS = [
-  { href: "/admin/products", title: "商品管理", description: "商品登録・送料・定期購入設定" },
+  { href: "/admin/product-groups", title: "商品種類管理", description: "仕様情報・QAカテゴリの管理単位" },
+  { href: "/admin/products", title: "商品(品番)管理", description: "単品/定期を分けて品番登録・送料設定" },
   { href: "/admin/scenarios", title: "シナリオ管理", description: "選択肢分岐型トークフローの作成" },
   { href: "/admin/faqs", title: "商品QAレビュー", description: "生成されたQ&A候補の承認・却下" },
   { href: "/admin/orders", title: "注文一覧", description: "決済・後払い・代引きの注文状況" },

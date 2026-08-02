@@ -7,7 +7,7 @@ export interface WidgetProduct {
   price: number;
   shipping_fee: number;
   image_url: string | null;
-  is_subscription_available: boolean;
+  order_type: "one_time" | "subscription";
   subscription_intervals: SubscriptionInterval[];
 }
 

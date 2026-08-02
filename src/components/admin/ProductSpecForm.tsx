@@ -11,10 +11,10 @@ export interface ProductSpecFormValues {
 }
 
 export function ProductSpecForm({
-  productId,
+  productGroupId,
   initialValues,
 }: {
-  productId: string;
+  productGroupId: string;
   initialValues?: ProductSpecFormValues;
 }) {
   const router = useRouter();
@@ -29,7 +29,7 @@ export function ProductSpecForm({
     setStatus("saving");
     setMessage(null);
 
-    const res = await fetch(`/api/products/${productId}/spec`, {
+    const res = await fetch(`/api/product-groups/${productGroupId}/spec`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...values, extra: {} }),
@@ -52,7 +52,7 @@ export function ProductSpecForm({
     const res = await fetch("/api/faqs/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ productId }),
+      body: JSON.stringify({ productGroupId }),
     });
 
     if (!res.ok) {
@@ -64,6 +64,7 @@ export function ProductSpecForm({
     const body = await res.json();
     setStatus("done");
     setMessage(`${body.faqs?.length ?? 0}件のQA候補を生成しました(要レビュー)`);
+    router.refresh();
   }
 
   return (

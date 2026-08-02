@@ -4,20 +4,33 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductFaq } from "@/lib/types";
 
+type FaqWithCategory = ProductFaq & { categoryTitle: string | null };
+
 const STATUS_LABELS: Record<ProductFaq["status"], string> = {
   draft: "レビュー待ち",
   published: "公開中",
   rejected: "却下",
 };
 
-export function FaqReviewList({ faqs }: { faqs: ProductFaq[] }) {
+export function FaqReviewList({
+  faqs,
+  categories,
+}: {
+  faqs: FaqWithCategory[];
+  categories: { id: string; title: string }[];
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState<Record<string, { question: string; answer: string }>>({});
   const [pending, setPending] = useState<string | null>(null);
 
   async function updateFaq(
     id: string,
-    body: Partial<{ status: ProductFaq["status"]; question: string; answer: string }>,
+    body: Partial<{
+      status: ProductFaq["status"];
+      question: string;
+      answer: string;
+      categoryId: string;
+    }>,
   ) {
     setPending(id);
     await fetch(`/api/faqs/${id}`, {
@@ -36,17 +49,39 @@ export function FaqReviewList({ faqs }: { faqs: ProductFaq[] }) {
         return (
           <div key={faq.id} className="rounded-lg border border-neutral-200 bg-white p-4">
             <div className="mb-2 flex items-center justify-between">
-              <span
-                className={`rounded px-2 py-0.5 text-xs ${
-                  faq.status === "published"
-                    ? "bg-green-100 text-green-800"
-                    : faq.status === "rejected"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-amber-100 text-amber-800"
-                }`}
-              >
-                {STATUS_LABELS[faq.status]}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`rounded px-2 py-0.5 text-xs ${
+                    faq.status === "published"
+                      ? "bg-green-100 text-green-800"
+                      : faq.status === "rejected"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {STATUS_LABELS[faq.status]}
+                </span>
+                {categories.length > 0 ? (
+                  <select
+                    className="input w-auto text-xs"
+                    value={faq.categoryId ?? ""}
+                    onChange={(e) => updateFaq(faq.id, { categoryId: e.target.value })}
+                  >
+                    <option value="" disabled>
+                      カテゴリ未設定
+                    </option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-xs text-neutral-400">
+                    {faq.categoryTitle ?? "カテゴリ未設定"}
+                  </span>
+                )}
+              </div>
               <span className="text-xs text-neutral-400">
                 {faq.source === "generated" ? "AI生成" : "手動作成"}
               </span>

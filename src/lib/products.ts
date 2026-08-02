@@ -1,15 +1,16 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Product } from "@/lib/types";
+import type { Product, ProductOrderType } from "@/lib/types";
 
 export interface ProductRow {
   id: string;
+  product_group_id: string | null;
   name: string;
   description: string | null;
   price: number;
   shipping_fee: number;
   image_url: string | null;
   smaregi_product_id: string | null;
-  is_subscription_available: boolean;
+  order_type: ProductOrderType;
   subscription_intervals: Product["subscriptionIntervals"];
   stripe_product_id: string | null;
   stripe_price_id: string | null;

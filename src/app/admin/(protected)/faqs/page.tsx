@@ -4,10 +4,13 @@ import type { ProductFaq } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function mapFaqRow(row: Record<string, unknown>): ProductFaq {
+function mapFaqRow(row: Record<string, unknown>): ProductFaq & { categoryTitle: string | null } {
+  const category = row.product_faq_categories as { title: string } | null;
   return {
     id: row.id as string,
-    productId: row.product_id as string,
+    productGroupId: row.product_group_id as string,
+    categoryId: row.category_id as string | null,
+    categoryTitle: category?.title ?? null,
     question: row.question as string,
     answer: row.answer as string,
     status: row.status as ProductFaq["status"],
@@ -22,19 +25,32 @@ function mapFaqRow(row: Record<string, unknown>): ProductFaq {
 export default async function AdminFaqsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ productId?: string }>;
+  searchParams: Promise<{ productGroupId?: string }>;
 }) {
-  const { productId } = await searchParams;
+  const { productGroupId } = await searchParams;
   const supabase = createSupabaseAdminClient();
 
-  let query = supabase.from("product_faqs").select("*").order("created_at", { ascending: false });
-  if (productId) query = query.eq("product_id", productId);
+  let query = supabase
+    .from("product_faqs")
+    .select("*, product_faq_categories(title)")
+    .order("created_at", { ascending: false });
+  if (productGroupId) query = query.eq("product_group_id", productGroupId);
   const { data } = await query;
+
+  let categories: { id: string; title: string }[] = [];
+  if (productGroupId) {
+    const { data: categoryRows } = await supabase
+      .from("product_faq_categories")
+      .select("id, title")
+      .eq("product_group_id", productGroupId)
+      .order("display_order", { ascending: true });
+    categories = categoryRows ?? [];
+  }
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">商品QAレビュー</h1>
-      <FaqReviewList faqs={(data ?? []).map(mapFaqRow)} />
+      <FaqReviewList faqs={(data ?? []).map(mapFaqRow)} categories={categories} />
     </div>
   );
 }

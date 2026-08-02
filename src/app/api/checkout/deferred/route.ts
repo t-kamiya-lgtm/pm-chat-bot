@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   }
   if (orderType === "subscription") {
     if (
-      !product.is_subscription_available ||
+      product.order_type !== "subscription" ||
       !subscriptionInterval ||
       !product.subscription_intervals.includes(subscriptionInterval)
     ) {

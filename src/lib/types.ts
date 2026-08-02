@@ -9,16 +9,27 @@ export interface AppUser {
 }
 
 export type SubscriptionInterval = "biweekly" | "monthly" | "bimonthly";
+export type ProductOrderType = "one_time" | "subscription";
+
+/** 商品種類(親品番)。QA・仕様情報はこちらに紐づく。 */
+export interface ProductGroup {
+  id: string;
+  name: string;
+  parentCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Product {
   id: string;
+  productGroupId: string | null;
   name: string;
   description: string | null;
   price: number;
   shippingFee: number;
   imageUrl: string | null;
   smaregiProductId: string | null;
-  isSubscriptionAvailable: boolean;
+  orderType: ProductOrderType;
   subscriptionIntervals: SubscriptionInterval[];
   stripeProductId: string | null;
   stripePriceId: string | null;
@@ -28,7 +39,7 @@ export interface Product {
 
 export interface ProductSpec {
   id: string;
-  productId: string;
+  productGroupId: string;
   ingredients: string | null;
   allergens: string | null;
   volume: string | null;
@@ -37,11 +48,21 @@ export interface ProductSpec {
   updatedAt: string;
 }
 
+/** 商品QAカテゴリ。商品種類(親品番)ごとに任意設定。 */
+export interface ProductFaqCategory {
+  id: string;
+  productGroupId: string;
+  title: string;
+  displayOrder: number;
+  createdAt: string;
+}
+
 export type ProductFaqStatus = "draft" | "published" | "rejected";
 
 export interface ProductFaq {
   id: string;
-  productId: string;
+  productGroupId: string;
+  categoryId: string | null;
   question: string;
   answer: string;
   status: ProductFaqStatus;
@@ -100,7 +121,7 @@ export interface Customer {
   createdAt: string;
 }
 
-export type OrderType = "one_time" | "subscription";
+export type OrderType = ProductOrderType;
 export type PaymentMethod = "stripe" | "deferred_invoice" | "cod";
 export type OrderStatus = "pending" | "accepted" | "paid" | "failed" | "canceled";
 

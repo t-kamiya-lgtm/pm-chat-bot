@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "product not found" }, { status: 404 });
   }
   if (
-    !product.is_subscription_available ||
+    product.order_type !== "subscription" ||
     !product.subscription_intervals.includes(subscriptionInterval)
   ) {
     return NextResponse.json(

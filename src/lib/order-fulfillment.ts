@@ -81,13 +81,14 @@ function mapOrderRow(row: Record<string, unknown>): Order {
 function mapProductRow(row: Record<string, unknown>): Product {
   return {
     id: row.id as string,
+    productGroupId: row.product_group_id as string | null,
     name: row.name as string,
     description: row.description as string | null,
     price: row.price as number,
     shippingFee: row.shipping_fee as number,
     imageUrl: row.image_url as string | null,
     smaregiProductId: row.smaregi_product_id as string | null,
-    isSubscriptionAvailable: row.is_subscription_available as boolean,
+    orderType: row.order_type as Product["orderType"],
     subscriptionIntervals: row.subscription_intervals as Product["subscriptionIntervals"],
     stripeProductId: row.stripe_product_id as string | null,
     stripePriceId: row.stripe_price_id as string | null,

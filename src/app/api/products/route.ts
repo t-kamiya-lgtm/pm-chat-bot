@@ -5,25 +5,29 @@ import { requireCatalogRole } from "@/lib/require-role";
 import { subscriptionIntervalSchema } from "@/lib/checkout-schema";
 
 const productInputSchema = z.object({
+  productGroupId: z.string().uuid(),
   name: z.string().min(1),
   description: z.string().optional(),
   price: z.number().int().min(0),
   shippingFee: z.number().int().min(0).default(0),
   imageUrl: z.string().url().optional(),
   smaregiProductId: z.string().optional(),
-  isSubscriptionAvailable: z.boolean().default(false),
+  orderType: z.enum(["one_time", "subscription"]),
   subscriptionIntervals: z.array(subscriptionIntervalSchema).default([]),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
+  const { searchParams } = new URL(request.url);
+  const productGroupId = searchParams.get("productGroupId");
+
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .order("created_at", { ascending: false });
+  let query = supabase.from("products").select("*").order("created_at", { ascending: false });
+  if (productGroupId) query = query.eq("product_group_id", productGroupId);
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ products: data });
 }
@@ -39,18 +43,26 @@ export async function POST(request: Request) {
   }
   const input = parsed.data;
 
+  if (input.orderType === "subscription" && input.subscriptionIntervals.length === 0) {
+    return NextResponse.json(
+      { error: "subscriptionIntervals is required when orderType is subscription" },
+      { status: 400 },
+    );
+  }
+
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("products")
     .insert({
+      product_group_id: input.productGroupId,
       name: input.name,
       description: input.description ?? null,
       price: input.price,
       shipping_fee: input.shippingFee,
       image_url: input.imageUrl ?? null,
       smaregi_product_id: input.smaregiProductId ?? null,
-      is_subscription_available: input.isSubscriptionAvailable,
-      subscription_intervals: input.subscriptionIntervals,
+      order_type: input.orderType,
+      subscription_intervals: input.orderType === "subscription" ? input.subscriptionIntervals : [],
       created_by: roleCheck.user.id,
     })
     .select("*")

@@ -5,13 +5,14 @@ import { requireCatalogRole } from "@/lib/require-role";
 import { subscriptionIntervalSchema } from "@/lib/checkout-schema";
 
 const productUpdateSchema = z.object({
+  productGroupId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   price: z.number().int().min(0).optional(),
   shippingFee: z.number().int().min(0).optional(),
   imageUrl: z.string().url().optional(),
   smaregiProductId: z.string().optional(),
-  isSubscriptionAvailable: z.boolean().optional(),
+  orderType: z.enum(["one_time", "subscription"]).optional(),
   subscriptionIntervals: z.array(subscriptionIntervalSchema).optional(),
 });
 
@@ -45,15 +46,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const { data, error } = await supabase
     .from("products")
     .update({
+      ...(input.productGroupId !== undefined && { product_group_id: input.productGroupId }),
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.price !== undefined && { price: input.price }),
       ...(input.shippingFee !== undefined && { shipping_fee: input.shippingFee }),
       ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
       ...(input.smaregiProductId !== undefined && { smaregi_product_id: input.smaregiProductId }),
-      ...(input.isSubscriptionAvailable !== undefined && {
-        is_subscription_available: input.isSubscriptionAvailable,
-      }),
+      ...(input.orderType !== undefined && { order_type: input.orderType }),
       ...(input.subscriptionIntervals !== undefined && {
         subscription_intervals: input.subscriptionIntervals,
       }),

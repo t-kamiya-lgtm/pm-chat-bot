@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { OrderType, PaymentMethod, SubscriptionInterval } from "@/lib/types";
+import type { PaymentMethod, SubscriptionInterval } from "@/lib/types";
 import type { WidgetProduct } from "@/components/chat/types";
 import { AmountBreakdown } from "@/components/chat/AmountBreakdown";
 import { StripePaymentForm } from "@/components/chat/StripePaymentForm";
+import {
+  CHECKOUT_FIELD_LABELS,
+  DEFAULT_CHECKOUT_FIELD_ORDER,
+  type CheckoutFieldKey,
+} from "@/lib/checkout-fields";
 
 const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
   biweekly: "2週間ごと",
@@ -30,32 +35,77 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
   },
 ];
 
+function validateField(key: CheckoutFieldKey, value: string): string | null {
+  const trimmed = value.trim();
+  switch (key) {
+    case "name":
+      return trimmed ? null : "お名前を入力してください";
+    case "email":
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+        ? null
+        : "正しいメールアドレスを入力してください";
+    case "phone":
+      return null;
+    case "postalCode":
+      return /^\d{7}$/.test(value.replace(/[^0-9]/g, ""))
+        ? null
+        : "郵便番号は7桁の数字で入力してください";
+    case "prefecture":
+      return trimmed ? null : "都道府県を入力してください";
+    case "city":
+      return trimmed ? null : "市区町村を入力してください";
+    case "line1":
+      return trimmed ? null : "番地・建物名を入力してください";
+    default:
+      return null;
+  }
+}
+
 interface Props {
   product: WidgetProduct;
   onComplete: (result: { ok: boolean; message: string }) => void;
   onBack: () => void;
 }
 
+type Stage = "options" | "wizard";
+
 export function CheckoutForm({ product, onComplete, onBack }: Props) {
-  const [orderType, setOrderType] = useState<OrderType>("one_time");
+  const orderType = product.order_type;
+  const [stage, setStage] = useState<Stage>("options");
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
     product.subscription_intervals[0] ?? "monthly",
   );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [prefecture, setPrefecture] = useState("");
-  const [city, setCity] = useState("");
-  const [line1, setLine1] = useState("");
+  const [paymentFee, setPaymentFee] = useState(0);
+
+  const [fieldOrder, setFieldOrder] = useState<CheckoutFieldKey[]>(DEFAULT_CHECKOUT_FIELD_ORDER);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [values, setValues] = useState<Record<CheckoutFieldKey, string>>({
+    name: "",
+    email: "",
+    phone: "",
+    postalCode: "",
+    prefecture: "",
+    city: "",
+    line1: "",
+  });
+  const [touched, setTouched] = useState<Partial<Record<CheckoutFieldKey, boolean>>>({});
   const [addressLookupStatus, setAddressLookupStatus] = useState<"idle" | "loading" | "not_found">(
     "idle",
   );
-  const [paymentFee, setPaymentFee] = useState(0);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/widget/checkout-fields")
+      .then((res) => res.json())
+      .then((body: { order?: CheckoutFieldKey[] }) => {
+        if (body.order) setFieldOrder(body.order);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams({ paymentMethod, orderType });
@@ -66,7 +116,7 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
   }, [paymentMethod, orderType]);
 
   useEffect(() => {
-    const digitsOnly = postalCode.replace(/[^0-9]/g, "");
+    const digitsOnly = values.postalCode.replace(/[^0-9]/g, "");
     if (digitsOnly.length !== 7) return;
 
     let cancelled = false;
@@ -81,8 +131,7 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
         if (cancelled) return;
         const result = body.results?.[0];
         if (result) {
-          setPrefecture(result.address1);
-          setCity(result.address2);
+          setValues((prev) => ({ ...prev, prefecture: result.address1, city: result.address2 }));
           setAddressLookupStatus("idle");
         } else {
           setAddressLookupStatus("not_found");
@@ -95,23 +144,28 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [postalCode]);
+  }, [values.postalCode]);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submitOrder() {
     setError(null);
     setSubmitting(true);
 
     const customer = {
-      name,
-      email,
-      phone: phone || undefined,
-      address: { postalCode, prefecture, city, line1 },
+      name: values.name,
+      email: values.email,
+      phone: values.phone || undefined,
+      address: {
+        postalCode: values.postalCode,
+        prefecture: values.prefecture,
+        city: values.city,
+        line1: values.line1,
+      },
     };
 
     try {
       if (paymentMethod === "stripe") {
-        const endpoint = orderType === "subscription" ? "/api/checkout/subscription" : "/api/checkout/payment-intent";
+        const endpoint =
+          orderType === "subscription" ? "/api/checkout/subscription" : "/api/checkout/payment-intent";
         const body =
           orderType === "subscription"
             ? { productId: product.id, subscriptionInterval, customer }
@@ -155,6 +209,29 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
     }
   }
 
+  function handleNextStep() {
+    const key = fieldOrder[stepIndex];
+    const errorMsg = validateField(key, values[key]);
+    if (errorMsg) {
+      setTouched((prev) => ({ ...prev, [key]: true }));
+      return;
+    }
+
+    if (stepIndex === fieldOrder.length - 1) {
+      submitOrder();
+    } else {
+      setStepIndex((i) => i + 1);
+    }
+  }
+
+  function handleBackStep() {
+    if (stepIndex === 0) {
+      setStage("options");
+    } else {
+      setStepIndex((i) => i - 1);
+    }
+  }
+
   if (clientSecret) {
     return (
       <StripePaymentForm
@@ -167,44 +244,79 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
     );
   }
 
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm"
-    >
-      <div className="flex items-center justify-between">
-        <p className="font-medium">{product.name} のご注文</p>
+  if (stage === "wizard") {
+    const key = fieldOrder[stepIndex];
+    const value = values[key];
+    const errorMsg = validateField(key, value);
+    const showError = touched[key] && errorMsg;
+    const isLastStep = stepIndex === fieldOrder.length - 1;
+
+    return (
+      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between text-xs text-neutral-400">
+          <button type="button" onClick={handleBackStep} className="hover:text-neutral-600">
+            ← 戻る
+          </button>
+          <span>
+            {stepIndex + 1} / {fieldOrder.length}
+          </span>
+        </div>
+
+        {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-neutral-700">
+            {CHECKOUT_FIELD_LABELS[key]}
+            {key === "phone" && "(任意)"}
+          </span>
+          <input
+            autoFocus
+            type={key === "email" ? "email" : "text"}
+            className="input"
+            value={value}
+            onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+            onBlur={() => setTouched((prev) => ({ ...prev, [key]: true }))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleNextStep();
+              }
+            }}
+            placeholder={key === "postalCode" ? "ハイフンなしでも可" : undefined}
+          />
+          {key === "postalCode" && addressLookupStatus === "loading" && (
+            <p className="mt-1 text-xs text-neutral-400">住所を検索中...</p>
+          )}
+          {key === "postalCode" && addressLookupStatus === "not_found" && (
+            <p className="mt-1 text-xs text-neutral-400">
+              住所が見つかりませんでした。都道府県以下は次の質問で入力してください。
+            </p>
+          )}
+          {showError && <p className="mt-1 text-xs text-red-600">{errorMsg}</p>}
+        </label>
+
         <button
           type="button"
-          onClick={onBack}
-          className="text-xs text-neutral-400 hover:text-neutral-600"
+          onClick={handleNextStep}
+          disabled={submitting}
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
         >
+          {submitting ? "処理中..." : isLastStep ? "この内容で注文する" : "次へ"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <p className="font-medium">{product.name} のご注文</p>
+        <button type="button" onClick={onBack} className="text-xs text-neutral-400 hover:text-neutral-600">
           ← 戻る
         </button>
       </div>
 
       {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
-
-      {product.is_subscription_available && (
-        <div className="flex gap-4 text-sm">
-          <label className="flex items-center gap-1">
-            <input
-              type="radio"
-              checked={orderType === "one_time"}
-              onChange={() => setOrderType("one_time")}
-            />
-            単発購入
-          </label>
-          <label className="flex items-center gap-1">
-            <input
-              type="radio"
-              checked={orderType === "subscription"}
-              onChange={() => setOrderType("subscription")}
-            />
-            定期購入
-          </label>
-        </div>
-      )}
 
       {orderType === "subscription" && (
         <select
@@ -226,9 +338,7 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
           <label
             key={option.value}
             className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
-              paymentMethod === option.value
-                ? "border-neutral-900 bg-neutral-50"
-                : "border-neutral-200"
+              paymentMethod === option.value ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
             }`}
           >
             <input
@@ -252,75 +362,13 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
         paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
       />
 
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          required
-          placeholder="お名前"
-          className="input col-span-2"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          required
-          type="email"
-          placeholder="メールアドレス"
-          className="input col-span-2"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          placeholder="電話番号"
-          className="input col-span-2"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
-        <div className="col-span-2">
-          <input
-            required
-            placeholder="郵便番号(ハイフンなしでも可)"
-            className="input"
-            value={postalCode}
-            onChange={(e) => setPostalCode(e.target.value)}
-          />
-          {addressLookupStatus === "loading" && (
-            <p className="mt-1 text-xs text-neutral-400">住所を検索中...</p>
-          )}
-          {addressLookupStatus === "not_found" && (
-            <p className="mt-1 text-xs text-neutral-400">
-              住所が見つかりませんでした。都道府県以下を入力してください。
-            </p>
-          )}
-        </div>
-        <input
-          required
-          placeholder="都道府県"
-          className="input"
-          value={prefecture}
-          onChange={(e) => setPrefecture(e.target.value)}
-        />
-        <input
-          required
-          placeholder="市区町村"
-          className="input col-span-2"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-        />
-        <input
-          required
-          placeholder="番地・建物名"
-          className="input col-span-2"
-          value={line1}
-          onChange={(e) => setLine1(e.target.value)}
-        />
-      </div>
-
       <button
-        type="submit"
-        disabled={submitting}
-        className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
+        type="button"
+        onClick={() => setStage("wizard")}
+        className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
       >
-        {submitting ? "処理中..." : "この内容で進める"}
+        次へ
       </button>
-    </form>
+    </div>
   );
 }

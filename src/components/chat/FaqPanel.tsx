@@ -9,6 +9,12 @@ interface Faq {
   answer: string;
 }
 
+interface FaqCategory {
+  id: string;
+  title: string;
+  faqs: Faq[];
+}
+
 export function FaqPanel({
   productId,
   productName,
@@ -18,15 +24,16 @@ export function FaqPanel({
   productName?: string;
   onClose: () => void;
 }) {
-  const [faqs, setFaqs] = useState<Faq[]>([]);
-  const [selected, setSelected] = useState<Faq | null>(null);
+  const [categories, setCategories] = useState<FaqCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<FaqCategory | null>(null);
+  const [selectedFaq, setSelectedFaq] = useState<Faq | null>(null);
   const [showInquiry, setShowInquiry] = useState(false);
   const [inquirySent, setInquirySent] = useState(false);
 
   useEffect(() => {
     fetch(`/api/widget/faqs?productId=${productId}`)
       .then((res) => res.json())
-      .then((body) => setFaqs(body.faqs ?? []));
+      .then((body) => setCategories(body.categories ?? []));
   }, [productId]);
 
   return (
@@ -44,28 +51,49 @@ export function FaqPanel({
         </p>
       ) : showInquiry ? (
         <InquiryForm productName={productName} onSent={() => setInquirySent(true)} />
-      ) : selected ? (
+      ) : selectedFaq ? (
         <div className="space-y-2 text-sm">
-          <p className="font-medium">{selected.question}</p>
-          <p className="text-neutral-600">{selected.answer}</p>
+          <p className="font-medium">{selectedFaq.question}</p>
+          <p className="text-neutral-600">{selectedFaq.answer}</p>
           <button
             type="button"
-            onClick={() => setSelected(null)}
+            onClick={() => setSelectedFaq(null)}
             className="text-xs text-blue-600 hover:underline"
           >
             質問一覧に戻る
           </button>
         </div>
-      ) : (
+      ) : selectedCategory ? (
         <div className="flex flex-col gap-2">
-          {faqs.map((faq) => (
+          <p className="text-xs text-neutral-500">{selectedCategory.title}</p>
+          {selectedCategory.faqs.map((faq) => (
             <button
               key={faq.id}
               type="button"
-              onClick={() => setSelected(faq)}
+              onClick={() => setSelectedFaq(faq)}
               className="rounded-md border border-neutral-200 px-3 py-2 text-left text-sm hover:bg-neutral-50"
             >
               {faq.question}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelectedCategory(null)}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            カテゴリ一覧に戻る
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {categories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              onClick={() => setSelectedCategory(category)}
+              className="rounded-md border border-neutral-200 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+            >
+              {category.title}
             </button>
           ))}
           <button
