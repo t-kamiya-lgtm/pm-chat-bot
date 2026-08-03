@@ -6,6 +6,8 @@ import type { WidgetProduct } from "@/components/chat/types";
 import { AmountBreakdown } from "@/components/chat/AmountBreakdown";
 import { StripePaymentForm } from "@/components/chat/StripePaymentForm";
 import {
+  ADDRESS_FIELD_KEYS,
+  ADDRESS_KEY_SET,
   CHECKOUT_FIELD_LABELS,
   DEFAULT_CHECKOUT_FIELD_ORDER,
   type CheckoutFieldKey,
@@ -34,6 +36,25 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
     description: "商品お届け時に配送員へお支払いいただけます",
   },
 ];
+
+type WizardStep = { kind: "field"; key: CheckoutFieldKey } | { kind: "address" };
+
+/** 郵便番号〜番地・建物名は1つの画面にまとめて表示する(それ以外は1問1答)。 */
+function buildWizardSteps(order: CheckoutFieldKey[]): WizardStep[] {
+  const steps: WizardStep[] = [];
+  let addressAdded = false;
+  for (const key of order) {
+    if (ADDRESS_KEY_SET.has(key)) {
+      if (!addressAdded) {
+        steps.push({ kind: "address" });
+        addressAdded = true;
+      }
+    } else {
+      steps.push({ kind: "field", key });
+    }
+  }
+  return steps;
+}
 
 function validateField(key: CheckoutFieldKey, value: string): string | null {
   const trimmed = value.trim();
@@ -67,7 +88,7 @@ interface Props {
   onBack: () => void;
 }
 
-type Stage = "options" | "wizard";
+type Stage = "options" | "wizard" | "confirm";
 
 export function CheckoutForm({ product, onComplete, onBack }: Props) {
   const orderType = product.order_type;
@@ -79,7 +100,9 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
   const [paymentFee, setPaymentFee] = useState(0);
 
   const [fieldOrder, setFieldOrder] = useState<CheckoutFieldKey[]>(DEFAULT_CHECKOUT_FIELD_ORDER);
+  const steps = buildWizardSteps(fieldOrder);
   const [stepIndex, setStepIndex] = useState(0);
+  const [returningToConfirm, setReturningToConfirm] = useState(false);
   const [values, setValues] = useState<Record<CheckoutFieldKey, string>>({
     name: "",
     email: "",
@@ -210,26 +233,43 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
   }
 
   function handleNextStep() {
-    const key = fieldOrder[stepIndex];
-    const errorMsg = validateField(key, values[key]);
-    if (errorMsg) {
-      setTouched((prev) => ({ ...prev, [key]: true }));
+    const step = steps[stepIndex];
+    const keysToValidate = step.kind === "address" ? ADDRESS_FIELD_KEYS : [step.key];
+    const hasError = keysToValidate.some((key) => validateField(key, values[key]));
+    if (hasError) {
+      setTouched((prev) => {
+        const next = { ...prev };
+        for (const key of keysToValidate) next[key] = true;
+        return next;
+      });
       return;
     }
 
-    if (stepIndex === fieldOrder.length - 1) {
-      submitOrder();
+    if (returningToConfirm || stepIndex === steps.length - 1) {
+      setReturningToConfirm(false);
+      setStage("confirm");
     } else {
       setStepIndex((i) => i + 1);
     }
   }
 
   function handleBackStep() {
+    if (returningToConfirm) {
+      setReturningToConfirm(false);
+      setStage("confirm");
+      return;
+    }
     if (stepIndex === 0) {
       setStage("options");
     } else {
       setStepIndex((i) => i - 1);
     }
+  }
+
+  function goToStep(index: number) {
+    setStepIndex(index);
+    setStage("wizard");
+    setReturningToConfirm(true);
   }
 
   if (clientSecret) {
@@ -245,11 +285,8 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
   }
 
   if (stage === "wizard") {
-    const key = fieldOrder[stepIndex];
-    const value = values[key];
-    const errorMsg = validateField(key, value);
-    const showError = touched[key] && errorMsg;
-    const isLastStep = stepIndex === fieldOrder.length - 1;
+    const step = steps[stepIndex];
+    const isLastStep = stepIndex === steps.length - 1;
 
     return (
       <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -258,42 +295,77 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
             ← 戻る
           </button>
           <span>
-            {stepIndex + 1} / {fieldOrder.length}
+            {stepIndex + 1} / {steps.length}
           </span>
         </div>
 
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">
-            {CHECKOUT_FIELD_LABELS[key]}
-            {key === "phone" && "(任意)"}
-          </span>
-          <input
-            autoFocus
-            type={key === "email" ? "email" : "text"}
-            className="input"
-            value={value}
-            onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-            onBlur={() => setTouched((prev) => ({ ...prev, [key]: true }))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleNextStep();
-              }
-            }}
-            placeholder={key === "postalCode" ? "ハイフンなしでも可" : undefined}
-          />
-          {key === "postalCode" && addressLookupStatus === "loading" && (
-            <p className="mt-1 text-xs text-neutral-400">住所を検索中...</p>
-          )}
-          {key === "postalCode" && addressLookupStatus === "not_found" && (
-            <p className="mt-1 text-xs text-neutral-400">
-              住所が見つかりませんでした。都道府県以下は次の質問で入力してください。
-            </p>
-          )}
-          {showError && <p className="mt-1 text-xs text-red-600">{errorMsg}</p>}
-        </label>
+        {step.kind === "address" ? (
+          <div className="space-y-3">
+            {ADDRESS_FIELD_KEYS.map((key) => {
+              const errorMsg = validateField(key, values[key]);
+              const showError = touched[key] && errorMsg;
+              return (
+                <label key={key} className="block">
+                  <span className="mb-1 block text-sm font-medium text-neutral-700">
+                    {CHECKOUT_FIELD_LABELS[key]}
+                  </span>
+                  <input
+                    autoFocus={key === "postalCode"}
+                    type="text"
+                    className="input"
+                    value={values[key]}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                    onBlur={() => setTouched((prev) => ({ ...prev, [key]: true }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleNextStep();
+                      }
+                    }}
+                    placeholder={key === "postalCode" ? "ハイフンなしでも可" : undefined}
+                  />
+                  {key === "postalCode" && addressLookupStatus === "loading" && (
+                    <p className="mt-1 text-xs text-neutral-400">住所を検索中...</p>
+                  )}
+                  {key === "postalCode" && addressLookupStatus === "not_found" && (
+                    <p className="mt-1 text-xs text-neutral-400">
+                      住所が見つかりませんでした。都道府県以下は下の欄に入力してください。
+                    </p>
+                  )}
+                  {showError && <p className="mt-1 text-xs text-red-600">{errorMsg}</p>}
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-neutral-700">
+              {CHECKOUT_FIELD_LABELS[step.key]}
+              {step.key === "phone" && "(任意)"}
+            </span>
+            <input
+              autoFocus
+              type={step.key === "email" ? "email" : "text"}
+              className="input"
+              value={values[step.key]}
+              onChange={(e) => setValues((prev) => ({ ...prev, [step.key]: e.target.value }))}
+              onBlur={() => setTouched((prev) => ({ ...prev, [step.key]: true }))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleNextStep();
+                }
+              }}
+            />
+            {touched[step.key] && validateField(step.key, values[step.key]) && (
+              <p className="mt-1 text-xs text-red-600">
+                {validateField(step.key, values[step.key])}
+              </p>
+            )}
+          </label>
+        )}
 
         <button
           type="button"
@@ -301,7 +373,106 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
           disabled={submitting}
           className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
         >
-          {submitting ? "処理中..." : isLastStep ? "この内容で注文する" : "次へ"}
+          {isLastStep ? "入力内容を確認する" : "次へ"}
+        </button>
+      </div>
+    );
+  }
+
+  if (stage === "confirm") {
+    return (
+      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <p className="font-medium">ご注文内容の確認</p>
+          <button
+            type="button"
+            onClick={() => goToStep(steps.length - 1)}
+            className="text-xs text-neutral-400 hover:text-neutral-600"
+          >
+            ← 戻る
+          </button>
+        </div>
+
+        {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+
+        <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-500">お支払い方法</span>
+            <div className="flex items-center gap-2">
+              <span>{PAYMENT_METHOD_OPTIONS.find((o) => o.value === paymentMethod)?.label}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReturningToConfirm(true);
+                  setStage("options");
+                }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                編集
+              </button>
+            </div>
+          </div>
+          {orderType === "subscription" && (
+            <div className="flex items-center justify-between">
+              <span className="text-neutral-500">お届け周期</span>
+              <div className="flex items-center gap-2">
+                <span>{INTERVAL_LABELS[subscriptionInterval]}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReturningToConfirm(true);
+                    setStage("options");
+                  }}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  編集
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
+          {steps.map((step, idx) => (
+            <div
+              key={step.kind === "address" ? "address" : step.key}
+              className="flex items-start justify-between gap-3"
+            >
+              <span className="shrink-0 text-neutral-500">
+                {step.kind === "address" ? "お届け先住所" : CHECKOUT_FIELD_LABELS[step.key]}
+              </span>
+              <div className="flex items-start gap-2 text-right">
+                <span>
+                  {step.kind === "address"
+                    ? `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`
+                    : values[step.key] || "(未入力)"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => goToStep(idx)}
+                  className="shrink-0 text-xs text-blue-600 hover:underline"
+                >
+                  編集
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <AmountBreakdown
+          amount={product.price}
+          shippingFee={product.shipping_fee}
+          paymentFee={paymentFee}
+          paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
+        />
+
+        <button
+          type="button"
+          onClick={submitOrder}
+          disabled={submitting}
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
+        >
+          {submitting ? "処理中..." : "この内容で注文を確定する"}
         </button>
       </div>
     );
@@ -364,7 +535,15 @@ export function CheckoutForm({ product, onComplete, onBack }: Props) {
 
       <button
         type="button"
-        onClick={() => setStage("wizard")}
+        onClick={() => {
+          if (returningToConfirm) {
+            setReturningToConfirm(false);
+            setStage("confirm");
+          } else {
+            setStepIndex(0);
+            setStage("wizard");
+          }
+        }}
         className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
       >
         次へ
