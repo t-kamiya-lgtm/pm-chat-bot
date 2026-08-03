@@ -18,7 +18,7 @@ export default async function AdminBrandsPage() {
         <NewBrandButton />
       </div>
       <p className="mb-4 text-sm text-neutral-500">
-        商品種類(親品番)の一段上の階層です。例:「プロテインモンスター」ブランドの下に、通常品とソバ味などの商品種類をまとめられます。各商品種類の詳細画面でブランドを割り当ててください。
+        アイテム(親品番)の一段上の階層です。例:「プロテインモンスター」ブランドの下に、通常品とソバ味などのアイテムをまとめられます。各アイテムの詳細画面でブランドを割り当ててください。
       </p>
 
       <div className="space-y-3">
@@ -38,7 +38,7 @@ export default async function AdminBrandsPage() {
                   </Link>
                 ))}
                 {belongingGroups.length === 0 && (
-                  <p className="text-sm text-neutral-400">紐づく商品種類がありません</p>
+                  <p className="text-sm text-neutral-400">紐づくアイテムがありません</p>
                 )}
               </div>
             </div>

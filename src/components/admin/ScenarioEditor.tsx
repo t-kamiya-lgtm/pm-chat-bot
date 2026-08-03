@@ -166,7 +166,7 @@ function ProductPicker({
             </label>
           ))}
           {productsInGroup.length === 0 && (
-            <p className="text-xs text-neutral-400">この商品種類には品番が登録されていません</p>
+            <p className="text-xs text-neutral-400">このアイテムには品番が登録されていません</p>
           )}
         </div>
       ) : (

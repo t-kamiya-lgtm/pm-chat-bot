@@ -74,7 +74,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
       <div className="mb-4">
         <input
           className="input max-w-sm"
-          placeholder="商品名・商品種類で検索"
+          placeholder="商品名・アイテムで検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -86,7 +86,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
             <tr>
               <th className="px-4 py-2">並び順</th>
               <th className="px-4 py-2">商品名</th>
-              <th className="px-4 py-2">商品種類</th>
+              <th className="px-4 py-2">アイテム</th>
               <th className="px-4 py-2">価格</th>
               <th className="px-4 py-2">送料</th>
               <th className="px-4 py-2">注文タイプ</th>

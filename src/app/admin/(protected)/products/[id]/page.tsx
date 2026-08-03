@@ -29,7 +29,7 @@ export default async function EditProductPage({
             href={`/admin/product-groups/${product.product_group_id}`}
             className="text-sm text-blue-600 hover:underline"
           >
-            この商品種類の仕様・QAを管理
+            このアイテムの仕様・QAを管理
           </Link>
         )}
       </div>

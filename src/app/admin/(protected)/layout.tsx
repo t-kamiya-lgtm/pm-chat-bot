@@ -5,7 +5,7 @@ import { getCurrentAppUser, canManageUsers } from "@/lib/auth";
 const NAV_ITEMS = [
   { href: "/admin", label: "ダッシュボード" },
   { href: "/admin/brands", label: "ブランド" },
-  { href: "/admin/product-groups", label: "商品種類" },
+  { href: "/admin/product-groups", label: "アイテム" },
   { href: "/admin/products", label: "商品(品番)" },
   { href: "/admin/scenarios", label: "シナリオ" },
   { href: "/admin/faqs", label: "商品QA" },

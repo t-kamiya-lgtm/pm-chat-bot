@@ -52,7 +52,7 @@ export default async function AdminFaqsPage({
       <div>
         <h1 className="mb-6 text-2xl font-semibold">商品QAレビュー</h1>
         <p className="mb-4 text-sm text-neutral-500">
-          商品種類を選択すると、その商品種類のQA内容を表示・編集できます。
+          アイテムを選択すると、そのアイテムのQA内容を表示・編集できます。
         </p>
         <div className="space-y-2">
           {(productGroups ?? []).map((group) => {
@@ -77,7 +77,7 @@ export default async function AdminFaqsPage({
           })}
           {!productGroups?.length && (
             <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
-              商品種類が登録されていません
+              アイテムが登録されていません
             </p>
           )}
         </div>
@@ -103,7 +103,7 @@ export default async function AdminFaqsPage({
   return (
     <div>
       <Link href="/admin/faqs" className="mb-4 inline-block text-sm text-blue-600 hover:underline">
-        ← 商品種類一覧に戻る
+        ← アイテム一覧に戻る
       </Link>
       <h1 className="mb-6 text-2xl font-semibold">
         {productGroup?.name ?? "商品QAレビュー"}

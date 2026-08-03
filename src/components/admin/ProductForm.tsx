@@ -75,7 +75,7 @@ export function ProductForm({
 
     if (!values.productGroupId) {
       setSubmitting(false);
-      setErrorMessage("商品種類(親品番)を選択してください");
+      setErrorMessage("アイテム(親品番)を選択してください");
       return;
     }
     if (values.orderType === "subscription" && values.subscriptionIntervals.length === 0) {
@@ -122,7 +122,7 @@ export function ProductForm({
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{errorMessage}</p>
       )}
 
-      <Field label="商品種類(親品番)">
+      <Field label="アイテム(親品番)">
         <select
           required
           disabled={lockProductGroup}
