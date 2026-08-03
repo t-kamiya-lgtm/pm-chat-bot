@@ -5,6 +5,7 @@ import type { WidgetProduct, WidgetScenarioNode } from "@/components/chat/types"
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChoiceButtons, type ChoiceOption } from "@/components/chat/ChoiceButtons";
 import { ProductCarousel } from "@/components/chat/ProductCarousel";
+import { ProductDetailPanel } from "@/components/chat/ProductDetailPanel";
 import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 
@@ -57,6 +58,10 @@ export function ChatWidget() {
     privacyText?: string;
   }>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [detailContext, setDetailContext] = useState<{
+    item: Extract<TimelineItem, { kind: "product" }>;
+    productId: string;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -270,8 +275,10 @@ export function ChatWidget() {
     ]);
   }
 
+  const detailProduct = detailContext ? productsById[detailContext.productId] : null;
+
   return (
-    <div className="flex h-full flex-col bg-yellow-50">
+    <div className="relative flex h-full flex-col bg-yellow-50">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {loadError && (
           <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
@@ -304,6 +311,7 @@ export function ChatWidget() {
                   key={item.id}
                   products={products}
                   onSelect={item.resolved ? undefined : (productId) => handleProductSelect(item, productId)}
+                  onViewDetail={(productId) => setDetailContext({ item, productId })}
                 />
               );
             }
@@ -356,6 +364,22 @@ export function ChatWidget() {
           }
         })}
       </div>
+
+      {detailContext && detailProduct && (
+        <ProductDetailPanel
+          product={detailProduct}
+          onClose={() => setDetailContext(null)}
+          onSelect={
+            detailContext.item.resolved
+              ? undefined
+              : () => {
+                  const { item, productId } = detailContext;
+                  setDetailContext(null);
+                  handleProductSelect(item, productId);
+                }
+          }
+        />
+      )}
     </div>
   );
 }
