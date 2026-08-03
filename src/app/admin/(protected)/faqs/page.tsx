@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { FaqReviewList } from "@/components/admin/FaqReviewList";
 import { NewFaqForm } from "@/components/admin/NewFaqForm";
@@ -31,32 +32,86 @@ export default async function AdminFaqsPage({
   const { productGroupId } = await searchParams;
   const supabase = createSupabaseAdminClient();
 
-  let query = supabase
-    .from("product_faqs")
-    .select("*, product_faq_categories(title)")
-    .order("created_at", { ascending: false });
-  if (productGroupId) query = query.eq("product_group_id", productGroupId);
-  const { data } = await query;
+  if (!productGroupId) {
+    const [{ data: productGroups }, { data: allFaqs }] = await Promise.all([
+      supabase.from("product_groups").select("id, name").order("name"),
+      supabase.from("product_faqs").select("product_group_id, status"),
+    ]);
 
-  let categories: { id: string; title: string }[] = [];
-  if (productGroupId) {
-    const { data: categoryRows } = await supabase
+    const countsByGroup = new Map<string, { total: number; draft: number }>();
+    for (const faq of allFaqs ?? []) {
+      const groupId = faq.product_group_id as string | null;
+      if (!groupId) continue;
+      const current = countsByGroup.get(groupId) ?? { total: 0, draft: 0 };
+      current.total += 1;
+      if (faq.status === "draft") current.draft += 1;
+      countsByGroup.set(groupId, current);
+    }
+
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold">商品QAレビュー</h1>
+        <p className="mb-4 text-sm text-neutral-500">
+          商品種類を選択すると、その商品種類のQA内容を表示・編集できます。
+        </p>
+        <div className="space-y-2">
+          {(productGroups ?? []).map((group) => {
+            const counts = countsByGroup.get(group.id as string) ?? { total: 0, draft: 0 };
+            return (
+              <Link
+                key={group.id}
+                href={`/admin/faqs?productGroupId=${group.id}`}
+                className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:shadow-sm"
+              >
+                <span>{group.name}</span>
+                <span className="text-xs text-neutral-500">
+                  {counts.total}件
+                  {counts.draft > 0 && (
+                    <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+                      レビュー待ち {counts.draft}
+                    </span>
+                  )}
+                </span>
+              </Link>
+            );
+          })}
+          {!productGroups?.length && (
+            <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
+              商品種類が登録されていません
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const [{ data: productGroup }, { data: faqs }, { data: categoryRows }] = await Promise.all([
+    supabase.from("product_groups").select("id, name").eq("id", productGroupId).maybeSingle(),
+    supabase
+      .from("product_faqs")
+      .select("*, product_faq_categories(title)")
+      .eq("product_group_id", productGroupId)
+      .order("created_at", { ascending: false }),
+    supabase
       .from("product_faq_categories")
       .select("id, title")
       .eq("product_group_id", productGroupId)
-      .order("display_order", { ascending: true });
-    categories = categoryRows ?? [];
-  }
+      .order("display_order", { ascending: true }),
+  ]);
+  const categories = categoryRows ?? [];
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">商品QAレビュー</h1>
-      {productGroupId && (
-        <div className="mb-4">
-          <NewFaqForm productGroupId={productGroupId} categories={categories} />
-        </div>
-      )}
-      <FaqReviewList faqs={(data ?? []).map(mapFaqRow)} categories={categories} />
+      <Link href="/admin/faqs" className="mb-4 inline-block text-sm text-blue-600 hover:underline">
+        ← 商品種類一覧に戻る
+      </Link>
+      <h1 className="mb-6 text-2xl font-semibold">
+        {productGroup?.name ?? "商品QAレビュー"}
+      </h1>
+      <div className="mb-4">
+        <NewFaqForm productGroupId={productGroupId} categories={categories} />
+      </div>
+      <FaqReviewList faqs={(faqs ?? []).map(mapFaqRow)} categories={categories} />
     </div>
   );
 }
