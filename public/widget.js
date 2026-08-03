@@ -48,11 +48,40 @@
   Object.assign(iframe.style, { width: "100%", height: "100%", border: "none" });
   container.appendChild(iframe);
 
+  // ポップアップ右上に常時表示する閉じる(×)ボタン
+  var closeButton = document.createElement("button");
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "チャットを閉じる");
+  Object.assign(closeButton.style, {
+    position: "absolute",
+    top: "8px",
+    right: "8px",
+    zIndex: "2147483001",
+    width: "28px",
+    height: "28px",
+    lineHeight: "26px",
+    borderRadius: "999px",
+    border: "none",
+    background: "rgba(23,23,23,0.7)",
+    color: "#fff",
+    fontSize: "18px",
+    cursor: "pointer",
+    padding: "0",
+  });
+  container.appendChild(closeButton);
+
   var isOpen = false;
-  button.addEventListener("click", function () {
-    isOpen = !isOpen;
+  function setOpen(next) {
+    isOpen = next;
     container.style.display = isOpen ? "block" : "none";
     button.textContent = isOpen ? "閉じる" : "チャットで相談する";
+  }
+
+  button.addEventListener("click", function () {
+    setOpen(!isOpen);
+  });
+  closeButton.addEventListener("click", function () {
+    setOpen(false);
   });
 
   document.body.appendChild(container);
