@@ -12,12 +12,18 @@ export function NewBrandButton() {
     if (!name) return;
 
     setCreating(true);
-    await fetch("/api/brands", {
+    const res = await fetch("/api/brands", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     });
     setCreating(false);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`ブランドの登録に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
     router.refresh();
   }
 
