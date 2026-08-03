@@ -5,22 +5,17 @@ import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
   name: z.string().min(1),
-  parentCode: z.string().optional(),
-  brandId: z.string().uuid().optional(),
 });
 
-/** 商品種類(親品番)一覧。QA・仕様情報はこの単位で管理する。 */
+/** ブランド一覧。商品種類(親品番)の一段上の階層。 */
 export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_groups")
-    .select("*, brands(name)")
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("brands").select("*").order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ productGroups: data });
+  return NextResponse.json({ brands: data });
 }
 
 export async function POST(request: Request) {
@@ -35,16 +30,11 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
-    .from("product_groups")
-    .insert({
-      name: parsed.data.name,
-      parent_code: parsed.data.parentCode ?? null,
-      brand_id: parsed.data.brandId ?? null,
-      created_by: roleCheck.user.id,
-    })
+    .from("brands")
+    .insert({ name: parsed.data.name })
     .select("*")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ productGroup: data }, { status: 201 });
+  return NextResponse.json({ brand: data }, { status: 201 });
 }

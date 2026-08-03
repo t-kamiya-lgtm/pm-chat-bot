@@ -5,6 +5,7 @@ import { ProductSpecForm } from "@/components/admin/ProductSpecForm";
 import { FaqCategoryManager } from "@/components/admin/FaqCategoryManager";
 import { FaqReviewList } from "@/components/admin/FaqReviewList";
 import { NewFaqForm } from "@/components/admin/NewFaqForm";
+import { ProductGroupBrandSelect } from "@/components/admin/ProductGroupBrandSelect";
 import type { ProductFaq, ProductFaqCategory } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export default async function ProductGroupDetailPage({
   const { id } = await params;
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: productGroup }, { data: products }, { data: spec }, { data: categories }, { data: faqs }] =
+  const [{ data: productGroup }, { data: products }, { data: spec }, { data: categories }, { data: faqs }, { data: brands }] =
     await Promise.all([
       supabase.from("product_groups").select("*").eq("id", id).maybeSingle(),
       supabase.from("products").select("*").eq("product_group_id", id).order("created_at"),
@@ -65,6 +66,7 @@ export default async function ProductGroupDetailPage({
         .select("*, product_faq_categories(title)")
         .eq("product_group_id", id)
         .order("created_at", { ascending: false }),
+      supabase.from("brands").select("id, name").order("name"),
     ]);
 
   if (!productGroup) notFound();
@@ -79,6 +81,14 @@ export default async function ProductGroupDetailPage({
           全商品のQA一覧を見る
         </Link>
       </div>
+
+      <section className="mb-8">
+        <ProductGroupBrandSelect
+          productGroupId={id}
+          brands={brands ?? []}
+          initialBrandId={productGroup.brand_id}
+        />
+      </section>
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">

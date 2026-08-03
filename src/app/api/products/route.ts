@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const productGroupId = searchParams.get("productGroupId");
 
   const supabase = createSupabaseAdminClient();
-  let query = supabase.from("products").select("*").order("created_at", { ascending: false });
+  let query = supabase.from("products").select("*").order("display_order", { ascending: true });
   if (productGroupId) query = query.eq("product_group_id", productGroupId);
 
   const { data, error } = await query;
@@ -53,10 +53,20 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient();
+
+  const { data: lastProduct } = await supabase
+    .from("products")
+    .select("display_order")
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const displayOrder = (lastProduct?.display_order ?? -1) + 1;
+
   const { data, error } = await supabase
     .from("products")
     .insert({
       product_group_id: input.productGroupId,
+      display_order: displayOrder,
       name: input.name,
       description: input.description ?? null,
       price: input.price,

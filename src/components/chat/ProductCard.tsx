@@ -40,9 +40,6 @@ export function ProductCard({
       ) : (
         <p className="font-medium">{product.name}</p>
       )}
-      {product.description && (
-        <p className="mt-1 text-xs text-neutral-500">{product.description}</p>
-      )}
 
       <ProductPrice product={product} />
 
