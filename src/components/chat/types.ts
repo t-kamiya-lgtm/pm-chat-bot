@@ -27,6 +27,7 @@ export interface ChatMessage {
   from: "bot" | "user";
   kind: "text" | "product" | "checkout" | "faq" | "checkout-result";
   text?: string;
+  imageUrl?: string;
   productId?: string;
   nodeId?: string;
   breakdown?: { amount: number; shippingFee: number; paymentFee: number; total: number };

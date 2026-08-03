@@ -6,9 +6,11 @@ import { requireCatalogRole } from "@/lib/require-role";
 const updateSchema = z.object({
   greeting: z.string().optional(),
   completionMessage: z.string().optional(),
+  termsText: z.string().optional(),
+  privacyText: z.string().optional(),
 });
 
-/** 管理画面用: 決済フォームのあいさつ文・注文確認メッセージ(全商品共通)。 */
+/** 管理画面用: 決済フォームのあいさつ文・注文確認メッセージ・特商法/個人情報の本文(全商品共通)。 */
 export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
@@ -19,6 +21,8 @@ export async function GET() {
   return NextResponse.json({
     greeting: data?.greeting ?? "",
     completionMessage: data?.completion_message ?? "",
+    termsText: data?.terms_text ?? "",
+    privacyText: data?.privacy_text ?? "",
   });
 }
 
@@ -41,6 +45,8 @@ export async function PATCH(request: Request) {
         id: 1,
         ...(input.greeting !== undefined && { greeting: input.greeting }),
         ...(input.completionMessage !== undefined && { completion_message: input.completionMessage }),
+        ...(input.termsText !== undefined && { terms_text: input.termsText }),
+        ...(input.privacyText !== undefined && { privacy_text: input.privacyText }),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "id" },

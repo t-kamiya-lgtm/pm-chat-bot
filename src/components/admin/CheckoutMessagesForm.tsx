@@ -5,12 +5,18 @@ import { useState } from "react";
 export function CheckoutMessagesForm({
   initialGreeting,
   initialCompletionMessage,
+  initialTermsText,
+  initialPrivacyText,
 }: {
   initialGreeting: string;
   initialCompletionMessage: string;
+  initialTermsText: string;
+  initialPrivacyText: string;
 }) {
   const [greeting, setGreeting] = useState(initialGreeting);
   const [completionMessage, setCompletionMessage] = useState(initialCompletionMessage);
+  const [termsText, setTermsText] = useState(initialTermsText);
+  const [privacyText, setPrivacyText] = useState(initialPrivacyText);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -22,7 +28,7 @@ export function CheckoutMessagesForm({
     const res = await fetch("/api/checkout-messages", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ greeting, completionMessage }),
+      body: JSON.stringify({ greeting, completionMessage, termsText, privacyText }),
     });
 
     setSaving(false);
@@ -54,6 +60,30 @@ export function CheckoutMessagesForm({
           rows={3}
           value={completionMessage}
           onChange={(e) => setCompletionMessage(e.target.value)}
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-neutral-700">
+          特定商取引法に基づく表記(任意・注文確認画面のスクロールボックスに表示)
+        </span>
+        <textarea
+          className="input font-mono"
+          rows={8}
+          value={termsText}
+          onChange={(e) => setTermsText(e.target.value)}
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-neutral-700">
+          個人情報の取り扱いについて(任意・注文確認画面のスクロールボックスに表示)
+        </span>
+        <textarea
+          className="input font-mono"
+          rows={8}
+          value={privacyText}
+          onChange={(e) => setPrivacyText(e.target.value)}
         />
       </label>
 

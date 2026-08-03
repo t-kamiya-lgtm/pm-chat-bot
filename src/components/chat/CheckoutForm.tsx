@@ -132,13 +132,23 @@ interface Props {
   product: WidgetProduct;
   greeting?: string;
   completionMessage?: string;
+  termsText?: string;
+  privacyText?: string;
   onComplete: (result: { ok: boolean; message: string }) => void;
   onBack: () => void;
 }
 
 type Stage = "options" | "wizard" | "confirm";
 
-export function CheckoutForm({ product, greeting, completionMessage, onComplete, onBack }: Props) {
+export function CheckoutForm({
+  product,
+  greeting,
+  completionMessage,
+  termsText,
+  privacyText,
+  onComplete,
+  onBack,
+}: Props) {
   const orderType = product.order_type;
   const [stage, setStage] = useState<Stage>("options");
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
@@ -587,25 +597,41 @@ export function CheckoutForm({ product, greeting, completionMessage, onComplete,
           ))}
         </div>
 
-        <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={agreedTerms}
-              onChange={(e) => setAgreedTerms(e.target.checked)}
-            />
-            <span>特定商取引法に基づく表記の内容を確認しました</span>
-          </label>
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={agreedPrivacy}
-              onChange={(e) => setAgreedPrivacy(e.target.checked)}
-            />
-            <span>個人情報の取り扱いについて同意します</span>
-          </label>
+        <div className="space-y-3 rounded-md border border-neutral-200 p-3 text-sm">
+          <div>
+            <p className="mb-1 font-medium text-neutral-700">特定商取引法に基づく表記</p>
+            {termsText && (
+              <div className="max-h-32 overflow-y-auto rounded border border-neutral-200 bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
+                {termsText}
+              </div>
+            )}
+            <label className="mt-2 flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={agreedTerms}
+                onChange={(e) => setAgreedTerms(e.target.checked)}
+              />
+              <span>内容を確認しました</span>
+            </label>
+          </div>
+          <div>
+            <p className="mb-1 font-medium text-neutral-700">個人情報の取り扱いについて</p>
+            {privacyText && (
+              <div className="max-h-32 overflow-y-auto rounded border border-neutral-200 bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
+                {privacyText}
+              </div>
+            )}
+            <label className="mt-2 flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={agreedPrivacy}
+                onChange={(e) => setAgreedPrivacy(e.target.checked)}
+              />
+              <span>同意します</span>
+            </label>
+          </div>
         </div>
 
         <AmountBreakdown
@@ -655,8 +681,11 @@ export function CheckoutForm({ product, greeting, completionMessage, onComplete,
           </select>
         )}
 
+        <MessageBubble
+          message={{ id: "payment-prompt", from: "bot", kind: "text", text: "次に決済方法をお選びください。" }}
+        />
+
         <div className="space-y-2">
-          <p className="text-sm font-medium text-neutral-700">お支払い方法</p>
           {PAYMENT_METHOD_OPTIONS.map((option) => (
             <label
               key={option.value}

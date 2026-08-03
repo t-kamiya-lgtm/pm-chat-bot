@@ -9,7 +9,7 @@ import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 
 type TimelineItem =
-  | { id: string; kind: "bot-text"; text: string }
+  | { id: string; kind: "bot-text"; text: string; imageUrl?: string }
   | { id: string; kind: "user-text"; text: string }
   | {
       id: string;
@@ -33,6 +33,8 @@ type TimelineItem =
       productId: string;
       greeting?: string;
       completionMessage?: string;
+      termsText?: string;
+      privacyText?: string;
     }
   | { id: string; kind: "checkout-result"; ok: boolean; text: string }
   | { id: string; kind: "faq"; productId: string };
@@ -50,6 +52,8 @@ export function ChatWidget() {
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greeting?: string;
     completionMessage?: string;
+    termsText?: string;
+    privacyText?: string;
   }>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -57,7 +61,14 @@ export function ChatWidget() {
   useEffect(() => {
     fetch("/api/widget/checkout-messages")
       .then((res) => res.json())
-      .then((body: { greeting?: string; completionMessage?: string }) => setCheckoutMessages(body))
+      .then(
+        (body: {
+          greeting?: string;
+          completionMessage?: string;
+          termsText?: string;
+          privacyText?: string;
+        }) => setCheckoutMessages(body),
+      )
       .catch(() => {});
   }, []);
 
@@ -97,6 +108,7 @@ export function ChatWidget() {
 
     const content = node.content as {
       text?: string;
+      imageUrl?: string;
       productId?: string;
       productIds?: string[];
       options?: ChoiceOption[];
@@ -104,7 +116,10 @@ export function ChatWidget() {
 
     switch (node.type) {
       case "message": {
-        setTimeline((prev) => [...prev, { id: nextId(), kind: "bot-text", text: content.text ?? "" }]);
+        setTimeline((prev) => [
+          ...prev,
+          { id: nextId(), kind: "bot-text", text: content.text ?? "", imageUrl: content.imageUrl },
+        ]);
         const next = node.next_node_map.default;
         if (next) setTimeout(() => advance(next, nodeMap, productMap), 300);
         break;
@@ -150,6 +165,8 @@ export function ChatWidget() {
               productId: validIds[0],
               greeting: checkoutMessages.greeting,
               completionMessage: checkoutMessages.completionMessage,
+              termsText: checkoutMessages.termsText,
+              privacyText: checkoutMessages.privacyText,
             },
           ]);
           break;
@@ -217,6 +234,8 @@ export function ChatWidget() {
           productId,
           greeting: checkoutMessages.greeting,
           completionMessage: checkoutMessages.completionMessage,
+          termsText: checkoutMessages.termsText,
+          privacyText: checkoutMessages.privacyText,
         },
       ]);
     }
@@ -247,7 +266,12 @@ export function ChatWidget() {
         {timeline.map((item) => {
           switch (item.kind) {
             case "bot-text":
-              return <MessageBubble key={item.id} message={{ id: item.id, from: "bot", kind: "text", text: item.text }} />;
+              return (
+                <MessageBubble
+                  key={item.id}
+                  message={{ id: item.id, from: "bot", kind: "text", text: item.text, imageUrl: item.imageUrl }}
+                />
+              );
             case "user-text":
               return <MessageBubble key={item.id} message={{ id: item.id, from: "user", kind: "text", text: item.text }} />;
             case "choice":
@@ -287,6 +311,8 @@ export function ChatWidget() {
                   product={product}
                   greeting={item.greeting}
                   completionMessage={item.completionMessage}
+                  termsText={item.termsText}
+                  privacyText={item.privacyText}
                   onComplete={handleCheckoutComplete}
                   onBack={() => handleCheckoutBack(item.id)}
                 />

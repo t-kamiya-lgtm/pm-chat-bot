@@ -282,7 +282,9 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         {!usesProductPicker(newNodeType) && (
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-neutral-700">
-              content(JSON。例: message→{"{\"text\": \"こんにちは\"}"} / choice→
+              content(JSON。例: message→{"{\"text\": \"こんにちは\"}"}(画像も表示する場合は
+              {" "}
+              {"{\"text\": \"こんにちは\", \"imageUrl\": \"https://...\"}"}) / choice→
               {"{\"text\": \"どちらにしますか\", \"options\": [{\"label\": \"A\", \"value\": \"a\"}]}"})
             </span>
             <textarea

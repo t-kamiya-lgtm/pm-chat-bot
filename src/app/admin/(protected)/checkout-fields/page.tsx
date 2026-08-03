@@ -32,6 +32,8 @@ export default async function CheckoutFieldsPage() {
       <CheckoutMessagesForm
         initialGreeting={messages?.greeting ?? ""}
         initialCompletionMessage={messages?.completion_message ?? ""}
+        initialTermsText={messages?.terms_text ?? ""}
+        initialPrivacyText={messages?.privacy_text ?? ""}
       />
     </div>
   );
