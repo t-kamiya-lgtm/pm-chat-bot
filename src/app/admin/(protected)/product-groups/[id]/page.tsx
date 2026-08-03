@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ProductSpecForm } from "@/components/admin/ProductSpecForm";
 import { FaqCategoryManager } from "@/components/admin/FaqCategoryManager";
-import type { ProductFaqCategory } from "@/lib/types";
+import { FaqReviewList } from "@/components/admin/FaqReviewList";
+import { NewFaqForm } from "@/components/admin/NewFaqForm";
+import type { ProductFaq, ProductFaqCategory } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,24 @@ function mapCategoryRow(row: Record<string, unknown>): ProductFaqCategory {
   };
 }
 
+function mapFaqRow(row: Record<string, unknown>): ProductFaq & { categoryTitle: string | null } {
+  const category = row.product_faq_categories as { title: string } | null;
+  return {
+    id: row.id as string,
+    productGroupId: row.product_group_id as string,
+    categoryId: row.category_id as string | null,
+    categoryTitle: category?.title ?? null,
+    question: row.question as string,
+    answer: row.answer as string,
+    status: row.status as ProductFaq["status"],
+    source: row.source as ProductFaq["source"],
+    generatedFromSpecId: row.generated_from_spec_id as string | null,
+    reviewedBy: row.reviewed_by as string | null,
+    reviewedAt: row.reviewed_at as string | null,
+    createdAt: row.created_at as string,
+  };
+}
+
 export default async function ProductGroupDetailPage({
   params,
 }: {
@@ -30,7 +50,7 @@ export default async function ProductGroupDetailPage({
   const { id } = await params;
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: productGroup }, { data: products }, { data: spec }, { data: categories }] =
+  const [{ data: productGroup }, { data: products }, { data: spec }, { data: categories }, { data: faqs }] =
     await Promise.all([
       supabase.from("product_groups").select("*").eq("id", id).maybeSingle(),
       supabase.from("products").select("*").eq("product_group_id", id).order("created_at"),
@@ -40,19 +60,23 @@ export default async function ProductGroupDetailPage({
         .select("*")
         .eq("product_group_id", id)
         .order("display_order", { ascending: true }),
+      supabase
+        .from("product_faqs")
+        .select("*, product_faq_categories(title)")
+        .eq("product_group_id", id)
+        .order("created_at", { ascending: false }),
     ]);
 
   if (!productGroup) notFound();
+
+  const categoryOptions = (categories ?? []).map((c) => ({ id: c.id as string, title: c.title as string }));
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{productGroup.name}</h1>
-        <Link
-          href={`/admin/faqs?productGroupId=${id}`}
-          className="text-sm text-blue-600 hover:underline"
-        >
-          この商品種類のQAをレビュー
+        <Link href="/admin/faqs" className="text-sm text-blue-600 hover:underline">
+          全商品のQA一覧を見る
         </Link>
       </div>
 
@@ -99,9 +123,17 @@ export default async function ProductGroupDetailPage({
         />
       </section>
 
-      <section>
+      <section className="mb-8">
         <h2 className="mb-3 text-lg font-medium">QAカテゴリ</h2>
         <FaqCategoryManager productGroupId={id} categories={(categories ?? []).map(mapCategoryRow)} />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-lg font-medium">商品QA</h2>
+        <div className="mb-4">
+          <NewFaqForm productGroupId={id} categories={categoryOptions} />
+        </div>
+        <FaqReviewList faqs={(faqs ?? []).map(mapFaqRow)} categories={categoryOptions} />
       </section>
     </div>
   );

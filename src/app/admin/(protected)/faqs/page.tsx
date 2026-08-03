@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { FaqReviewList } from "@/components/admin/FaqReviewList";
+import { NewFaqForm } from "@/components/admin/NewFaqForm";
 import type { ProductFaq } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,11 @@ export default async function AdminFaqsPage({
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">商品QAレビュー</h1>
+      {productGroupId && (
+        <div className="mb-4">
+          <NewFaqForm productGroupId={productGroupId} categories={categories} />
+        </div>
+      )}
       <FaqReviewList faqs={(data ?? []).map(mapFaqRow)} categories={categories} />
     </div>
   );
