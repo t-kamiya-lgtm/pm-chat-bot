@@ -11,6 +11,10 @@ const requestSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().min(1).default(1),
   customer: customerInputSchema,
+  deliveryDate: z.string().optional(),
+  deliveryTimeSlot: z.string().optional(),
+  agreedTerms: z.literal(true),
+  agreedPrivacy: z.literal(true),
 });
 
 /**
@@ -24,7 +28,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { productId, quantity, customer: customerInput } = parsed.data;
+  const { productId, quantity, customer: customerInput, deliveryDate, deliveryTimeSlot } = parsed.data;
 
   const product = await getProductById(productId);
   if (!product) {
@@ -69,6 +73,9 @@ export async function POST(request: Request) {
       payment_fee: 0,
       status: "pending",
       stripe_payment_intent_id: paymentIntent.id,
+      delivery_date: deliveryDate ?? null,
+      delivery_time_slot: deliveryTimeSlot ?? null,
+      agreed_terms_at: new Date().toISOString(),
     })
     .select("id")
     .single();

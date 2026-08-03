@@ -13,6 +13,10 @@ const requestSchema = z.object({
   quantity: z.number().int().min(1).default(1),
   subscriptionInterval: subscriptionIntervalSchema,
   customer: customerInputSchema,
+  deliveryDate: z.string().optional(),
+  deliveryTimeSlot: z.string().optional(),
+  agreedTerms: z.literal(true),
+  agreedPrivacy: z.literal(true),
 });
 
 const INTERVAL_MAP: Record<
@@ -35,7 +39,14 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { productId, quantity, subscriptionInterval, customer: customerInput } = parsed.data;
+  const {
+    productId,
+    quantity,
+    subscriptionInterval,
+    customer: customerInput,
+    deliveryDate,
+    deliveryTimeSlot,
+  } = parsed.data;
 
   const product = await getProductById(productId);
   if (!product) {
@@ -98,6 +109,9 @@ export async function POST(request: Request) {
       payment_fee: 0,
       status: "pending",
       stripe_subscription_id: subscription.id,
+      delivery_date: deliveryDate ?? null,
+      delivery_time_slot: deliveryTimeSlot ?? null,
+      agreed_terms_at: new Date().toISOString(),
     })
     .select("id")
     .single();

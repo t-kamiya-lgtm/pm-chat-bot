@@ -135,6 +135,8 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeContent, setNewNodeContent] = useState("{}");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
+  const [newNodeGreeting, setNewNodeGreeting] = useState("");
+  const [newNodeCompletionMessage, setNewNodeCompletionMessage] = useState("");
   const [newNodeNextMap, setNewNodeNextMap] = useState("{}");
   const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +164,10 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           newNodeType === "product"
             ? { productIds: newNodeProductIds }
             : { productId: newNodeProductIds[0] };
+        if (newNodeType === "checkout") {
+          if (newNodeGreeting.trim()) content.greeting = newNodeGreeting.trim();
+          if (newNodeCompletionMessage.trim()) content.completionMessage = newNodeCompletionMessage.trim();
+        }
       } else {
         content = JSON.parse(newNodeContent || "{}");
       }
@@ -194,6 +200,8 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
 
     setNewNodeContent("{}");
     setNewNodeProductIds([]);
+    setNewNodeGreeting("");
+    setNewNodeCompletionMessage("");
     setNewNodeNextMap("{}");
     setNewNodeIsEntry(false);
     router.refresh();
@@ -277,7 +285,34 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
               onChange={setNewNodeProductIds}
             />
           </label>
-        ) : (
+        ) : null}
+
+        {newNodeType === "checkout" && (
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">あいさつ文(任意・注文フォーム開始時に表示)</span>
+              <textarea
+                className="input"
+                rows={3}
+                value={newNodeGreeting}
+                onChange={(e) => setNewNodeGreeting(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                注文確認メッセージ(任意・注文確定後に表示)
+              </span>
+              <textarea
+                className="input"
+                rows={2}
+                value={newNodeCompletionMessage}
+                onChange={(e) => setNewNodeCompletionMessage(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+
+        {!usesProductPicker(newNodeType) && (
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-neutral-700">
               content(JSON。例: message→{"{\"text\": \"こんにちは\"}"} / choice→
@@ -341,6 +376,10 @@ function NodeCard({
   const [editing, setEditing] = useState(false);
   const [contentText, setContentText] = useState(JSON.stringify(node.content));
   const [productIds, setProductIds] = useState<string[]>(extractProductIds(node.content));
+  const [greeting, setGreeting] = useState((node.content.greeting as string) ?? "");
+  const [completionMessage, setCompletionMessage] = useState(
+    (node.content.completionMessage as string) ?? "",
+  );
   const [nextMapText, setNextMapText] = useState(JSON.stringify(node.nextNodeMap));
   const [isEntry, setIsEntry] = useState(node.isEntry);
   const [error, setError] = useState<string | null>(null);
@@ -349,6 +388,8 @@ function NodeCard({
   function startEditing() {
     setContentText(JSON.stringify(node.content));
     setProductIds(extractProductIds(node.content));
+    setGreeting((node.content.greeting as string) ?? "");
+    setCompletionMessage((node.content.completionMessage as string) ?? "");
     setNextMapText(JSON.stringify(node.nextNodeMap));
     setIsEntry(node.isEntry);
     setError(null);
@@ -362,6 +403,10 @@ function NodeCard({
     try {
       if (usesProductPicker(node.type)) {
         content = node.type === "product" ? { productIds } : { productId: productIds[0] };
+        if (node.type === "checkout") {
+          if (greeting.trim()) content.greeting = greeting.trim();
+          if (completionMessage.trim()) content.completionMessage = completionMessage.trim();
+        }
       } else {
         content = JSON.parse(contentText || "{}");
       }
@@ -437,7 +482,30 @@ function NodeCard({
                 onChange={setProductIds}
               />
             </label>
-          ) : (
+          ) : null}
+          {node.type === "checkout" && (
+            <>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">あいさつ文(任意)</span>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={greeting}
+                  onChange={(e) => setGreeting(e.target.value)}
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">注文確認メッセージ(任意)</span>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={completionMessage}
+                  onChange={(e) => setCompletionMessage(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+          {!usesProductPicker(node.type) && (
             <label className="block text-xs">
               <span className="mb-1 block text-neutral-500">content(JSON)</span>
               <textarea
@@ -494,6 +562,12 @@ function NodeCard({
             <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
               content: {JSON.stringify(node.content)}
             </pre>
+          )}
+          {node.type === "checkout" && (greeting || completionMessage) && (
+            <div className="mt-1 space-y-1 rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
+              {greeting && <p>あいさつ文: {greeting}</p>}
+              {completionMessage && <p>注文確認メッセージ: {completionMessage}</p>}
+            </div>
           )}
           <pre className="mt-1 overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
             nextNodeMap: {JSON.stringify(node.nextNodeMap)}

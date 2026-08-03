@@ -24,6 +24,11 @@ export default async function AdminOrdersPage() {
     .order("created_at", { ascending: false })
     .limit(100);
 
+  function formatDeliveryDate(value: string | null) {
+    if (!value) return "-";
+    return new Date(value).toLocaleDateString("ja-JP");
+  }
+
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">注文</h1>
@@ -38,6 +43,7 @@ export default async function AdminOrdersPage() {
               <th className="px-4 py-2">支払い方法</th>
               <th className="px-4 py-2">金額</th>
               <th className="px-4 py-2">状態</th>
+              <th className="px-4 py-2">お届け希望日時</th>
             </tr>
           </thead>
           <tbody>
@@ -52,6 +58,8 @@ export default async function AdminOrdersPage() {
                   shipping_fee: number;
                   payment_fee: number;
                   status: string;
+                  delivery_date: string | null;
+                  delivery_time_slot: string | null;
                   customers: { name: string; email: string } | null;
                   products: { name: string } | null;
                 },
@@ -68,12 +76,15 @@ export default async function AdminOrdersPage() {
                     {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
                   </td>
                   <td className="px-4 py-2">{STATUS_LABELS[order.status]}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    {formatDeliveryDate(order.delivery_date)} {order.delivery_time_slot ?? ""}
+                  </td>
                 </tr>
               ),
             )}
             {!orders?.length && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-neutral-400">
                   注文はまだありません
                 </td>
               </tr>

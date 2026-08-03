@@ -26,7 +26,14 @@ type TimelineItem =
       productId: string;
       resolved: boolean;
     }
-  | { id: string; kind: "checkout"; nodeId: string; productId: string }
+  | {
+      id: string;
+      kind: "checkout";
+      nodeId: string;
+      productId: string;
+      greeting?: string;
+      completionMessage?: string;
+    }
   | { id: string; kind: "checkout-result"; ok: boolean; text: string }
   | { id: string; kind: "faq"; productId: string };
 
@@ -82,6 +89,8 @@ export function ChatWidget() {
       productId?: string;
       productIds?: string[];
       options?: ChoiceOption[];
+      greeting?: string;
+      completionMessage?: string;
     };
 
     switch (node.type) {
@@ -125,7 +134,14 @@ export function ChatWidget() {
         if (node.type === "checkout") {
           setTimeline((prev) => [
             ...prev,
-            { id: nextId(), kind: "checkout", nodeId: node.id, productId: validIds[0] },
+            {
+              id: nextId(),
+              kind: "checkout",
+              nodeId: node.id,
+              productId: validIds[0],
+              greeting: content.greeting,
+              completionMessage: content.completionMessage,
+            },
           ]);
           break;
         }
@@ -253,6 +269,8 @@ export function ChatWidget() {
                 <CheckoutForm
                   key={item.id}
                   product={product}
+                  greeting={item.greeting}
+                  completionMessage={item.completionMessage}
                   onComplete={handleCheckoutComplete}
                   onBack={() => handleCheckoutBack(item.id)}
                 />

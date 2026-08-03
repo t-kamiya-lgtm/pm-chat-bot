@@ -25,6 +25,8 @@ export async function POST(request: Request) {
     subscriptionInterval,
     paymentMethod,
     customer: customerInput,
+    deliveryDate,
+    deliveryTimeSlot,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -69,6 +71,9 @@ export async function POST(request: Request) {
       shipping_fee: product.shipping_fee,
       payment_fee: paymentFee,
       status: "pending",
+      delivery_date: deliveryDate ?? null,
+      delivery_time_slot: deliveryTimeSlot ?? null,
+      agreed_terms_at: new Date().toISOString(),
     })
     .select("id")
     .single();

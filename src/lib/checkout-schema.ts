@@ -23,6 +23,10 @@ export const checkoutBaseSchema = z.object({
   orderType: z.enum(["one_time", "subscription"]),
   subscriptionInterval: subscriptionIntervalSchema.optional(),
   customer: customerInputSchema,
+  deliveryDate: z.string().optional(),
+  deliveryTimeSlot: z.string().optional(),
+  agreedTerms: z.literal(true),
+  agreedPrivacy: z.literal(true),
 });
 
 export const deferredCheckoutSchema = checkoutBaseSchema.extend({

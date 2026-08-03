@@ -6,6 +6,8 @@ import {
   ADDRESS_FIELD_KEYS,
   ADDRESS_KEY_SET,
   CHECKOUT_FIELD_LABELS,
+  DELIVERY_FIELD_KEYS,
+  DELIVERY_KEY_SET,
   type CheckoutFieldKey,
 } from "@/lib/checkout-fields";
 
@@ -15,15 +17,25 @@ interface DisplayGroup {
   keys: CheckoutFieldKey[];
 }
 
-/** 郵便番号〜番地・建物名はウィジェット上で常に1画面にまとめて表示されるため、1行として扱う。 */
+/** 住所4項目・お届け希望日時2項目はウィジェット上で常に1画面にまとめて表示されるため、1行として扱う。 */
 function buildDisplayGroups(order: CheckoutFieldKey[]): DisplayGroup[] {
   const groups: DisplayGroup[] = [];
   let addressAdded = false;
+  let deliveryAdded = false;
   for (const key of order) {
     if (ADDRESS_KEY_SET.has(key)) {
       if (!addressAdded) {
         groups.push({ id: "address", label: "お届け先住所(まとめて1画面に表示)", keys: ADDRESS_FIELD_KEYS });
         addressAdded = true;
+      }
+    } else if (DELIVERY_KEY_SET.has(key)) {
+      if (!deliveryAdded) {
+        groups.push({
+          id: "delivery",
+          label: "お届け希望日・時間帯(まとめて1画面に表示)",
+          keys: DELIVERY_FIELD_KEYS,
+        });
+        deliveryAdded = true;
       }
     } else {
       groups.push({ id: key, label: CHECKOUT_FIELD_LABELS[key], keys: [key] });
