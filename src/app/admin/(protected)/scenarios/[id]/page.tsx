@@ -28,7 +28,10 @@ export default async function ScenarioEditorPage({
   const [{ data: scenario }, { data: nodes }, { data: products }] = await Promise.all([
     supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
     supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("created_at"),
-    supabase.from("products").select("id, name").order("created_at", { ascending: false }),
+    supabase
+      .from("products")
+      .select("id, name, price, order_type")
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!scenario) notFound();
@@ -45,7 +48,12 @@ export default async function ScenarioEditorPage({
         updatedAt: scenario.updated_at,
       }}
       nodes={(nodes ?? []).map(mapNodeRow)}
-      products={products ?? []}
+      products={(products ?? []).map((p) => ({
+        id: p.id as string,
+        name: p.name as string,
+        price: p.price as number,
+        orderType: p.order_type as "one_time" | "subscription",
+      }))}
     />
   );
 }

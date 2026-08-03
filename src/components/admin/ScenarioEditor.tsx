@@ -12,10 +12,83 @@ const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   product_qa: "商品QA",
 };
 
+const ORDER_TYPE_LABELS: Record<string, string> = {
+  one_time: "単品",
+  subscription: "定期",
+};
+
+type PickableProduct = Pick<Product, "id" | "name" | "price" | "orderType">;
+
+function productLabel(product: PickableProduct) {
+  return `${product.name}(${ORDER_TYPE_LABELS[product.orderType] ?? product.orderType} ・ ${product.price.toLocaleString()}円)`;
+}
+
+/** product/checkout/product_qaノードは商品IDをJSONで手打ちする代わりに品番選択で設定する。 */
+function usesProductPicker(type: ScenarioNodeType) {
+  return type === "product" || type === "checkout" || type === "product_qa";
+}
+
+function extractProductIds(content: Record<string, unknown>): string[] {
+  if (Array.isArray(content.productIds)) return content.productIds as string[];
+  if (typeof content.productId === "string") return [content.productId];
+  return [];
+}
+
+function ProductPicker({
+  type,
+  products,
+  selectedIds,
+  onChange,
+}: {
+  type: ScenarioNodeType;
+  products: PickableProduct[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  if (products.length === 0) {
+    return <p className="text-xs text-amber-700">商品が登録されていません。先に品番を登録してください。</p>;
+  }
+
+  if (type === "product") {
+    return (
+      <div className="space-y-1 rounded-md border border-neutral-200 p-3">
+        {products.map((product) => (
+          <label key={product.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={selectedIds.includes(product.id)}
+              onChange={(e) => {
+                if (e.target.checked) onChange([...selectedIds, product.id]);
+                else onChange(selectedIds.filter((id) => id !== product.id));
+              }}
+            />
+            {productLabel(product)}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      className="input"
+      value={selectedIds[0] ?? ""}
+      onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}
+    >
+      <option value="">品番を選択してください</option>
+      {products.map((product) => (
+        <option key={product.id} value={product.id}>
+          {productLabel(product)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 interface Props {
   scenario: Scenario;
   nodes: ScenarioNode[];
-  products: Pick<Product, "id" | "name">[];
+  products: PickableProduct[];
 }
 
 export function ScenarioEditor({ scenario, nodes, products }: Props) {
@@ -23,6 +96,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [publishing, setPublishing] = useState(false);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeContent, setNewNodeContent] = useState("{}");
+  const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeNextMap, setNewNodeNextMap] = useState("{}");
   const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +119,22 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     let content: Record<string, unknown>;
     let nextNodeMap: Record<string, string>;
     try {
-      content = JSON.parse(newNodeContent || "{}");
+      if (usesProductPicker(newNodeType)) {
+        content =
+          newNodeType === "product"
+            ? { productIds: newNodeProductIds }
+            : { productId: newNodeProductIds[0] };
+      } else {
+        content = JSON.parse(newNodeContent || "{}");
+      }
       nextNodeMap = JSON.parse(newNodeNextMap || "{}");
     } catch {
       setError("content / nextNodeMap はJSON形式で入力してください");
+      return;
+    }
+
+    if (usesProductPicker(newNodeType) && newNodeProductIds.length === 0) {
+      setError("品番を1つ以上選択してください");
       return;
     }
 
@@ -69,6 +155,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     }
 
     setNewNodeContent("{}");
+    setNewNodeProductIds([]);
     setNewNodeNextMap("{}");
     setNewNodeIsEntry(false);
     router.refresh();
@@ -110,6 +197,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
             key={node.id}
             scenarioId={scenario.id}
             node={node}
+            products={products}
             onDelete={() => handleDeleteNode(node.id)}
           />
         ))}
@@ -139,29 +227,32 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           </select>
         </label>
 
-        <p className="text-xs text-neutral-500">
-          商品ID一覧(productノードのcontentで単一商品なら
-          {" "}
-          {"{\"productId\": \"...\"}"}、複数商品をカルーセル表示するなら
-          {" "}
-          {"{\"productIds\": [\"...\", \"...\"]}"} として指定。
-          checkout/product_qaノードは単一商品(productId)のみ対応):
-          {" "}
-          {products.map((p) => `${p.name}=${p.id}`).join(", ") || "商品なし"}
-        </p>
-
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-neutral-700">
-            content(JSON。例: message→{"{\"text\": \"こんにちは\"}"} / choice→
-            {"{\"text\": \"どちらにしますか\", \"options\": [{\"label\": \"A\", \"value\": \"a\"}]}"})
-          </span>
-          <textarea
-            className="input font-mono"
-            rows={3}
-            value={newNodeContent}
-            onChange={(e) => setNewNodeContent(e.target.value)}
-          />
-        </label>
+        {usesProductPicker(newNodeType) ? (
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-neutral-700">
+              品番{newNodeType === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
+            </span>
+            <ProductPicker
+              type={newNodeType}
+              products={products}
+              selectedIds={newNodeProductIds}
+              onChange={setNewNodeProductIds}
+            />
+          </label>
+        ) : (
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-neutral-700">
+              content(JSON。例: message→{"{\"text\": \"こんにちは\"}"} / choice→
+              {"{\"text\": \"どちらにしますか\", \"options\": [{\"label\": \"A\", \"value\": \"a\"}]}"})
+            </span>
+            <textarea
+              className="input font-mono"
+              rows={3}
+              value={newNodeContent}
+              onChange={(e) => setNewNodeContent(e.target.value)}
+            />
+          </label>
+        )}
 
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">
@@ -200,15 +291,18 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
 function NodeCard({
   scenarioId,
   node,
+  products,
   onDelete,
 }: {
   scenarioId: string;
   node: ScenarioNode;
+  products: PickableProduct[];
   onDelete: () => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [contentText, setContentText] = useState(JSON.stringify(node.content));
+  const [productIds, setProductIds] = useState<string[]>(extractProductIds(node.content));
   const [nextMapText, setNextMapText] = useState(JSON.stringify(node.nextNodeMap));
   const [isEntry, setIsEntry] = useState(node.isEntry);
   const [error, setError] = useState<string | null>(null);
@@ -216,6 +310,7 @@ function NodeCard({
 
   function startEditing() {
     setContentText(JSON.stringify(node.content));
+    setProductIds(extractProductIds(node.content));
     setNextMapText(JSON.stringify(node.nextNodeMap));
     setIsEntry(node.isEntry);
     setError(null);
@@ -227,10 +322,19 @@ function NodeCard({
     let content: Record<string, unknown>;
     let nextNodeMap: Record<string, string>;
     try {
-      content = JSON.parse(contentText || "{}");
+      if (usesProductPicker(node.type)) {
+        content = node.type === "product" ? { productIds } : { productId: productIds[0] };
+      } else {
+        content = JSON.parse(contentText || "{}");
+      }
       nextNodeMap = JSON.parse(nextMapText || "{}");
     } catch {
       setError("content / nextNodeMap はJSON形式で入力してください");
+      return;
+    }
+
+    if (usesProductPicker(node.type) && productIds.length === 0) {
+      setError("品番を1つ以上選択してください");
       return;
     }
 
@@ -283,15 +387,29 @@ function NodeCard({
       {editing ? (
         <div className="space-y-2">
           {error && <p className="text-xs text-red-600">{error}</p>}
-          <label className="block text-xs">
-            <span className="mb-1 block text-neutral-500">content(JSON)</span>
-            <textarea
-              className="input font-mono"
-              rows={3}
-              value={contentText}
-              onChange={(e) => setContentText(e.target.value)}
-            />
-          </label>
+          {usesProductPicker(node.type) ? (
+            <label className="block text-xs">
+              <span className="mb-1 block text-neutral-500">
+                品番{node.type === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
+              </span>
+              <ProductPicker
+                type={node.type}
+                products={products}
+                selectedIds={productIds}
+                onChange={setProductIds}
+              />
+            </label>
+          ) : (
+            <label className="block text-xs">
+              <span className="mb-1 block text-neutral-500">content(JSON)</span>
+              <textarea
+                className="input font-mono"
+                rows={3}
+                value={contentText}
+                onChange={(e) => setContentText(e.target.value)}
+              />
+            </label>
+          )}
           <label className="block text-xs">
             <span className="mb-1 block text-neutral-500">nextNodeMap(JSON)</span>
             <textarea
@@ -325,9 +443,20 @@ function NodeCard({
         </div>
       ) : (
         <>
-          <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
-            content: {JSON.stringify(node.content)}
-          </pre>
+          {usesProductPicker(node.type) ? (
+            <p className="rounded bg-neutral-50 p-2 text-xs">
+              品番:{" "}
+              {productIds
+                .map((id) => products.find((p) => p.id === id))
+                .filter((p): p is PickableProduct => Boolean(p))
+                .map(productLabel)
+                .join("、") || "未設定"}
+            </p>
+          ) : (
+            <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
+              content: {JSON.stringify(node.content)}
+            </pre>
+          )}
           <pre className="mt-1 overflow-x-auto rounded bg-neutral-50 p-2 text-xs">
             nextNodeMap: {JSON.stringify(node.nextNodeMap)}
           </pre>
