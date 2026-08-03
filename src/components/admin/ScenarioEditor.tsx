@@ -17,7 +17,12 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   subscription: "定期",
 };
 
-type PickableProduct = Pick<Product, "id" | "name" | "price" | "orderType">;
+type PickableProduct = Pick<Product, "id" | "name" | "price" | "orderType"> & {
+  productGroupId: string | null;
+  productGroupName: string | null;
+};
+
+const UNGROUPED_KEY = "__ungrouped__";
 
 function productLabel(product: PickableProduct) {
   return `${product.name}(${ORDER_TYPE_LABELS[product.orderType] ?? product.orderType} ・ ${product.price.toLocaleString()}円)`;
@@ -45,43 +50,76 @@ function ProductPicker({
   selectedIds: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const groups = Array.from(
+    new Map(
+      products.map((p) => [
+        p.productGroupId ?? UNGROUPED_KEY,
+        { id: p.productGroupId ?? UNGROUPED_KEY, name: p.productGroupName ?? "未分類" },
+      ]),
+    ).values(),
+  );
+
+  const [selectedGroupId, setSelectedGroupId] = useState(() => {
+    const firstSelected = products.find((p) => selectedIds.includes(p.id));
+    return firstSelected ? (firstSelected.productGroupId ?? UNGROUPED_KEY) : (groups[0]?.id ?? "");
+  });
+
   if (products.length === 0) {
     return <p className="text-xs text-amber-700">商品が登録されていません。先に品番を登録してください。</p>;
   }
 
-  if (type === "product") {
-    return (
-      <div className="space-y-1 rounded-md border border-neutral-200 p-3">
-        {products.map((product) => (
-          <label key={product.id} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={selectedIds.includes(product.id)}
-              onChange={(e) => {
-                if (e.target.checked) onChange([...selectedIds, product.id]);
-                else onChange(selectedIds.filter((id) => id !== product.id));
-              }}
-            />
-            {productLabel(product)}
-          </label>
-        ))}
-      </div>
-    );
-  }
+  const productsInGroup = products.filter(
+    (p) => (p.productGroupId ?? UNGROUPED_KEY) === selectedGroupId,
+  );
 
   return (
-    <select
-      className="input"
-      value={selectedIds[0] ?? ""}
-      onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}
-    >
-      <option value="">品番を選択してください</option>
-      {products.map((product) => (
-        <option key={product.id} value={product.id}>
-          {productLabel(product)}
-        </option>
-      ))}
-    </select>
+    <div className="space-y-2">
+      <select
+        className="input w-auto"
+        value={selectedGroupId}
+        onChange={(e) => setSelectedGroupId(e.target.value)}
+      >
+        {groups.map((group) => (
+          <option key={group.id} value={group.id}>
+            {group.name}
+          </option>
+        ))}
+      </select>
+
+      {type === "product" ? (
+        <div className="space-y-1 rounded-md border border-neutral-200 p-3">
+          {productsInGroup.map((product) => (
+            <label key={product.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(product.id)}
+                onChange={(e) => {
+                  if (e.target.checked) onChange([...selectedIds, product.id]);
+                  else onChange(selectedIds.filter((id) => id !== product.id));
+                }}
+              />
+              {productLabel(product)}
+            </label>
+          ))}
+          {productsInGroup.length === 0 && (
+            <p className="text-xs text-neutral-400">この商品種類には品番が登録されていません</p>
+          )}
+        </div>
+      ) : (
+        <select
+          className="input"
+          value={selectedIds.find((id) => productsInGroup.some((p) => p.id === id)) ?? ""}
+          onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}
+        >
+          <option value="">品番を選択してください</option>
+          {productsInGroup.map((product) => (
+            <option key={product.id} value={product.id}>
+              {productLabel(product)}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }
 

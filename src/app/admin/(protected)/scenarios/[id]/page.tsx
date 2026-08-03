@@ -5,6 +5,11 @@ import type { ScenarioNode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+function extractGroupName(value: unknown): string | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  return (row as { name?: string } | null)?.name ?? null;
+}
+
 function mapNodeRow(row: Record<string, unknown>): ScenarioNode {
   return {
     id: row.id as string,
@@ -30,7 +35,7 @@ export default async function ScenarioEditorPage({
     supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("created_at"),
     supabase
       .from("products")
-      .select("id, name, price, order_type")
+      .select("id, name, price, order_type, product_group_id, product_groups(name)")
       .order("created_at", { ascending: false }),
   ]);
 
@@ -53,6 +58,8 @@ export default async function ScenarioEditorPage({
         name: p.name as string,
         price: p.price as number,
         orderType: p.order_type as "one_time" | "subscription",
+        productGroupId: p.product_group_id as string | null,
+        productGroupName: extractGroupName(p.product_groups),
       }))}
     />
   );

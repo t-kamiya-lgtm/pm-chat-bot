@@ -16,6 +16,8 @@ export interface ProductFormValues {
   name: string;
   description: string;
   price: number;
+  listPrice: number | null;
+  priceLabel: string;
   shippingFee: number;
   imageUrl: string;
   smaregiProductId: string;
@@ -29,6 +31,8 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     name: "",
     description: "",
     price: 0,
+    listPrice: null,
+    priceLabel: "",
     shippingFee: 0,
     imageUrl: "",
     smaregiProductId: "",
@@ -85,6 +89,8 @@ export function ProductForm({
       name: values.name,
       description: values.description || undefined,
       price: Number(values.price),
+      listPrice: values.listPrice === null ? null : Number(values.listPrice),
+      priceLabel: values.priceLabel || null,
       shippingFee: Number(values.shippingFee),
       imageUrl: values.imageUrl || undefined,
       smaregiProductId: values.smaregiProductId || undefined,
@@ -173,6 +179,42 @@ export function ProductForm({
             className="input"
           />
         </Field>
+      </div>
+
+      <div className="rounded-md border border-neutral-200 p-3">
+        <p className="mb-3 text-sm font-medium text-neutral-700">
+          二重価格表記(任意): 通常価格を取り消し線で表示し、「ラベル特別価格」として上記の価格を強調表示します
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="通常価格(円、任意)">
+            <input
+              type="number"
+              min={0}
+              value={values.listPrice ?? ""}
+              onChange={(e) =>
+                setValues((p) => ({
+                  ...p,
+                  listPrice: e.target.value === "" ? null : Number(e.target.value),
+                }))
+              }
+              className="input"
+            />
+          </Field>
+          <Field label="ラベル(例: 定期, おためし)">
+            <input
+              value={values.priceLabel}
+              onChange={(e) => setValues((p) => ({ ...p, priceLabel: e.target.value }))}
+              className="input"
+            />
+          </Field>
+        </div>
+        {values.listPrice !== null && values.listPrice > values.price && (
+          <p className="mt-2 text-xs text-neutral-500">
+            表示例: <span className="line-through">{values.listPrice.toLocaleString()}円</span>
+            {" → "}
+            {values.priceLabel || "特別"}価格 {values.price.toLocaleString()}円
+          </p>
+        )}
       </div>
 
       <Field label="画像URL">

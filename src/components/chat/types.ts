@@ -5,6 +5,8 @@ export interface WidgetProduct {
   name: string;
   description: string | null;
   price: number;
+  list_price: number | null;
+  price_label: string | null;
   shipping_fee: number;
   image_url: string | null;
   order_type: "one_time" | "subscription";

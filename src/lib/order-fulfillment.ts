@@ -85,6 +85,8 @@ function mapProductRow(row: Record<string, unknown>): Product {
     name: row.name as string,
     description: row.description as string | null,
     price: row.price as number,
+    listPrice: row.list_price as number | null,
+    priceLabel: row.price_label as string | null,
     shippingFee: row.shipping_fee as number,
     imageUrl: row.image_url as string | null,
     smaregiProductId: row.smaregi_product_id as string | null,

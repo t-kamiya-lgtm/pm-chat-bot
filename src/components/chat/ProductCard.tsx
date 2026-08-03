@@ -21,10 +21,27 @@ export function ProductCard({
       {product.description && (
         <p className="mt-1 text-xs text-neutral-500">{product.description}</p>
       )}
-      <p className="mt-2 text-sm">
-        {product.price.toLocaleString()}円
-        {product.shipping_fee === 0 ? "(送料無料)" : `(送料 ${product.shipping_fee.toLocaleString()}円)`}
-      </p>
+      {product.list_price !== null && product.list_price > product.price ? (
+        <p className="mt-2 text-sm">
+          <span className="text-neutral-400 line-through">
+            {product.list_price.toLocaleString()}円
+          </span>
+          <br />
+          <span className="font-medium text-red-600">
+            {product.price_label || "特別"}価格 {product.price.toLocaleString()}円
+          </span>
+          {product.shipping_fee === 0
+            ? "(送料無料)"
+            : `(送料 ${product.shipping_fee.toLocaleString()}円)`}
+        </p>
+      ) : (
+        <p className="mt-2 text-sm">
+          {product.price.toLocaleString()}円
+          {product.shipping_fee === 0
+            ? "(送料無料)"
+            : `(送料 ${product.shipping_fee.toLocaleString()}円)`}
+        </p>
+      )}
       {onSelect && (
         <button
           type="button"

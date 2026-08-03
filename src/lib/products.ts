@@ -7,6 +7,8 @@ export interface ProductRow {
   name: string;
   description: string | null;
   price: number;
+  list_price: number | null;
+  price_label: string | null;
   shipping_fee: number;
   image_url: string | null;
   smaregi_product_id: string | null;

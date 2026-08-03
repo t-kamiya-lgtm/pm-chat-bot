@@ -26,6 +26,8 @@ export interface Product {
   name: string;
   description: string | null;
   price: number;
+  listPrice: number | null;
+  priceLabel: string | null;
   shippingFee: number;
   imageUrl: string | null;
   smaregiProductId: string | null;

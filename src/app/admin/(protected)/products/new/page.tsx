@@ -28,6 +28,8 @@ export default async function NewProductPage({
                 name: "",
                 description: "",
                 price: 0,
+                listPrice: null,
+                priceLabel: "",
                 shippingFee: 0,
                 imageUrl: "",
                 smaregiProductId: "",
