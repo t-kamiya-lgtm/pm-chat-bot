@@ -47,8 +47,19 @@ export function ChatWidget() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
+  const [checkoutMessages, setCheckoutMessages] = useState<{
+    greeting?: string;
+    completionMessage?: string;
+  }>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/api/widget/checkout-messages")
+      .then((res) => res.json())
+      .then((body: { greeting?: string; completionMessage?: string }) => setCheckoutMessages(body))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/widget/scenario")
@@ -89,8 +100,6 @@ export function ChatWidget() {
       productId?: string;
       productIds?: string[];
       options?: ChoiceOption[];
-      greeting?: string;
-      completionMessage?: string;
     };
 
     switch (node.type) {
@@ -139,8 +148,8 @@ export function ChatWidget() {
               kind: "checkout",
               nodeId: node.id,
               productId: validIds[0],
-              greeting: content.greeting,
-              completionMessage: content.completionMessage,
+              greeting: checkoutMessages.greeting,
+              completionMessage: checkoutMessages.completionMessage,
             },
           ]);
           break;
@@ -201,7 +210,14 @@ export function ChatWidget() {
       // シナリオ側で決済導線への接続が未設定でも購入導線を提供する
       setTimeline((prev) => [
         ...prev,
-        { id: nextId(), kind: "checkout", nodeId: item.nodeId, productId },
+        {
+          id: nextId(),
+          kind: "checkout",
+          nodeId: item.nodeId,
+          productId,
+          greeting: checkoutMessages.greeting,
+          completionMessage: checkoutMessages.completionMessage,
+        },
       ]);
     }
   }
