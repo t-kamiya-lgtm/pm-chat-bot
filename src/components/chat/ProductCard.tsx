@@ -3,11 +3,9 @@ import type { WidgetProduct } from "@/components/chat/types";
 export function ProductCard({
   product,
   onSelect,
-  fullWidth,
 }: {
   product: WidgetProduct;
   onSelect?: () => void;
-  fullWidth?: boolean;
 }) {
   const hasDiscount = product.list_price !== null && product.list_price > product.price;
   const discountPercent = hasDiscount
@@ -17,9 +15,7 @@ export function ProductCard({
     product.shipping_fee === 0 ? "送料無料" : `送料 ${product.shipping_fee.toLocaleString()}円`;
 
   return (
-    <div
-      className={`rounded-xl border border-neutral-200 bg-white p-3 shadow-sm ${fullWidth ? "" : "max-w-[85%]"}`}
-    >
+    <div className="max-w-[85%] rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
       {product.image_url && (
         <div className="relative mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}

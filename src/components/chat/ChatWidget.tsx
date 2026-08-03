@@ -31,6 +31,7 @@ type TimelineItem =
       kind: "checkout";
       nodeId: string;
       productId: string;
+      sourceItemId?: string;
       greeting?: string;
       completionMessage?: string;
       termsText?: string;
@@ -102,6 +103,7 @@ export function ChatWidget() {
     nodeId: string,
     nodeMap: Record<string, WidgetScenarioNode> = nodesById,
     productMap: Record<string, WidgetProduct> = productsById,
+    sourceItemId?: string,
   ) {
     const node = nodeMap[nodeId];
     if (!node) return;
@@ -121,7 +123,7 @@ export function ChatWidget() {
           { id: nextId(), kind: "bot-text", text: content.text ?? "", imageUrl: content.imageUrl },
         ]);
         const next = node.next_node_map.default;
-        if (next) setTimeout(() => advance(next, nodeMap, productMap), 300);
+        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId), 300);
         break;
       }
       case "choice": {
@@ -163,6 +165,7 @@ export function ChatWidget() {
               kind: "checkout",
               nodeId: node.id,
               productId: validIds[0],
+              sourceItemId,
               greeting: checkoutMessages.greeting,
               completionMessage: checkoutMessages.completionMessage,
               termsText: checkoutMessages.termsText,
@@ -213,7 +216,7 @@ export function ChatWidget() {
 
     const node = nodesById[item.nodeId];
     const next = node?.next_node_map[option.value] ?? node?.next_node_map.default;
-    if (next) advance(next);
+    if (next) advance(next, nodesById, productsById, item.id);
   }
 
   function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>, productId: string) {
@@ -222,7 +225,7 @@ export function ChatWidget() {
     const node = nodesById[item.nodeId];
     const next = node?.next_node_map.default;
     if (next && nodesById[next]?.type === "checkout") {
-      advance(next);
+      advance(next, nodesById, productsById, item.id);
     } else {
       // シナリオ側で決済導線への接続が未設定でも購入導線を提供する
       setTimeline((prev) => [
@@ -232,6 +235,7 @@ export function ChatWidget() {
           kind: "checkout",
           nodeId: item.nodeId,
           productId,
+          sourceItemId: item.id,
           greeting: checkoutMessages.greeting,
           completionMessage: checkoutMessages.completionMessage,
           termsText: checkoutMessages.termsText,
@@ -246,8 +250,17 @@ export function ChatWidget() {
     setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId: item.productId }]);
   }
 
-  function handleCheckoutBack(itemId: string) {
-    setTimeline((prev) => prev.filter((i) => i.id !== itemId));
+  function handleCheckoutBack(item: Extract<TimelineItem, { kind: "checkout" }>) {
+    setTimeline((prev) =>
+      prev
+        .filter((i) => i.id !== item.id)
+        .map((i) => {
+          if (i.id === item.sourceItemId && (i.kind === "product" || i.kind === "choice")) {
+            return { ...i, resolved: false };
+          }
+          return i;
+        }),
+    );
   }
 
   function handleCheckoutComplete(result: { ok: boolean; message: string }) {
@@ -314,7 +327,7 @@ export function ChatWidget() {
                   termsText={item.termsText}
                   privacyText={item.privacyText}
                   onComplete={handleCheckoutComplete}
-                  onBack={() => handleCheckoutBack(item.id)}
+                  onBack={() => handleCheckoutBack(item)}
                 />
               );
             }

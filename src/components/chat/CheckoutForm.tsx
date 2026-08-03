@@ -42,6 +42,14 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
   },
 ];
 
+/** モバイルでキーボード表示時に入力欄が隠れないよう、フォーカス時に画面中央へスクロールする。 */
+function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
+  const target = e.target;
+  setTimeout(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 300);
+}
+
 function minDeliveryDate(): string {
   const d = new Date();
   d.setDate(d.getDate() + MIN_DELIVERY_LEAD_DAYS);
@@ -416,6 +424,7 @@ export function CheckoutForm({
                     className="input"
                     value={values[key]}
                     onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                    onFocus={scrollFieldIntoView}
                     onBlur={() => setTouched((prev) => ({ ...prev, [key]: true }))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
@@ -449,6 +458,7 @@ export function CheckoutForm({
                 min={minDeliveryDate()}
                 value={values.deliveryDate}
                 onChange={(e) => setValues((prev) => ({ ...prev, deliveryDate: e.target.value }))}
+                onFocus={scrollFieldIntoView}
                 onBlur={() => setTouched((prev) => ({ ...prev, deliveryDate: true }))}
               />
               {touched.deliveryDate && validateField("deliveryDate", values.deliveryDate) && (
@@ -463,6 +473,7 @@ export function CheckoutForm({
                 className="input"
                 value={values.deliveryTimeSlot}
                 onChange={(e) => setValues((prev) => ({ ...prev, deliveryTimeSlot: e.target.value }))}
+                onFocus={scrollFieldIntoView}
                 onBlur={() => setTouched((prev) => ({ ...prev, deliveryTimeSlot: true }))}
               >
                 <option value="">選択してください</option>
@@ -487,6 +498,7 @@ export function CheckoutForm({
               className="input"
               value={values[step.key]}
               onChange={(e) => setValues((prev) => ({ ...prev, [step.key]: e.target.value }))}
+              onFocus={scrollFieldIntoView}
               onBlur={() => setTouched((prev) => ({ ...prev, [step.key]: true }))}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -534,6 +546,10 @@ export function CheckoutForm({
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
         <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-500">ご注文商品</span>
+            <span className="font-medium">{product.name}</span>
+          </div>
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">お支払い方法</span>
             <div className="flex items-center gap-2">
