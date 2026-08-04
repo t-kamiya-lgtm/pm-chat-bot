@@ -123,8 +123,14 @@ function nodeSummary(node: ScenarioNode, products: PickableProduct[]): string {
       return `商品提示: ${productNames(extractProductIds(node.content))}`;
     case "checkout":
       return `決済導線: ${productNames(extractProductIds(node.content))}`;
-    case "product_qa":
-      return `商品QA: ${productNames(extractProductIds(node.content))}`;
+    case "product_qa": {
+      const groupNames =
+        extractProductIds(node.content)
+          .map((id) => products.find((p) => p.id === id)?.productGroupName)
+          .filter((name): name is string => Boolean(name))
+          .join("、") || "未設定";
+      return `商品QA: ${groupNames}`;
+    }
     case "image": {
       const urls =
         (node.content.imageUrls as string[] | undefined) ??
@@ -249,6 +255,76 @@ function ProductPicker({
         </select>
       )}
     </div>
+  );
+}
+
+/** 商品QAはアイテム(商品種類=親品番)単位で登録されるため、品番ではなくアイテム単位で選択する。 */
+function productGroupOptions(products: PickableProduct[]) {
+  const map = new Map<string, { id: string; name: string; representativeProductId: string }>();
+  for (const p of products) {
+    if (!p.productGroupId) continue;
+    if (!map.has(p.productGroupId)) {
+      map.set(p.productGroupId, {
+        id: p.productGroupId,
+        name: p.productGroupName ?? "未分類",
+        representativeProductId: p.id,
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function ProductGroupSelect({
+  products,
+  value,
+  onChange,
+  label,
+  allowEmpty,
+  compact,
+}: {
+  products: PickableProduct[];
+  /** 選択中のアイテムを表す代表品番ID。 */
+  value: string;
+  /** 選択されたアイテムの代表品番IDを返す(空文字は未選択)。 */
+  onChange: (productId: string) => void;
+  label: string;
+  allowEmpty?: boolean;
+  compact?: boolean;
+}) {
+  const groups = productGroupOptions(products);
+  const selectedGroupId = products.find((p) => p.id === value)?.productGroupId ?? "";
+
+  if (groups.length === 0) {
+    return (
+      <p className="text-xs text-amber-700">
+        アイテム(商品種類)が登録されていません。先に品番を登録してください。
+      </p>
+    );
+  }
+
+  return (
+    <label className={`block ${compact ? "text-xs" : "text-sm"}`}>
+      <span className={`mb-1 block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"}`}>
+        {label}
+      </span>
+      <select
+        className="input"
+        value={selectedGroupId}
+        onChange={(e) => {
+          const group = groups.find((g) => g.id === e.target.value);
+          onChange(group?.representativeProductId ?? "");
+        }}
+      >
+        {(allowEmpty || !selectedGroupId) && (
+          <option value="">{allowEmpty ? "設定しない" : "アイテムを選択してください"}</option>
+        )}
+        {groups.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -410,11 +486,12 @@ function OptionsEditor({
             value={option.value}
             onChange={(e) => update(index, { value: e.target.value })}
           />
-          <OptionalProductSelect
-            label="Q&Aをその場で表示する商品(設定すると下の「次に進むノード」より優先されます)"
+          <ProductGroupSelect
+            label="Q&Aをその場で表示するアイテム(商品Q&Aはアイテム単位のため品番ではなくアイテムを選択・設定すると下の「次に進むノード」より優先されます)"
             products={products}
             value={option.qaProductId ?? ""}
             onChange={(id) => update(index, { qaProductId: id || undefined })}
+            allowEmpty
             compact={compact}
           />
           {option.qaProductId ? (
@@ -998,19 +1075,27 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           </select>
         </label>
 
-        {usesProductPicker(newNodeType) && (
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-neutral-700">
-              品番{newNodeType === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
-            </span>
-            <ProductPicker
-              type={newNodeType}
+        {usesProductPicker(newNodeType) &&
+          (newNodeType === "product_qa" ? (
+            <ProductGroupSelect
+              label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
               products={products}
-              selectedIds={newNodeProductIds}
-              onChange={setNewNodeProductIds}
+              value={newNodeProductIds[0] ?? ""}
+              onChange={(id) => setNewNodeProductIds(id ? [id] : [])}
             />
-          </label>
-        )}
+          ) : (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                品番{newNodeType === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
+              </span>
+              <ProductPicker
+                type={newNodeType}
+                products={products}
+                selectedIds={newNodeProductIds}
+                onChange={setNewNodeProductIds}
+              />
+            </label>
+          ))}
 
         {newNodeType === "product" && (
           <ProductNextNodeEditor
@@ -1433,19 +1518,28 @@ function NodeCard({
             <textarea className="input" rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </label>
 
-          {usesProductPicker(node.type) && (
-            <label className="block text-xs">
-              <span className="mb-1 block text-neutral-500">
-                品番{node.type === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
-              </span>
-              <ProductPicker
-                type={node.type}
+          {usesProductPicker(node.type) &&
+            (node.type === "product_qa" ? (
+              <ProductGroupSelect
+                label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
                 products={products}
-                selectedIds={productIds}
-                onChange={setProductIds}
+                value={productIds[0] ?? ""}
+                onChange={(id) => setProductIds(id ? [id] : [])}
+                compact
               />
-            </label>
-          )}
+            ) : (
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">
+                  品番{node.type === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
+                </span>
+                <ProductPicker
+                  type={node.type}
+                  products={products}
+                  selectedIds={productIds}
+                  onChange={setProductIds}
+                />
+              </label>
+            ))}
 
           {node.type === "product" && (
             <ProductNextNodeEditor
@@ -1618,12 +1712,17 @@ function NodeCard({
           )}
           {usesProductPicker(node.type) ? (
             <p className="rounded bg-neutral-50 p-2 text-xs">
-              品番:{" "}
-              {productIds
-                .map((id) => products.find((p) => p.id === id))
-                .filter((p): p is PickableProduct => Boolean(p))
-                .map(productLabel)
-                .join("、") || "未設定"}
+              {node.type === "product_qa" ? "アイテム" : "品番"}:{" "}
+              {node.type === "product_qa"
+                ? productIds
+                    .map((id) => products.find((p) => p.id === id)?.productGroupName)
+                    .filter(Boolean)
+                    .join("、") || "未設定"
+                : productIds
+                    .map((id) => products.find((p) => p.id === id))
+                    .filter((p): p is PickableProduct => Boolean(p))
+                    .map(productLabel)
+                    .join("、") || "未設定"}
               {node.type === "checkout" && (upsellProductId || crossSellProductId) && (
                 <span className="mt-1 block text-neutral-500">
                   {upsellProductId &&
@@ -1698,8 +1797,9 @@ function NodeCard({
               ? options
                   .map((o) => {
                     if (o.qaProductId) {
-                      const productName = products.find((p) => p.id === o.qaProductId)?.name ?? "未設定";
-                      return `${o.label || o.value}→Q&A表示(${productName})`;
+                      const groupName =
+                        products.find((p) => p.id === o.qaProductId)?.productGroupName ?? "未設定";
+                      return `${o.label || o.value}→Q&A表示(${groupName})`;
                     }
                     const target = nodeOptions.find((n) => n.id === o.nextNodeId);
                     return target ? `${o.label || o.value}→${target.summary}` : null;
