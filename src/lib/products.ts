@@ -11,6 +11,7 @@ export interface ProductRow {
   price_label: string | null;
   shipping_fee: number;
   image_url: string | null;
+  image_urls: string[];
   smaregi_product_id: string | null;
   order_type: ProductOrderType;
   subscription_intervals: Product["subscriptionIntervals"];

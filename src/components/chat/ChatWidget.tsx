@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChoiceButtons, type ChoiceOption } from "@/components/chat/ChoiceButtons";
@@ -48,6 +49,8 @@ function nextId() {
 }
 
 export function ChatWidget() {
+  const searchParams = useSearchParams();
+  const previewScenarioId = searchParams.get("scenarioId");
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
@@ -79,7 +82,10 @@ export function ChatWidget() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/widget/scenario")
+    const scenarioUrl = previewScenarioId
+      ? `/api/widget/scenario?id=${previewScenarioId}&preview=1`
+      : "/api/widget/scenario";
+    fetch(scenarioUrl)
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? "読み込みに失敗しました");
         return res.json();

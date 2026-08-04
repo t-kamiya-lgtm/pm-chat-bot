@@ -30,6 +30,7 @@ export interface Product {
   priceLabel: string | null;
   shippingFee: number;
   imageUrl: string | null;
+  imageUrls: string[];
   smaregiProductId: string | null;
   orderType: ProductOrderType;
   subscriptionIntervals: SubscriptionInterval[];

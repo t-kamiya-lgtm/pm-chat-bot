@@ -9,6 +9,7 @@ export interface WidgetProduct {
   price_label: string | null;
   shipping_fee: number;
   image_url: string | null;
+  image_urls: string[];
   order_type: "one_time" | "subscription";
   subscription_intervals: SubscriptionInterval[];
 }

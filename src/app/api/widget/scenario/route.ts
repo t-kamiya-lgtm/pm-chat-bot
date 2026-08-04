@@ -9,6 +9,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const scenarioId = searchParams.get("id");
+  const isPreview = searchParams.get("preview") === "1";
 
   const supabase = createSupabaseAdminClient();
 
@@ -18,9 +19,21 @@ export async function GET(request: Request) {
     .eq("status", "published")
     .order("updated_at", { ascending: false });
 
-  const { data: scenario, error: scenarioError } = scenarioId
-    ? await supabase.from("scenarios").select("*").eq("id", scenarioId).eq("status", "published").maybeSingle()
-    : await scenarioQuery.limit(1).maybeSingle();
+  let scenarioResult;
+  if (scenarioId && isPreview) {
+    // 管理画面からのプレビュー用: 下書きでも指定IDのシナリオをそのまま表示する
+    scenarioResult = await supabase.from("scenarios").select("*").eq("id", scenarioId).maybeSingle();
+  } else if (scenarioId) {
+    scenarioResult = await supabase
+      .from("scenarios")
+      .select("*")
+      .eq("id", scenarioId)
+      .eq("status", "published")
+      .maybeSingle();
+  } else {
+    scenarioResult = await scenarioQuery.limit(1).maybeSingle();
+  }
+  const { data: scenario, error: scenarioError } = scenarioResult;
 
   if (scenarioError) return NextResponse.json({ error: scenarioError.message }, { status: 500 });
   if (!scenario) return NextResponse.json({ error: "no published scenario" }, { status: 404 });

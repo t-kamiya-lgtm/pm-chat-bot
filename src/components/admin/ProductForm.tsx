@@ -19,7 +19,7 @@ export interface ProductFormValues {
   listPrice: number | null;
   priceLabel: string;
   shippingFee: number;
-  imageUrl: string;
+  imageUrls: string[];
   smaregiProductId: string;
   orderType: ProductOrderType;
   subscriptionIntervals: SubscriptionInterval[];
@@ -34,7 +34,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     listPrice: null,
     priceLabel: "",
     shippingFee: 0,
-    imageUrl: "",
+    imageUrls: [],
     smaregiProductId: "",
     orderType: "one_time",
     subscriptionIntervals: [],
@@ -92,7 +92,7 @@ export function ProductForm({
       listPrice: values.listPrice === null ? null : Number(values.listPrice),
       priceLabel: values.priceLabel || null,
       shippingFee: Number(values.shippingFee),
-      imageUrl: values.imageUrl || undefined,
+      imageUrls: values.imageUrls.map((u) => u.trim()).filter(Boolean),
       smaregiProductId: values.smaregiProductId || undefined,
       orderType: values.orderType,
       subscriptionIntervals: values.orderType === "subscription" ? values.subscriptionIntervals : [],
@@ -217,13 +217,43 @@ export function ProductForm({
         )}
       </div>
 
-      <Field label="画像URL">
-        <input
-          value={values.imageUrl}
-          onChange={(e) => setValues((p) => ({ ...p, imageUrl: e.target.value }))}
-          className="input"
-        />
-      </Field>
+      <div>
+        <span className="mb-1 block text-sm font-medium text-neutral-700">
+          画像URL(複数可、1枚目がカルーセルに表示されます)
+        </span>
+        <div className="space-y-2">
+          {values.imageUrls.map((url, index) => (
+            <div key={index} className="flex gap-2">
+              <input
+                value={url}
+                onChange={(e) =>
+                  setValues((p) => ({
+                    ...p,
+                    imageUrls: p.imageUrls.map((u, i) => (i === index ? e.target.value : u)),
+                  }))
+                }
+                className="input"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setValues((p) => ({ ...p, imageUrls: p.imageUrls.filter((_, i) => i !== index) }))
+                }
+                className="shrink-0 rounded-md border border-neutral-300 px-3 text-sm hover:bg-neutral-50"
+              >
+                削除
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setValues((p) => ({ ...p, imageUrls: [...p.imageUrls, ""] }))}
+          className="mt-2 text-sm text-blue-600 hover:underline"
+        >
+          + 画像URLを追加
+        </button>
+      </div>
 
       <Field label="スマレジ商品ID(紐付け用)">
         <input

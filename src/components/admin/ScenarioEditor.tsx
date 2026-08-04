@@ -420,18 +420,28 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
             削除
           </button>
         </div>
-        <button
-          type="button"
-          onClick={togglePublish}
-          disabled={publishing}
-          className={`rounded-md px-4 py-2 text-sm text-white disabled:opacity-50 ${
-            scenario.status === "published"
-              ? "bg-neutral-500 hover:bg-neutral-600"
-              : "bg-green-600 hover:bg-green-700"
-          }`}
-        >
-          {scenario.status === "published" ? "下書きに戻す" : "公開する"}
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/widget?scenarioId=${scenario.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+          >
+            プレビュー
+          </a>
+          <button
+            type="button"
+            onClick={togglePublish}
+            disabled={publishing}
+            className={`rounded-md px-4 py-2 text-sm text-white disabled:opacity-50 ${
+              scenario.status === "published"
+                ? "bg-neutral-500 hover:bg-neutral-600"
+                : "bg-green-600 hover:bg-green-700"
+            }`}
+          >
+            {scenario.status === "published" ? "下書きに戻す" : "公開する"}
+          </button>
+        </div>
       </div>
 
       {products.length === 0 && (

@@ -13,6 +13,7 @@ const productUpdateSchema = z.object({
   priceLabel: z.string().nullable().optional(),
   shippingFee: z.number().int().min(0).optional(),
   imageUrl: z.string().url().optional(),
+  imageUrls: z.array(z.string().url()).optional(),
   smaregiProductId: z.string().optional(),
   orderType: z.enum(["one_time", "subscription"]).optional(),
   subscriptionIntervals: z.array(subscriptionIntervalSchema).optional(),
@@ -57,6 +58,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.priceLabel !== undefined && { price_label: input.priceLabel }),
       ...(input.shippingFee !== undefined && { shipping_fee: input.shippingFee }),
       ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
+      ...(input.imageUrls !== undefined && {
+        image_urls: input.imageUrls,
+        image_url: input.imageUrls[0] ?? null,
+      }),
       ...(input.smaregiProductId !== undefined && { smaregi_product_id: input.smaregiProductId }),
       ...(input.orderType !== undefined && { order_type: input.orderType }),
       ...(input.subscriptionIntervals !== undefined && {

@@ -89,6 +89,7 @@ function mapProductRow(row: Record<string, unknown>): Product {
     priceLabel: row.price_label as string | null,
     shippingFee: row.shipping_fee as number,
     imageUrl: row.image_url as string | null,
+    imageUrls: (row.image_urls as string[] | null) ?? [],
     smaregiProductId: row.smaregi_product_id as string | null,
     orderType: row.order_type as Product["orderType"],
     subscriptionIntervals: row.subscription_intervals as Product["subscriptionIntervals"],
