@@ -30,7 +30,7 @@ export default async function ScenarioEditorPage({
   const { id } = await params;
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: scenario }, { data: nodes }, { data: products }] = await Promise.all([
+  const [{ data: scenario }, { data: nodes }, { data: products, error: productsError }] = await Promise.all([
     supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
     supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("created_at"),
     supabase
@@ -42,25 +42,32 @@ export default async function ScenarioEditorPage({
   if (!scenario) notFound();
 
   return (
-    <ScenarioEditor
-      scenario={{
-        id: scenario.id,
-        name: scenario.name,
-        status: scenario.status,
-        version: scenario.version,
-        createdBy: scenario.created_by,
-        createdAt: scenario.created_at,
-        updatedAt: scenario.updated_at,
-      }}
-      nodes={(nodes ?? []).map(mapNodeRow)}
-      products={(products ?? []).map((p) => ({
-        id: p.id as string,
-        name: p.name as string,
-        price: p.price as number,
-        orderType: p.order_type as "one_time" | "subscription",
-        productGroupId: p.product_group_id as string | null,
-        productGroupName: extractGroupName(p.product_groups),
-      }))}
-    />
+    <div>
+      {productsError && (
+        <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          品番一覧の取得に失敗しました({productsError.message})。品番の選択・アップセル/クロスセルの設定ができません。
+        </p>
+      )}
+      <ScenarioEditor
+        scenario={{
+          id: scenario.id,
+          name: scenario.name,
+          status: scenario.status,
+          version: scenario.version,
+          createdBy: scenario.created_by,
+          createdAt: scenario.created_at,
+          updatedAt: scenario.updated_at,
+        }}
+        nodes={(nodes ?? []).map(mapNodeRow)}
+        products={(products ?? []).map((p) => ({
+          id: p.id as string,
+          name: p.name as string,
+          price: p.price as number,
+          orderType: p.order_type as "one_time" | "subscription",
+          productGroupId: p.product_group_id as string | null,
+          productGroupName: extractGroupName(p.product_groups),
+        }))}
+      />
+    </div>
   );
 }

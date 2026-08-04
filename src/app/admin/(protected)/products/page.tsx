@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminProductsPage() {
   const supabase = createSupabaseAdminClient();
-  const { data: products } = await supabase
+  const { data: products, error: productsError } = await supabase
     .from("products")
     .select("*, product_groups(name)")
     .order("display_order", { ascending: true });
@@ -42,6 +42,12 @@ export default async function AdminProductsPage() {
           </Link>
         </div>
       </div>
+
+      {productsError && (
+        <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          商品一覧の取得に失敗しました({productsError.message})
+        </p>
+      )}
 
       <ProductsTable initialProducts={rows} />
     </div>
