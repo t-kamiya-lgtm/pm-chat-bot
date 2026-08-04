@@ -117,6 +117,7 @@ export interface Address {
 /** 注文者と別の住所へ届ける場合のお届け先(任意)。 */
 export interface ShippingAddress extends Address {
   recipientName: string;
+  recipientPhone: string;
 }
 
 export interface Customer {

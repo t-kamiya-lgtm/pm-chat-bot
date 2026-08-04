@@ -18,6 +18,7 @@ export const customerInputSchema = z.object({
 /** 注文者と別の住所へ届ける場合のお届け先(任意)。 */
 export const shippingAddressSchema = addressSchema.extend({
   recipientName: z.string().min(1),
+  recipientPhone: z.string().min(1),
 });
 
 export const subscriptionIntervalSchema = z.enum(["biweekly", "monthly", "bimonthly"]);

@@ -44,8 +44,12 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
 
 const SHIPPING_ADDRESS_FIELD_KEYS = ["postalCode", "prefecture", "city", "line1"] as const;
 type ShippingAddressFieldKey = (typeof SHIPPING_ADDRESS_FIELD_KEYS)[number];
-type ShippingFieldKey = "recipientName" | ShippingAddressFieldKey;
-const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = ["recipientName", ...SHIPPING_ADDRESS_FIELD_KEYS];
+type ShippingFieldKey = "recipientName" | "recipientPhone" | ShippingAddressFieldKey;
+const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = [
+  "recipientName",
+  "recipientPhone",
+  ...SHIPPING_ADDRESS_FIELD_KEYS,
+];
 
 /** モバイルでキーボード表示時に入力欄が隠れないよう、フォーカス時に画面中央へスクロールする。 */
 function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
@@ -132,6 +136,10 @@ function validateShippingField(key: ShippingFieldKey, value: string): string | n
   switch (key) {
     case "recipientName":
       return trimmed ? null : "お届け先のお名前を入力してください";
+    case "recipientPhone":
+      return /^0\d{9,10}$/.test(trimmed.replace(/[^0-9]/g, ""))
+        ? null
+        : "正しい電話番号を入力してください(ハイフンなし10〜11桁)";
     case "postalCode":
       return /^\d{7}$/.test(value.replace(/[^0-9]/g, ""))
         ? null
@@ -154,15 +162,25 @@ function stepQuestionText(step: WizardStep): string {
   return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。${step.key === "phone" ? "(任意)" : ""}`;
 }
 
+interface ShippingSummary {
+  enabled: boolean;
+  recipientName: string;
+  recipientPhone: string;
+  postalCode: string;
+  prefecture: string;
+  city: string;
+  line1: string;
+}
+
 function stepAnswerText(
   step: WizardStep,
   values: Record<CheckoutFieldKey, string>,
-  shipping?: { enabled: boolean; recipientName: string; postalCode: string; prefecture: string; city: string; line1: string },
+  shipping?: ShippingSummary,
 ): string {
   if (step.kind === "address") {
     const base = `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`;
     if (shipping?.enabled) {
-      return `${base}(お届け先: ${shipping.recipientName} 〒${shipping.postalCode} ${shipping.prefecture}${shipping.city}${shipping.line1})`;
+      return `${base}(お届け先: ${shipping.recipientName}(${shipping.recipientPhone}) 〒${shipping.postalCode} ${shipping.prefecture}${shipping.city}${shipping.line1})`;
     }
     return base;
   }
@@ -207,7 +225,11 @@ export function CheckoutForm({
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
     activeProduct.subscription_intervals[0] ?? "monthly",
   );
-  const [paymentFee, setPaymentFee] = useState(0);
+  const [methodFees, setMethodFees] = useState<Record<PaymentMethod, number>>({
+    stripe: 0,
+    deferred_invoice: 0,
+    cod: 0,
+  });
 
   const [fieldOrder, setFieldOrder] = useState<CheckoutFieldKey[]>(DEFAULT_CHECKOUT_FIELD_ORDER);
   const steps = buildWizardSteps(fieldOrder);
@@ -226,6 +248,7 @@ export function CheckoutForm({
     deliveryTimeSlot: "",
   });
   const paymentMethod = values.paymentMethod as PaymentMethod;
+  const paymentFee = methodFees[paymentMethod] ?? 0;
   const [touched, setTouched] = useState<Partial<Record<CheckoutFieldKey, boolean>>>({});
   const [addressLookupStatus, setAddressLookupStatus] = useState<"idle" | "loading" | "not_found">(
     "idle",
@@ -234,6 +257,7 @@ export function CheckoutForm({
   const [shipToDifferentAddress, setShipToDifferentAddress] = useState(false);
   const [shippingValues, setShippingValues] = useState<Record<ShippingFieldKey, string>>({
     recipientName: "",
+    recipientPhone: "",
     postalCode: "",
     prefecture: "",
     city: "",
@@ -261,12 +285,21 @@ export function CheckoutForm({
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams({ paymentMethod, orderType });
-    fetch(`/api/widget/fees?${params.toString()}`)
-      .then((res) => res.json())
-      .then((body) => setPaymentFee(body.fee ?? 0))
-      .catch(() => setPaymentFee(0));
-  }, [paymentMethod, orderType]);
+    let cancelled = false;
+    Promise.all(
+      (["stripe", "deferred_invoice", "cod"] as PaymentMethod[]).map((method) =>
+        fetch(`/api/widget/fees?${new URLSearchParams({ paymentMethod: method, orderType }).toString()}`)
+          .then((res) => res.json())
+          .then((body) => [method, body.fee ?? 0] as const)
+          .catch(() => [method, 0] as const),
+      ),
+    ).then((entries) => {
+      if (!cancelled) setMethodFees(Object.fromEntries(entries) as Record<PaymentMethod, number>);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderType]);
 
   useEffect(() => {
     const digitsOnly = values.postalCode.replace(/[^0-9]/g, "");
@@ -373,6 +406,7 @@ export function CheckoutForm({
     const shippingAddress = shipToDifferentAddress
       ? {
           recipientName: shippingValues.recipientName,
+          recipientPhone: shippingValues.recipientPhone,
           postalCode: shippingValues.postalCode,
           prefecture: shippingValues.prefecture,
           city: shippingValues.city,
@@ -528,7 +562,7 @@ export function CheckoutForm({
 
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
-        <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+        <div className="space-y-2">
           {steps.slice(0, stepIndex).map((pastStep, idx) => (
             <div key={idx} className="space-y-1">
               <MessageBubble
@@ -617,6 +651,24 @@ export function CheckoutForm({
                       </p>
                     )}
                 </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-neutral-700">お届け先の電話番号</span>
+                  <input
+                    className="input"
+                    value={shippingValues.recipientPhone}
+                    onChange={(e) =>
+                      setShippingValues((prev) => ({ ...prev, recipientPhone: e.target.value }))
+                    }
+                    onFocus={scrollFieldIntoView}
+                    onBlur={() => setShippingTouched((prev) => ({ ...prev, recipientPhone: true }))}
+                  />
+                  {shippingTouched.recipientPhone &&
+                    validateShippingField("recipientPhone", shippingValues.recipientPhone) && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {validateShippingField("recipientPhone", shippingValues.recipientPhone)}
+                      </p>
+                    )}
+                </label>
                 {SHIPPING_ADDRESS_FIELD_KEYS.map((key) => {
                   const errorMsg = validateShippingField(key, shippingValues[key]);
                   const showError = shippingTouched[key] && errorMsg;
@@ -660,7 +712,12 @@ export function CheckoutForm({
                 className="input"
                 min={minDeliveryDate()}
                 value={values.deliveryDate}
-                onChange={(e) => setValues((prev) => ({ ...prev, deliveryDate: e.target.value }))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const corrected = raw && raw < minDeliveryDate() ? minDeliveryDate() : raw;
+                  setValues((prev) => ({ ...prev, deliveryDate: corrected }));
+                  setTouched((prev) => ({ ...prev, deliveryDate: true }));
+                }}
                 onFocus={scrollFieldIntoView}
                 onBlur={() => setTouched((prev) => ({ ...prev, deliveryDate: true }))}
               />
@@ -709,7 +766,10 @@ export function CheckoutForm({
                   onChange={() => setValues((prev) => ({ ...prev, paymentMethod: option.value }))}
                 />
                 <span>
-                  <span className="block">{option.label}</span>
+                  <span className="block">
+                    {option.label}
+                    {methodFees[option.value] > 0 && `(手数料${methodFees[option.value].toLocaleString()}円)`}
+                  </span>
                   <span className="block text-xs text-neutral-500">{option.description}</span>
                 </span>
               </label>
