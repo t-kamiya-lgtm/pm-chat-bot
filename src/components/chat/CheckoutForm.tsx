@@ -196,7 +196,11 @@ function stepAnswerText(
 interface Props {
   product: WidgetProduct;
   upsellProduct?: WidgetProduct;
+  upsellImageUrl?: string;
+  upsellComment?: string;
   crossSellProduct?: WidgetProduct;
+  crossSellImageUrl?: string;
+  crossSellComment?: string;
   greeting?: string;
   completionMessage?: string;
   termsText?: string;
@@ -210,7 +214,11 @@ type Stage = "options" | "wizard" | "review" | "agreement";
 export function CheckoutForm({
   product,
   upsellProduct,
+  upsellImageUrl,
+  upsellComment,
   crossSellProduct,
+  crossSellImageUrl,
+  crossSellComment,
   greeting,
   completionMessage,
   termsText,
@@ -857,8 +865,12 @@ export function CheckoutForm({
           <div className="space-y-2">
             {upsellProduct &&
               (activeProduct.id === upsellProduct.id ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
-                  <div>
+                <div className="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                  {upsellImageUrl && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={upsellImageUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                  )}
+                  <div className="flex-1">
                     <p className="font-medium text-amber-800">{upsellProduct.name} に変更中です</p>
                     <p className="text-xs text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
                   </div>
@@ -871,9 +883,15 @@ export function CheckoutForm({
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
-                  <div>
-                    <p className="font-medium text-amber-800">{upsellProduct.name} はいかがですか？</p>
+                <div className="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                  {upsellImageUrl && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={upsellImageUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-medium text-amber-800">
+                      {upsellComment || `${upsellProduct.name} はいかがですか？`}
+                    </p>
                     <p className="text-xs text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
                   </div>
                   <button
@@ -886,9 +904,15 @@ export function CheckoutForm({
                 </div>
               ))}
             {crossSellProduct && (
-              <div className="flex items-center justify-between gap-2 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
-                <div>
-                  <p className="font-medium text-sky-800">{crossSellProduct.name} も一緒にいかがですか？</p>
+              <div className="flex items-center gap-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
+                {crossSellImageUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={crossSellImageUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                )}
+                <div className="flex-1">
+                  <p className="font-medium text-sky-800">
+                    {crossSellComment || `${crossSellProduct.name} も一緒にいかがですか？`}
+                  </p>
                   <p className="text-xs text-sky-700">{crossSellProduct.price.toLocaleString()}円</p>
                 </div>
                 {addonSelected ? (

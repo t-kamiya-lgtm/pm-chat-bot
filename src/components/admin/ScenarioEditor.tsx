@@ -341,7 +341,11 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
+  const [newNodeUpsellImageUrl, setNewNodeUpsellImageUrl] = useState("");
+  const [newNodeUpsellComment, setNewNodeUpsellComment] = useState("");
   const [newNodeCrossSellProductId, setNewNodeCrossSellProductId] = useState("");
+  const [newNodeCrossSellImageUrl, setNewNodeCrossSellImageUrl] = useState("");
+  const [newNodeCrossSellComment, setNewNodeCrossSellComment] = useState("");
   const [newNodeProductNextMap, setNewNodeProductNextMap] = useState<Record<string, string>>({});
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
@@ -414,7 +418,11 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         content = {
           ...content,
           ...(newNodeUpsellProductId && { upsellProductId: newNodeUpsellProductId }),
+          ...(newNodeUpsellImageUrl.trim() && { upsellImageUrl: newNodeUpsellImageUrl.trim() }),
+          ...(newNodeUpsellComment.trim() && { upsellComment: newNodeUpsellComment.trim() }),
           ...(newNodeCrossSellProductId && { crossSellProductId: newNodeCrossSellProductId }),
+          ...(newNodeCrossSellImageUrl.trim() && { crossSellImageUrl: newNodeCrossSellImageUrl.trim() }),
+          ...(newNodeCrossSellComment.trim() && { crossSellComment: newNodeCrossSellComment.trim() }),
         };
       }
       if (newNodeType === "product") {
@@ -479,7 +487,11 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
 
     setNewNodeProductIds([]);
     setNewNodeUpsellProductId("");
+    setNewNodeUpsellImageUrl("");
+    setNewNodeUpsellComment("");
     setNewNodeCrossSellProductId("");
+    setNewNodeCrossSellImageUrl("");
+    setNewNodeCrossSellComment("");
     setNewNodeProductNextMap({});
     setNewNodeText("");
     setNewNodeImageUrl("");
@@ -618,12 +630,50 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
               value={newNodeUpsellProductId}
               onChange={setNewNodeUpsellProductId}
             />
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">アップセル画像URL(任意・正方形推奨)</span>
+              <input
+                className="input"
+                value={newNodeUpsellImageUrl}
+                onChange={(e) => setNewNodeUpsellImageUrl(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                アップセルの案内文(任意・未入力時は「〇〇はいかがですか？」を自動表示)
+              </span>
+              <textarea
+                className="input"
+                rows={2}
+                value={newNodeUpsellComment}
+                onChange={(e) => setNewNodeUpsellComment(e.target.value)}
+              />
+            </label>
             <OptionalProductSelect
               label="クロスセル商品(任意・「カートに追加する」ボタンで追加提案)"
               products={products}
               value={newNodeCrossSellProductId}
               onChange={setNewNodeCrossSellProductId}
             />
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形推奨)</span>
+              <input
+                className="input"
+                value={newNodeCrossSellImageUrl}
+                onChange={(e) => setNewNodeCrossSellImageUrl(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                クロスセルの案内文(任意・未入力時は「〇〇も一緒にいかがですか？」を自動表示)
+              </span>
+              <textarea
+                className="input"
+                rows={2}
+                value={newNodeCrossSellComment}
+                onChange={(e) => setNewNodeCrossSellComment(e.target.value)}
+              />
+            </label>
           </div>
         )}
 
@@ -712,8 +762,16 @@ function NodeCard({
   const [editing, setEditing] = useState(false);
   const [productIds, setProductIds] = useState<string[]>(extractProductIds(node.content));
   const [upsellProductId, setUpsellProductId] = useState((node.content.upsellProductId as string) ?? "");
+  const [upsellImageUrl, setUpsellImageUrl] = useState((node.content.upsellImageUrl as string) ?? "");
+  const [upsellComment, setUpsellComment] = useState((node.content.upsellComment as string) ?? "");
   const [crossSellProductId, setCrossSellProductId] = useState(
     (node.content.crossSellProductId as string) ?? "",
+  );
+  const [crossSellImageUrl, setCrossSellImageUrl] = useState(
+    (node.content.crossSellImageUrl as string) ?? "",
+  );
+  const [crossSellComment, setCrossSellComment] = useState(
+    (node.content.crossSellComment as string) ?? "",
   );
   const [productNextMap, setProductNextMap] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -740,7 +798,11 @@ function NodeCard({
     const ids = extractProductIds(node.content);
     setProductIds(ids);
     setUpsellProductId((node.content.upsellProductId as string) ?? "");
+    setUpsellImageUrl((node.content.upsellImageUrl as string) ?? "");
+    setUpsellComment((node.content.upsellComment as string) ?? "");
     setCrossSellProductId((node.content.crossSellProductId as string) ?? "");
+    setCrossSellImageUrl((node.content.crossSellImageUrl as string) ?? "");
+    setCrossSellComment((node.content.crossSellComment as string) ?? "");
     setProductNextMap(
       Object.fromEntries(ids.filter((id) => node.nextNodeMap[id]).map((id) => [id, node.nextNodeMap[id]])),
     );
@@ -774,7 +836,11 @@ function NodeCard({
         content = {
           ...content,
           ...(upsellProductId && { upsellProductId }),
+          ...(upsellImageUrl.trim() && { upsellImageUrl: upsellImageUrl.trim() }),
+          ...(upsellComment.trim() && { upsellComment: upsellComment.trim() }),
           ...(crossSellProductId && { crossSellProductId }),
+          ...(crossSellImageUrl.trim() && { crossSellImageUrl: crossSellImageUrl.trim() }),
+          ...(crossSellComment.trim() && { crossSellComment: crossSellComment.trim() }),
         };
       }
       if (node.type === "product") {
@@ -905,6 +971,21 @@ function NodeCard({
                 onChange={setUpsellProductId}
                 compact
               />
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">アップセル画像URL(任意・正方形推奨)</span>
+                <input className="input" value={upsellImageUrl} onChange={(e) => setUpsellImageUrl(e.target.value)} />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">
+                  アップセルの案内文(任意・未入力時は「〇〇はいかがですか？」を自動表示)
+                </span>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={upsellComment}
+                  onChange={(e) => setUpsellComment(e.target.value)}
+                />
+              </label>
               <OptionalProductSelect
                 label="クロスセル商品(任意)"
                 products={products}
@@ -912,6 +993,25 @@ function NodeCard({
                 onChange={setCrossSellProductId}
                 compact
               />
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">クロスセル画像URL(任意・正方形推奨)</span>
+                <input
+                  className="input"
+                  value={crossSellImageUrl}
+                  onChange={(e) => setCrossSellImageUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">
+                  クロスセルの案内文(任意・未入力時は「〇〇も一緒にいかがですか？」を自動表示)
+                </span>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={crossSellComment}
+                  onChange={(e) => setCrossSellComment(e.target.value)}
+                />
+              </label>
             </div>
           )}
 

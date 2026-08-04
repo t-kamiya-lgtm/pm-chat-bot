@@ -6,6 +6,7 @@ import { requireCatalogRole } from "@/lib/require-role";
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   status: z.enum(["draft", "published"]).optional(),
+  displayOrder: z.number().int().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -47,6 +48,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     .update({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.status !== undefined && { status: input.status }),
+      ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
     })
     .eq("id", id)
     .select("*")

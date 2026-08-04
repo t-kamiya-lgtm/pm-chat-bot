@@ -34,7 +34,11 @@ type TimelineItem =
       nodeId: string;
       productId: string;
       upsellProductId?: string;
+      upsellImageUrl?: string;
+      upsellComment?: string;
       crossSellProductId?: string;
+      crossSellImageUrl?: string;
+      crossSellComment?: string;
       sourceItemId?: string;
       greeting?: string;
       completionMessage?: string;
@@ -128,7 +132,11 @@ export function ChatWidget() {
       productIds?: string[];
       options?: ChoiceOption[];
       upsellProductId?: string;
+      upsellImageUrl?: string;
+      upsellComment?: string;
       crossSellProductId?: string;
+      crossSellImageUrl?: string;
+      crossSellComment?: string;
     };
 
     switch (node.type) {
@@ -184,10 +192,14 @@ export function ChatWidget() {
                 content.upsellProductId && productMap[content.upsellProductId]
                   ? content.upsellProductId
                   : undefined,
+              upsellImageUrl: content.upsellImageUrl,
+              upsellComment: content.upsellComment,
               crossSellProductId:
                 content.crossSellProductId && productMap[content.crossSellProductId]
                   ? content.crossSellProductId
                   : undefined,
+              crossSellImageUrl: content.crossSellImageUrl,
+              crossSellComment: content.crossSellComment,
               sourceItemId,
               greeting: checkoutMessages.greeting,
               completionMessage: checkoutMessages.completionMessage,
@@ -349,9 +361,13 @@ export function ChatWidget() {
                   key={item.id}
                   product={product}
                   upsellProduct={item.upsellProductId ? productsById[item.upsellProductId] : undefined}
+                  upsellImageUrl={item.upsellImageUrl}
+                  upsellComment={item.upsellComment}
                   crossSellProduct={
                     item.crossSellProductId ? productsById[item.crossSellProductId] : undefined
                   }
+                  crossSellImageUrl={item.crossSellImageUrl}
+                  crossSellComment={item.crossSellComment}
                   greeting={item.greeting}
                   completionMessage={item.completionMessage}
                   termsText={item.termsText}

@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminScenariosPage() {
   const supabase = createSupabaseAdminClient();
-  const { data: scenarios } = await supabase
+  const { data: scenarios, error: scenariosError } = await supabase
     .from("scenarios")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("display_order", { ascending: true });
 
   return (
     <div>
@@ -18,8 +18,19 @@ export default async function AdminScenariosPage() {
         <NewScenarioButton />
       </div>
 
+      {scenariosError && (
+        <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          シナリオ一覧の取得に失敗しました({scenariosError.message})
+        </p>
+      )}
+
       <ScenariosList
-        initialScenarios={(scenarios ?? []).map((s) => ({ id: s.id, name: s.name, status: s.status }))}
+        initialScenarios={(scenarios ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          status: s.status,
+          displayOrder: s.display_order ?? 0,
+        }))}
       />
     </div>
   );
