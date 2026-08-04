@@ -18,6 +18,7 @@ function mapNodeRow(row: Record<string, unknown>): ScenarioNode {
     content: row.content as Record<string, unknown>,
     nextNodeMap: row.next_node_map as Record<string, string>,
     isEntry: row.is_entry as boolean,
+    displayOrder: (row.display_order as number | null) ?? 0,
     createdAt: row.created_at as string,
   };
 }
@@ -32,7 +33,7 @@ export default async function ScenarioEditorPage({
 
   const [{ data: scenario }, { data: nodes }, { data: products, error: productsError }] = await Promise.all([
     supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
-    supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("created_at"),
+    supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
     supabase
       .from("products")
       .select("id, name, price, order_type, product_group_id, product_groups(name)")

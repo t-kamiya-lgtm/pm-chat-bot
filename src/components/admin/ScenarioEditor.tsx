@@ -354,6 +354,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeDefaultNext, setNewNodeDefaultNext] = useState("");
   const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
   const [error, setError] = useState<string | null>(null);
+  const [reorderPending, setReorderPending] = useState<string | null>(null);
 
   const nodeOptions = nodes.map((n) => ({ id: n.id, summary: nodeSummary(n, products) }));
 
@@ -508,6 +509,29 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     router.refresh();
   }
 
+  async function moveNode(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= nodes.length) return;
+    const current = nodes[index];
+    const target = nodes[targetIndex];
+
+    setReorderPending(current.id);
+    await Promise.all([
+      fetch(`/api/scenarios/${scenario.id}/nodes/${current.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayOrder: target.displayOrder }),
+      }),
+      fetch(`/api/scenarios/${scenario.id}/nodes/${target.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayOrder: current.displayOrder }),
+      }),
+    ]);
+    setReorderPending(null);
+    router.refresh();
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -559,15 +583,36 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
       )}
 
       <div className="mb-8 space-y-3">
-        {nodes.map((node) => (
-          <NodeCard
-            key={node.id}
-            scenarioId={scenario.id}
-            node={node}
-            products={products}
-            nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
-            onDelete={() => handleDeleteNode(node.id)}
-          />
+        {nodes.map((node, index) => (
+          <div key={node.id} className="flex items-start gap-2">
+            <div className="flex shrink-0 flex-col gap-1 pt-4">
+              <button
+                type="button"
+                disabled={reorderPending !== null || index === 0}
+                onClick={() => moveNode(index, -1)}
+                className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                disabled={reorderPending !== null || index === nodes.length - 1}
+                onClick={() => moveNode(index, 1)}
+                className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+              >
+                ▼
+              </button>
+            </div>
+            <div className="flex-1">
+              <NodeCard
+                scenarioId={scenario.id}
+                node={node}
+                products={products}
+                nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
+                onDelete={() => handleDeleteNode(node.id)}
+              />
+            </div>
+          </div>
         ))}
         {nodes.length === 0 && (
           <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">

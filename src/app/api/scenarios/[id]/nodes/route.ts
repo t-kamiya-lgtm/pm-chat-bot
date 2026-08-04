@@ -36,6 +36,15 @@ export async function POST(request: Request, { params }: RouteParams) {
       .eq("is_entry", true);
   }
 
+  const { data: lastNode } = await supabase
+    .from("scenario_nodes")
+    .select("display_order")
+    .eq("scenario_id", scenarioId)
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const displayOrder = (lastNode?.display_order ?? -1) + 1;
+
   const { data, error } = await supabase
     .from("scenario_nodes")
     .insert({
@@ -44,6 +53,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       content: input.content,
       next_node_map: input.nextNodeMap,
       is_entry: input.isEntry,
+      display_order: displayOrder,
     })
     .select("*")
     .single();

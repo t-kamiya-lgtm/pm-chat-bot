@@ -103,6 +103,7 @@ export interface ScenarioNode {
   content: Record<string, unknown>;
   nextNodeMap: Record<string, string>;
   isEntry: boolean;
+  displayOrder: number;
   createdAt: string;
 }
 
