@@ -98,9 +98,17 @@ export type ScenarioNodeType =
   | "image"
   | "survey";
 
+export type SurveyAnswerType = "checkbox" | "radio" | "date" | "text_short" | "text_long";
+
 export interface SurveyQuestion {
   label: string;
   required: boolean;
+  /** 未設定(既存データ)の場合は "text_short" 扱い。 */
+  type?: SurveyAnswerType;
+  /** checkbox/radioの選択肢。 */
+  options?: string[];
+  /** checkbox/radioで「その他(自由入力)」を末尾に追加するか。 */
+  allowOther?: boolean;
 }
 
 export interface ScenarioNode {

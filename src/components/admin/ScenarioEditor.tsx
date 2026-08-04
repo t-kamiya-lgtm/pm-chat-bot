@@ -2,7 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Product, Scenario, ScenarioNode, ScenarioNodeType, SurveyQuestion } from "@/lib/types";
+import type {
+  Product,
+  Scenario,
+  ScenarioNode,
+  ScenarioNodeType,
+  SurveyAnswerType,
+  SurveyQuestion,
+} from "@/lib/types";
+
+const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
+  checkbox: "チェックボックス(複数選択)",
+  radio: "ラジオボタン(単一選択)",
+  date: "生年月日",
+  text_short: "フリーコメント(短文)",
+  text_long: "フリーコメント(長文)",
+};
 
 const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   message: "メッセージ表示",
@@ -49,6 +64,20 @@ function extractProductIds(content: Record<string, unknown>): string[] {
 
 function truncate(text: string, max = 24) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function serializeSurveyQuestions(questions: SurveyQuestion[]): SurveyQuestion[] {
+  return questions.map((q) => {
+    const type = q.type ?? "text_short";
+    const isChoice = type === "checkbox" || type === "radio";
+    return {
+      label: q.label.trim(),
+      required: q.required,
+      type,
+      ...(isChoice && { options: (q.options ?? []).map((o) => o.trim()).filter(Boolean) }),
+      ...(isChoice && { allowOther: q.allowOther ?? false }),
+    };
+  });
 }
 
 /** 他ノードへの遷移先選択のドロップダウンに表示する、ノードの内容が分かる短い要約。 */
@@ -379,6 +408,46 @@ function OptionsEditor({
   );
 }
 
+function SurveyOptionListEditor({
+  options,
+  onChange,
+  textSize,
+}: {
+  options: string[];
+  onChange: (options: string[]) => void;
+  textSize: string;
+}) {
+  return (
+    <div className="space-y-1">
+      {options.map((option, index) => (
+        <div key={index} className="flex gap-2">
+          <input
+            className="input"
+            placeholder={`選択肢${index + 1}`}
+            value={option}
+            onChange={(e) => onChange(options.map((o, i) => (i === index ? e.target.value : o)))}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(options.filter((_, i) => i !== index))}
+            className={`shrink-0 rounded-md border border-neutral-300 px-3 hover:bg-neutral-50 ${textSize}`}
+          >
+            削除
+          </button>
+        </div>
+      ))}
+      {options.length === 0 && <p className="text-xs text-neutral-400">選択肢がまだありません</p>}
+      <button
+        type="button"
+        onClick={() => onChange([...options, ""])}
+        className={`text-blue-600 hover:underline ${textSize}`}
+      >
+        + 選択肢を追加
+      </button>
+    </div>
+  );
+}
+
 function SurveyQuestionsEditor({
   questions,
   onChange,
@@ -395,7 +464,7 @@ function SurveyQuestionsEditor({
     onChange(questions.filter((_, i) => i !== index));
   }
   function add() {
-    onChange([...questions, { label: "", required: false }]);
+    onChange([...questions, { label: "", required: false, type: "text_short" }]);
   }
 
   const textSize = compact ? "text-xs" : "text-sm";
@@ -405,31 +474,66 @@ function SurveyQuestionsEditor({
       <span className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${textSize}`}>
         質問項目(お客様は全体をスキップできます。項目ごとに回答必須にできます)
       </span>
-      {questions.map((question, index) => (
-        <div key={index} className="space-y-2 rounded-md border border-neutral-200 p-2">
-          <input
-            className="input"
-            placeholder="質問文(例: 現在お悩みのことはありますか？)"
-            value={question.label}
-            onChange={(e) => update(index, { label: e.target.value })}
-          />
-          <label className="flex items-center gap-2 text-xs text-neutral-600">
+      {questions.map((question, index) => {
+        const type = question.type ?? "text_short";
+        const isChoice = type === "checkbox" || type === "radio";
+        return (
+          <div key={index} className="space-y-2 rounded-md border border-neutral-200 p-2">
             <input
-              type="checkbox"
-              checked={question.required}
-              onChange={(e) => update(index, { required: e.target.checked })}
+              className="input"
+              placeholder="質問文(例: 現在お悩みのことはありますか？)"
+              value={question.label}
+              onChange={(e) => update(index, { label: e.target.value })}
             />
-            回答必須にする
-          </label>
-          <button
-            type="button"
-            onClick={() => remove(index)}
-            className={`text-red-600 hover:underline ${textSize}`}
-          >
-            この質問を削除
-          </button>
-        </div>
-      ))}
+            <label className={`block ${textSize}`}>
+              <span className="mb-1 block text-neutral-500">回答形式</span>
+              <select
+                className="input"
+                value={type}
+                onChange={(e) => update(index, { type: e.target.value as SurveyAnswerType })}
+              >
+                {(Object.keys(SURVEY_ANSWER_TYPE_LABELS) as SurveyAnswerType[]).map((t) => (
+                  <option key={t} value={t}>
+                    {SURVEY_ANSWER_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isChoice && (
+              <div className="space-y-2 rounded-md border border-neutral-200 p-2">
+                <SurveyOptionListEditor
+                  options={question.options ?? []}
+                  onChange={(options) => update(index, { options })}
+                  textSize={textSize}
+                />
+                <label className="flex items-center gap-2 text-xs text-neutral-600">
+                  <input
+                    type="checkbox"
+                    checked={question.allowOther ?? false}
+                    onChange={(e) => update(index, { allowOther: e.target.checked })}
+                  />
+                  「その他(自由入力)」の選択肢を追加する
+                </label>
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input
+                type="checkbox"
+                checked={question.required}
+                onChange={(e) => update(index, { required: e.target.checked })}
+              />
+              回答必須にする
+            </label>
+            <button
+              type="button"
+              onClick={() => remove(index)}
+              className={`text-red-600 hover:underline ${textSize}`}
+            >
+              この質問を削除
+            </button>
+          </div>
+        );
+      })}
       {questions.length === 0 && <p className="text-xs text-neutral-400">質問がまだありません</p>}
       <button type="button" onClick={add} className={`text-blue-600 hover:underline ${textSize}`}>
         + 質問を追加
@@ -604,8 +708,18 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         setError("質問文を入力してください");
         return;
       }
+      if (
+        newNodeSurveyQuestions.some(
+          (q) =>
+            (q.type === "checkbox" || q.type === "radio") &&
+            (q.options ?? []).map((o) => o.trim()).filter(Boolean).length === 0,
+        )
+      ) {
+        setError("チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください");
+        return;
+      }
       content = {
-        questions: newNodeSurveyQuestions.map((q) => ({ label: q.label.trim(), required: q.required })),
+        questions: serializeSurveyQuestions(newNodeSurveyQuestions),
       };
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     }
@@ -1189,8 +1303,18 @@ function NodeCard({
         setError("質問文を入力してください");
         return;
       }
+      if (
+        surveyQuestions.some(
+          (q) =>
+            (q.type === "checkbox" || q.type === "radio") &&
+            (q.options ?? []).map((o) => o.trim()).filter(Boolean).length === 0,
+        )
+      ) {
+        setError("チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください");
+        return;
+      }
       content = {
-        questions: surveyQuestions.map((q) => ({ label: q.label.trim(), required: q.required })),
+        questions: serializeSurveyQuestions(surveyQuestions),
       };
       if (defaultNext) nextNodeMap = { default: defaultNext };
     }
@@ -1481,6 +1605,12 @@ function NodeCard({
                   {surveyQuestions.map((q, idx) => (
                     <li key={idx}>
                       {q.label || "(未設定)"}
+                      <span className="ml-1 text-neutral-400">
+                        [{SURVEY_ANSWER_TYPE_LABELS[q.type ?? "text_short"]}
+                        {(q.type === "checkbox" || q.type === "radio") &&
+                          `・${(q.options ?? []).length}択${q.allowOther ? "+その他" : ""}`}
+                        ]
+                      </span>
                       {q.required && <span className="ml-1 text-red-500">(必須)</span>}
                     </li>
                   ))}

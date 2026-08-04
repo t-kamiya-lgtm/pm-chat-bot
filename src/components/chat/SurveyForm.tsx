@@ -4,6 +4,143 @@ import { useState } from "react";
 import type { SurveyQuestion } from "@/lib/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 
+const OTHER_PREFIX = "その他: ";
+
+function SurveyStepInput({
+  question,
+  value,
+  onChange,
+}: {
+  question: SurveyQuestion;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const type = question.type ?? "text_short";
+  const options = question.options ?? [];
+
+  const [checkedOptions, setCheckedOptions] = useState<string[]>(() =>
+    value.split("、").filter((v) => options.includes(v)),
+  );
+  const [otherText, setOtherText] = useState(() => {
+    const otherEntry = value.split("、").find((v) => v.startsWith(OTHER_PREFIX));
+    if (otherEntry) return otherEntry.slice(OTHER_PREFIX.length);
+    if (type === "radio" && value && !options.includes(value)) return value;
+    return "";
+  });
+  const [radioValue, setRadioValue] = useState(() => {
+    if (value.startsWith(OTHER_PREFIX)) return "__other__";
+    if (value && !options.includes(value)) return "__other__";
+    return value;
+  });
+
+  if (type === "checkbox") {
+    function commit(nextChecked: string[], nextOther: string) {
+      const parts = [...nextChecked];
+      if (question.allowOther && nextOther.trim()) parts.push(`${OTHER_PREFIX}${nextOther.trim()}`);
+      onChange(parts.join("、"));
+    }
+    return (
+      <div className="space-y-2">
+        {options.map((option) => (
+          <label key={option} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={checkedOptions.includes(option)}
+              onChange={(e) => {
+                const next = e.target.checked
+                  ? [...checkedOptions, option]
+                  : checkedOptions.filter((o) => o !== option);
+                setCheckedOptions(next);
+                commit(next, otherText);
+              }}
+            />
+            {option}
+          </label>
+        ))}
+        {question.allowOther && (
+          <label className="flex items-center gap-2 text-sm">
+            <span className="shrink-0">その他:</span>
+            <input
+              className="input"
+              value={otherText}
+              onChange={(e) => {
+                setOtherText(e.target.value);
+                commit(checkedOptions, e.target.value);
+              }}
+            />
+          </label>
+        )}
+      </div>
+    );
+  }
+
+  if (type === "radio") {
+    function commit(nextValue: string, nextOther: string) {
+      if (nextValue === "__other__") onChange(nextOther.trim() ? `${OTHER_PREFIX}${nextOther.trim()}` : "");
+      else onChange(nextValue);
+    }
+    return (
+      <div className="space-y-2">
+        {options.map((option) => (
+          <label key={option} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="survey-radio"
+              checked={radioValue === option}
+              onChange={() => {
+                setRadioValue(option);
+                commit(option, otherText);
+              }}
+            />
+            {option}
+          </label>
+        ))}
+        {question.allowOther && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="survey-radio"
+              checked={radioValue === "__other__"}
+              onChange={() => {
+                setRadioValue("__other__");
+                commit("__other__", otherText);
+              }}
+            />
+            <span className="shrink-0">その他:</span>
+            <input
+              className="input"
+              value={otherText}
+              onChange={(e) => {
+                setOtherText(e.target.value);
+                setRadioValue("__other__");
+                commit("__other__", e.target.value);
+              }}
+            />
+          </label>
+        )}
+      </div>
+    );
+  }
+
+  if (type === "date") {
+    return <input autoFocus type="date" className="input" value={value} onChange={(e) => onChange(e.target.value)} />;
+  }
+
+  if (type === "text_long") {
+    return (
+      <textarea
+        autoFocus
+        className="input"
+        rows={4}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+
+  return <textarea autoFocus className="input" rows={2} value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
 export function SurveyForm({
   questions,
   onSubmit,
@@ -58,20 +195,19 @@ export function SurveyForm({
         }}
       />
 
-      <label className="block">
-        <textarea
-          autoFocus
-          className="input"
-          rows={2}
+      <div>
+        <SurveyStepInput
+          key={stepIndex}
+          question={step}
           value={values[stepIndex]}
-          onChange={(e) => {
-            const next = [...values];
-            next[stepIndex] = e.target.value;
-            setValues(next);
+          onChange={(next) => {
+            const nextValues = [...values];
+            nextValues[stepIndex] = next;
+            setValues(nextValues);
           }}
         />
         {touched && hasError && <p className="mt-1 text-xs text-red-600">この項目は回答が必須です</p>}
-      </label>
+      </div>
 
       <button
         type="button"
