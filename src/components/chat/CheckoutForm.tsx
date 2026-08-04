@@ -59,6 +59,15 @@ function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
   }, 300);
 }
 
+const OFFER_COMMENT_MAX_LENGTH = 40;
+
+/** アップセル/クロスセルの案内文はレイアウト崩れを防ぐため文字数を制限する。 */
+function truncateOfferComment(text: string): string {
+  return text.length > OFFER_COMMENT_MAX_LENGTH
+    ? `${text.slice(0, OFFER_COMMENT_MAX_LENGTH)}…`
+    : text;
+}
+
 function minDeliveryDate(): string {
   const d = new Date();
   d.setDate(d.getDate() + MIN_DELIVERY_LEAD_DAYS);
@@ -865,73 +874,85 @@ export function CheckoutForm({
           <div className="space-y-2">
             {upsellProduct &&
               (activeProduct.id === upsellProduct.id ? (
-                <div className="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                <div className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
                   {upsellImageUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={upsellImageUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                    <img
+                      src={upsellImageUrl}
+                      alt=""
+                      className="aspect-square w-24 shrink-0 rounded-md object-cover"
+                    />
                   )}
-                  <div className="flex-1">
+                  <div className="flex min-w-0 flex-1 flex-col">
                     <p className="font-medium text-amber-800">{upsellProduct.name} に変更中です</p>
-                    <p className="text-xs text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
+                    <p className="mt-1 text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
+                    <button
+                      type="button"
+                      onClick={handleUpsellRevert}
+                      className="mt-auto self-end rounded-md border border-amber-400 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
+                    >
+                      元の商品に戻す
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleUpsellRevert}
-                    className="shrink-0 rounded-md border border-amber-400 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
-                  >
-                    元の商品に戻す
-                  </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                <div className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
                   {upsellImageUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={upsellImageUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                    <img
+                      src={upsellImageUrl}
+                      alt=""
+                      className="aspect-square w-24 shrink-0 rounded-md object-cover"
+                    />
                   )}
-                  <div className="flex-1">
+                  <div className="flex min-w-0 flex-1 flex-col">
                     <p className="font-medium text-amber-800">
-                      {upsellComment || `${upsellProduct.name} はいかがですか？`}
+                      {truncateOfferComment(upsellComment || `${upsellProduct.name} はいかがですか？`)}
                     </p>
-                    <p className="text-xs text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
+                    <p className="mt-1 text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
+                    <button
+                      type="button"
+                      onClick={handleUpsellSelect}
+                      className="mt-auto self-end rounded-md bg-amber-600 px-4 py-1.5 text-xs text-white hover:bg-amber-700"
+                    >
+                      商品を変更する
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleUpsellSelect}
-                    className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-700"
-                  >
-                    商品を変更する
-                  </button>
                 </div>
               ))}
             {crossSellProduct && (
-              <div className="flex items-center gap-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
+              <div className="flex gap-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
                 {crossSellImageUrl && (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={crossSellImageUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                  <img
+                    src={crossSellImageUrl}
+                    alt=""
+                    className="aspect-square w-24 shrink-0 rounded-md object-cover"
+                  />
                 )}
-                <div className="flex-1">
+                <div className="flex min-w-0 flex-1 flex-col">
                   <p className="font-medium text-sky-800">
-                    {crossSellComment || `${crossSellProduct.name} も一緒にいかがですか？`}
+                    {truncateOfferComment(crossSellComment || `${crossSellProduct.name} も一緒にいかがですか？`)}
                   </p>
-                  <p className="text-xs text-sky-700">{crossSellProduct.price.toLocaleString()}円</p>
+                  <p className="mt-1 text-sky-700">{crossSellProduct.price.toLocaleString()}円</p>
+                  {addonSelected ? (
+                    <button
+                      type="button"
+                      onClick={() => setAddonSelected(false)}
+                      className="mt-auto self-end rounded-md border border-sky-400 px-3 py-1.5 text-xs text-sky-800 hover:bg-sky-100"
+                    >
+                      取り消す
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAddonSelected(true)}
+                      className="mt-auto self-end rounded-md bg-sky-600 px-4 py-1.5 text-xs text-white hover:bg-sky-700"
+                    >
+                      カートに追加する
+                    </button>
+                  )}
                 </div>
-                {addonSelected ? (
-                  <button
-                    type="button"
-                    onClick={() => setAddonSelected(false)}
-                    className="shrink-0 rounded-md border border-sky-400 px-3 py-1.5 text-xs text-sky-800 hover:bg-sky-100"
-                  >
-                    取り消す
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAddonSelected(true)}
-                    className="shrink-0 rounded-md bg-sky-600 px-3 py-1.5 text-xs text-white hover:bg-sky-700"
-                  >
-                    カートに追加する
-                  </button>
-                )}
               </div>
             )}
           </div>
