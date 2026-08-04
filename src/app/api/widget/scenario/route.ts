@@ -49,9 +49,20 @@ export async function GET(request: Request) {
       (nodes ?? [])
         .filter((n) => n.type === "product" || n.type === "checkout" || n.type === "product_qa")
         .flatMap((n) => {
-          const content = n.content as { productId?: string; productIds?: string[] };
-          if (Array.isArray(content?.productIds)) return content.productIds;
-          return content?.productId ? [content.productId] : [];
+          const content = n.content as {
+            productId?: string;
+            productIds?: string[];
+            upsellProductId?: string;
+            crossSellProductId?: string;
+          };
+          const ids = Array.isArray(content?.productIds)
+            ? [...content.productIds]
+            : content?.productId
+              ? [content.productId]
+              : [];
+          if (content?.upsellProductId) ids.push(content.upsellProductId);
+          if (content?.crossSellProductId) ids.push(content.crossSellProductId);
+          return ids;
         })
         .filter((id): id is string => Boolean(id)),
     ),

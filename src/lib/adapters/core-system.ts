@@ -18,6 +18,7 @@ export interface CoreSystemOrderInput {
   amount: number; // 商品代金
   shippingFee: number; // 商品ごとに設定された送料
   paymentFee: number; // payment_method_fees から算出した手数料
+  addonProduct?: { id: string; amount: number }; // クロスセルで追加された商品(任意)
 }
 
 /**

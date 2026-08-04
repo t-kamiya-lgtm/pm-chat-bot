@@ -27,6 +27,7 @@ export const checkoutBaseSchema = z.object({
   deliveryTimeSlot: z.string().optional(),
   agreedTerms: z.literal(true),
   agreedPrivacy: z.literal(true),
+  addonProductId: z.string().uuid().optional(),
 });
 
 export const deferredCheckoutSchema = checkoutBaseSchema.extend({

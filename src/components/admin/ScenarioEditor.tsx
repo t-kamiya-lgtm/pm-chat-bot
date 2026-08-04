@@ -187,6 +187,37 @@ function ProductPicker({
   );
 }
 
+function OptionalProductSelect({
+  products,
+  value,
+  onChange,
+  label,
+  compact,
+}: {
+  products: PickableProduct[];
+  value: string;
+  onChange: (id: string) => void;
+  label: string;
+  compact?: boolean;
+}) {
+  return (
+    <label className={`block ${compact ? "text-xs" : "text-sm"}`}>
+      <span className={`mb-1 block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"}`}>
+        {label}
+      </span>
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">設定しない</option>
+        {products.map((product) => (
+          <option key={product.id} value={product.id}>
+            {product.productGroupName ? `${product.productGroupName} / ` : ""}
+            {productLabel(product)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function OptionsEditor({
   options,
   onChange,
@@ -266,6 +297,8 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [publishing, setPublishing] = useState(false);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
+  const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
+  const [newNodeCrossSellProductId, setNewNodeCrossSellProductId] = useState("");
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
   const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
@@ -333,6 +366,13 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
       }
       content =
         newNodeType === "product" ? { productIds: newNodeProductIds } : { productId: newNodeProductIds[0] };
+      if (newNodeType === "checkout") {
+        content = {
+          ...content,
+          ...(newNodeUpsellProductId && { upsellProductId: newNodeUpsellProductId }),
+          ...(newNodeCrossSellProductId && { crossSellProductId: newNodeCrossSellProductId }),
+        };
+      }
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     } else if (newNodeType === "message") {
       if (!newNodeText.trim()) {
@@ -385,6 +425,8 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     }
 
     setNewNodeProductIds([]);
+    setNewNodeUpsellProductId("");
+    setNewNodeCrossSellProductId("");
     setNewNodeText("");
     setNewNodeImageUrl("");
     setNewNodeChoiceText("");
@@ -501,6 +543,26 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           </label>
         )}
 
+        {newNodeType === "checkout" && (
+          <div className="space-y-3 rounded-md border border-neutral-200 p-3">
+            <p className="text-xs text-neutral-500">
+              注文確認画面でのアップセル(商品を入れ替える提案)・クロスセル(追加でもう1点提案)を設定できます(どちらも任意)。
+            </p>
+            <OptionalProductSelect
+              label="アップセル商品(任意・「商品を変更する」ボタンで入れ替え提案)"
+              products={products}
+              value={newNodeUpsellProductId}
+              onChange={setNewNodeUpsellProductId}
+            />
+            <OptionalProductSelect
+              label="クロスセル商品(任意・「カートに追加する」ボタンで追加提案)"
+              products={products}
+              value={newNodeCrossSellProductId}
+              onChange={setNewNodeCrossSellProductId}
+            />
+          </div>
+        )}
+
         {newNodeType === "message" && (
           <>
             <label className="block text-sm">
@@ -585,6 +647,10 @@ function NodeCard({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [productIds, setProductIds] = useState<string[]>(extractProductIds(node.content));
+  const [upsellProductId, setUpsellProductId] = useState((node.content.upsellProductId as string) ?? "");
+  const [crossSellProductId, setCrossSellProductId] = useState(
+    (node.content.crossSellProductId as string) ?? "",
+  );
   const [text, setText] = useState((node.content.text as string) ?? "");
   const [imageUrl, setImageUrl] = useState((node.content.imageUrl as string) ?? "");
   const [options, setOptions] = useState<OptionDraft[]>(
@@ -601,6 +667,8 @@ function NodeCard({
 
   function startEditing() {
     setProductIds(extractProductIds(node.content));
+    setUpsellProductId((node.content.upsellProductId as string) ?? "");
+    setCrossSellProductId((node.content.crossSellProductId as string) ?? "");
     setText((node.content.text as string) ?? "");
     setImageUrl((node.content.imageUrl as string) ?? "");
     setOptions(
@@ -627,6 +695,13 @@ function NodeCard({
         return;
       }
       content = node.type === "product" ? { productIds } : { productId: productIds[0] };
+      if (node.type === "checkout") {
+        content = {
+          ...content,
+          ...(upsellProductId && { upsellProductId }),
+          ...(crossSellProductId && { crossSellProductId }),
+        };
+      }
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else if (node.type === "message") {
       if (!text.trim()) {
@@ -723,6 +798,28 @@ function NodeCard({
             </label>
           )}
 
+          {node.type === "checkout" && (
+            <div className="space-y-3 rounded-md border border-neutral-200 p-3">
+              <p className="text-xs text-neutral-500">
+                注文確認画面でのアップセル・クロスセル(どちらも任意)
+              </p>
+              <OptionalProductSelect
+                label="アップセル商品(任意)"
+                products={products}
+                value={upsellProductId}
+                onChange={setUpsellProductId}
+                compact
+              />
+              <OptionalProductSelect
+                label="クロスセル商品(任意)"
+                products={products}
+                value={crossSellProductId}
+                onChange={setCrossSellProductId}
+                compact
+              />
+            </div>
+          )}
+
           {node.type === "message" && (
             <>
               <label className="block text-xs">
@@ -796,6 +893,15 @@ function NodeCard({
                 .filter((p): p is PickableProduct => Boolean(p))
                 .map(productLabel)
                 .join("、") || "未設定"}
+              {node.type === "checkout" && (upsellProductId || crossSellProductId) && (
+                <span className="mt-1 block text-neutral-500">
+                  {upsellProductId &&
+                    `アップセル: ${products.find((p) => p.id === upsellProductId)?.name ?? "未設定"}`}
+                  {upsellProductId && crossSellProductId && " / "}
+                  {crossSellProductId &&
+                    `クロスセル: ${products.find((p) => p.id === crossSellProductId)?.name ?? "未設定"}`}
+                </span>
+              )}
             </p>
           ) : node.type === "message" ? (
             <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">

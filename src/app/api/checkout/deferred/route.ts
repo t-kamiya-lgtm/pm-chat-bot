@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     customer: customerInput,
     deliveryDate,
     deliveryTimeSlot,
+    addonProductId,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -53,9 +54,12 @@ export async function POST(request: Request) {
     }
   }
 
+  const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
+  const addonAmount = addonProduct?.price ?? 0;
+
   const amount = product.price * quantity;
   const paymentFee = await getPaymentFee(paymentMethod, orderType);
-  const breakdown = calculateTotal(amount, product.shipping_fee, paymentFee);
+  const breakdown = calculateTotal(amount + addonAmount, product.shipping_fee, paymentFee);
 
   const customer = await upsertCustomer(customerInput);
 
@@ -74,6 +78,8 @@ export async function POST(request: Request) {
       delivery_date: deliveryDate ?? null,
       delivery_time_slot: deliveryTimeSlot ?? null,
       agreed_terms_at: new Date().toISOString(),
+      addon_product_id: addonProduct?.id ?? null,
+      addon_amount: addonProduct ? addonAmount : null,
     })
     .select("id")
     .single();
@@ -106,6 +112,7 @@ export async function POST(request: Request) {
     amount,
     shippingFee: product.shipping_fee,
     paymentFee,
+    addonProduct: addonProduct ? { id: addonProduct.id, amount: addonAmount } : undefined,
   });
 
   await supabase

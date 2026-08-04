@@ -17,6 +17,7 @@ const requestSchema = z.object({
   deliveryTimeSlot: z.string().optional(),
   agreedTerms: z.literal(true),
   agreedPrivacy: z.literal(true),
+  addonProductId: z.string().uuid().optional(),
 });
 
 const INTERVAL_MAP: Record<
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
     customer: customerInput,
     deliveryDate,
     deliveryTimeSlot,
+    addonProductId,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -62,7 +64,11 @@ export async function POST(request: Request) {
     );
   }
 
+  const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
+  const addonAmount = addonProduct?.price ?? 0;
+
   const amount = product.price * quantity;
+  // 定期支払いの単価には含めない(アドオンは初回請求のみの一括請求項目として追加する)
   const breakdown = calculateTotal(amount, product.shipping_fee, 0);
 
   const customer = await upsertCustomer(customerInput);
@@ -87,13 +93,28 @@ export async function POST(request: Request) {
     product_data: { name: product.name },
   });
 
+  if (addonProduct) {
+    // 初回請求のみの一括請求項目として、次に作成するsubscriptionの最初のinvoiceに自動で乗る
+    await stripe.invoiceItems.create({
+      customer: stripeCustomerId,
+      amount: addonAmount,
+      currency: "jpy",
+      description: `${addonProduct.name}(初回のみ)`,
+    });
+  }
+
   const subscription = await stripe.subscriptions.create({
     customer: stripeCustomerId,
     items: [{ price: price.id, quantity }],
     payment_behavior: "default_incomplete",
     payment_settings: { save_default_payment_method: "on_subscription" },
     expand: ["latest_invoice"],
-    metadata: { productId, customerId: customer.id, subscriptionInterval },
+    metadata: {
+      productId,
+      customerId: customer.id,
+      subscriptionInterval,
+      ...(addonProduct && { addonProductId: addonProduct.id }),
+    },
   });
 
   const supabase = createSupabaseAdminClient();
@@ -112,6 +133,8 @@ export async function POST(request: Request) {
       delivery_date: deliveryDate ?? null,
       delivery_time_slot: deliveryTimeSlot ?? null,
       agreed_terms_at: new Date().toISOString(),
+      addon_product_id: addonProduct?.id ?? null,
+      addon_amount: addonProduct ? addonAmount : null,
     })
     .select("id")
     .single();

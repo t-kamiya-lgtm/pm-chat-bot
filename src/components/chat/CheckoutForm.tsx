@@ -138,6 +138,8 @@ function stepAnswerText(step: WizardStep, values: Record<CheckoutFieldKey, strin
 
 interface Props {
   product: WidgetProduct;
+  upsellProduct?: WidgetProduct;
+  crossSellProduct?: WidgetProduct;
   greeting?: string;
   completionMessage?: string;
   termsText?: string;
@@ -150,6 +152,8 @@ type Stage = "options" | "wizard" | "confirm";
 
 export function CheckoutForm({
   product,
+  upsellProduct,
+  crossSellProduct,
   greeting,
   completionMessage,
   termsText,
@@ -157,10 +161,12 @@ export function CheckoutForm({
   onComplete,
   onBack,
 }: Props) {
-  const orderType = product.order_type;
+  const [activeProduct, setActiveProduct] = useState<WidgetProduct>(product);
+  const [addonSelected, setAddonSelected] = useState(false);
+  const orderType = activeProduct.order_type;
   const [stage, setStage] = useState<Stage>("options");
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
-    product.subscription_intervals[0] ?? "monthly",
+    activeProduct.subscription_intervals[0] ?? "monthly",
   );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
   const [paymentFee, setPaymentFee] = useState(0);
@@ -239,6 +245,17 @@ export function CheckoutForm({
     };
   }, [values.postalCode]);
 
+  function handleUpsellSelect() {
+    if (!upsellProduct) return;
+    setActiveProduct(upsellProduct);
+    setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
+  }
+
+  function handleUpsellRevert() {
+    setActiveProduct(product);
+    setSubscriptionInterval(product.subscription_intervals[0] ?? "monthly");
+  }
+
   async function submitOrder() {
     if (!agreedTerms || !agreedPrivacy) {
       setError("特定商取引法に基づく表記・個人情報の取り扱いについてに同意のうえお進みください");
@@ -265,6 +282,8 @@ export function CheckoutForm({
       agreedTerms: true as const,
       agreedPrivacy: true as const,
     };
+    const addonProductId =
+      addonSelected && crossSellProduct ? crossSellProduct.id : undefined;
 
     try {
       if (paymentMethod === "stripe") {
@@ -272,8 +291,19 @@ export function CheckoutForm({
           orderType === "subscription" ? "/api/checkout/subscription" : "/api/checkout/payment-intent";
         const body =
           orderType === "subscription"
-            ? { productId: product.id, subscriptionInterval, customer, ...delivery }
-            : { productId: product.id, customer, ...delivery };
+            ? {
+                productId: activeProduct.id,
+                subscriptionInterval,
+                customer,
+                ...delivery,
+                ...(addonProductId && { addonProductId }),
+              }
+            : {
+                productId: activeProduct.id,
+                customer,
+                ...delivery,
+                ...(addonProductId && { addonProductId }),
+              };
 
         const res = await fetch(endpoint, {
           method: "POST",
@@ -289,12 +319,13 @@ export function CheckoutForm({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            productId: product.id,
+            productId: activeProduct.id,
             orderType,
             subscriptionInterval: orderType === "subscription" ? subscriptionInterval : undefined,
             paymentMethod,
             customer,
             ...delivery,
+            ...(addonProductId && { addonProductId }),
           }),
         });
         const data = await res.json();
@@ -548,7 +579,7 @@ export function CheckoutForm({
         <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">ご注文商品</span>
-            <span className="font-medium">{product.name}</span>
+            <span className="font-medium">{activeProduct.name}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">お支払い方法</span>
@@ -585,6 +616,66 @@ export function CheckoutForm({
             </div>
           )}
         </div>
+
+        {(upsellProduct || crossSellProduct) && (
+          <div className="space-y-2">
+            {upsellProduct &&
+              (activeProduct.id === upsellProduct.id ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                  <div>
+                    <p className="font-medium text-amber-800">{upsellProduct.name} に変更中です</p>
+                    <p className="text-xs text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleUpsellRevert}
+                    className="shrink-0 rounded-md border border-amber-400 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
+                  >
+                    元の商品に戻す
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                  <div>
+                    <p className="font-medium text-amber-800">{upsellProduct.name} はいかがですか？</p>
+                    <p className="text-xs text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleUpsellSelect}
+                    className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-700"
+                  >
+                    商品を変更する
+                  </button>
+                </div>
+              ))}
+            {crossSellProduct && (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
+                <div>
+                  <p className="font-medium text-sky-800">{crossSellProduct.name} も一緒にいかがですか？</p>
+                  <p className="text-xs text-sky-700">{crossSellProduct.price.toLocaleString()}円</p>
+                </div>
+                {addonSelected ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddonSelected(false)}
+                    className="shrink-0 rounded-md border border-sky-400 px-3 py-1.5 text-xs text-sky-800 hover:bg-sky-100"
+                  >
+                    取り消す
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddonSelected(true)}
+                    className="shrink-0 rounded-md bg-sky-600 px-3 py-1.5 text-xs text-white hover:bg-sky-700"
+                  >
+                    カートに追加する
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
           {steps.map((step, idx) => (
@@ -651,10 +742,12 @@ export function CheckoutForm({
         </div>
 
         <AmountBreakdown
-          amount={product.price}
-          shippingFee={product.shipping_fee}
+          amount={activeProduct.price}
+          shippingFee={activeProduct.shipping_fee}
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
+          addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
+          addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
         />
 
         <button
@@ -675,7 +768,7 @@ export function CheckoutForm({
 
       <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
-          <p className="font-medium">{product.name} のご注文</p>
+          <p className="font-medium">{activeProduct.name} のご注文</p>
           <button type="button" onClick={onBack} className="text-xs text-neutral-400 hover:text-neutral-600">
             ← 戻る
           </button>
@@ -689,7 +782,7 @@ export function CheckoutForm({
             value={subscriptionInterval}
             onChange={(e) => setSubscriptionInterval(e.target.value as SubscriptionInterval)}
           >
-            {product.subscription_intervals.map((interval) => (
+            {activeProduct.subscription_intervals.map((interval) => (
               <option key={interval} value={interval}>
                 {INTERVAL_LABELS[interval]}
               </option>
@@ -724,10 +817,12 @@ export function CheckoutForm({
         </div>
 
         <AmountBreakdown
-          amount={product.price}
-          shippingFee={product.shipping_fee}
+          amount={activeProduct.price}
+          shippingFee={activeProduct.shipping_fee}
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
+          addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
+          addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
         />
 
         <button

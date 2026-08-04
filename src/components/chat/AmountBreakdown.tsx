@@ -3,16 +3,23 @@ export function AmountBreakdown({
   shippingFee,
   paymentFee,
   paymentFeeLabel,
+  addonAmount,
+  addonLabel,
 }: {
   amount: number;
   shippingFee: number;
   paymentFee: number;
   paymentFeeLabel?: string;
+  addonAmount?: number;
+  addonLabel?: string;
 }) {
-  const total = amount + shippingFee + paymentFee;
+  const total = amount + shippingFee + paymentFee + (addonAmount ?? 0);
   return (
     <div className="rounded-md bg-neutral-50 p-3 text-sm">
       <Row label="商品代金" value={amount} />
+      {addonAmount !== undefined && addonAmount > 0 && (
+        <Row label={addonLabel ?? "追加商品"} value={addonAmount} />
+      )}
       <Row label="送料" value={shippingFee} note={shippingFee === 0 ? "送料無料" : undefined} />
       {paymentFee > 0 && <Row label={paymentFeeLabel ?? "決済手数料"} value={paymentFee} note="税込" />}
       <div className="mt-1 flex justify-between border-t border-neutral-200 pt-1 font-medium">

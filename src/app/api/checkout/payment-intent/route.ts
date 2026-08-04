@@ -15,6 +15,7 @@ const requestSchema = z.object({
   deliveryTimeSlot: z.string().optional(),
   agreedTerms: z.literal(true),
   agreedPrivacy: z.literal(true),
+  addonProductId: z.string().uuid().optional(),
 });
 
 /**
@@ -28,15 +29,25 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { productId, quantity, customer: customerInput, deliveryDate, deliveryTimeSlot } = parsed.data;
+  const {
+    productId,
+    quantity,
+    customer: customerInput,
+    deliveryDate,
+    deliveryTimeSlot,
+    addonProductId,
+  } = parsed.data;
 
   const product = await getProductById(productId);
   if (!product) {
     return NextResponse.json({ error: "product not found" }, { status: 404 });
   }
 
+  const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
+  const addonAmount = addonProduct?.price ?? 0;
+
   const amount = product.price * quantity;
-  const breakdown = calculateTotal(amount, product.shipping_fee, 0);
+  const breakdown = calculateTotal(amount + addonAmount, product.shipping_fee, 0);
 
   const customer = await upsertCustomer(customerInput);
 
@@ -57,7 +68,12 @@ export async function POST(request: Request) {
     currency: "jpy",
     customer: stripeCustomerId,
     automatic_payment_methods: { enabled: true },
-    metadata: { productId, customerId: customer.id, quantity: String(quantity) },
+    metadata: {
+      productId,
+      customerId: customer.id,
+      quantity: String(quantity),
+      ...(addonProduct && { addonProductId: addonProduct.id }),
+    },
   });
 
   const supabase = createSupabaseAdminClient();
@@ -76,6 +92,8 @@ export async function POST(request: Request) {
       delivery_date: deliveryDate ?? null,
       delivery_time_slot: deliveryTimeSlot ?? null,
       agreed_terms_at: new Date().toISOString(),
+      addon_product_id: addonProduct?.id ?? null,
+      addon_amount: addonProduct ? addonAmount : null,
     })
     .select("id")
     .single();

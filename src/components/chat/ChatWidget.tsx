@@ -33,6 +33,8 @@ type TimelineItem =
       kind: "checkout";
       nodeId: string;
       productId: string;
+      upsellProductId?: string;
+      crossSellProductId?: string;
       sourceItemId?: string;
       greeting?: string;
       completionMessage?: string;
@@ -125,6 +127,8 @@ export function ChatWidget() {
       productId?: string;
       productIds?: string[];
       options?: ChoiceOption[];
+      upsellProductId?: string;
+      crossSellProductId?: string;
     };
 
     switch (node.type) {
@@ -176,6 +180,14 @@ export function ChatWidget() {
               kind: "checkout",
               nodeId: node.id,
               productId: validIds[0],
+              upsellProductId:
+                content.upsellProductId && productMap[content.upsellProductId]
+                  ? content.upsellProductId
+                  : undefined,
+              crossSellProductId:
+                content.crossSellProductId && productMap[content.crossSellProductId]
+                  ? content.crossSellProductId
+                  : undefined,
               sourceItemId,
               greeting: checkoutMessages.greeting,
               completionMessage: checkoutMessages.completionMessage,
@@ -336,6 +348,10 @@ export function ChatWidget() {
                 <CheckoutForm
                   key={item.id}
                   product={product}
+                  upsellProduct={item.upsellProductId ? productsById[item.upsellProductId] : undefined}
+                  crossSellProduct={
+                    item.crossSellProductId ? productsById[item.crossSellProductId] : undefined
+                  }
                   greeting={item.greeting}
                   completionMessage={item.completionMessage}
                   termsText={item.termsText}
