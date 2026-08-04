@@ -9,6 +9,7 @@ const nodeSchema = z.object({
   content: z.record(z.string(), z.unknown()).default({}),
   nextNodeMap: z.record(z.string(), z.string()).default({}),
   isEntry: z.boolean().default(false),
+  memo: z.string().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -54,6 +55,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       next_node_map: input.nextNodeMap,
       is_entry: input.isEntry,
       display_order: displayOrder,
+      memo: input.memo ?? null,
     })
     .select("*")
     .single();

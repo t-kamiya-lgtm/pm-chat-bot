@@ -10,6 +10,7 @@ const nodeUpdateSchema = z.object({
   nextNodeMap: z.record(z.string(), z.string()).optional(),
   isEntry: z.boolean().optional(),
   displayOrder: z.number().int().optional(),
+  memo: z.string().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string; nodeId: string }> };
@@ -44,6 +45,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.nextNodeMap !== undefined && { next_node_map: input.nextNodeMap }),
       ...(input.isEntry !== undefined && { is_entry: input.isEntry }),
       ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
+      ...(input.memo !== undefined && { memo: input.memo }),
     })
     .eq("id", nodeId)
     .eq("scenario_id", scenarioId)

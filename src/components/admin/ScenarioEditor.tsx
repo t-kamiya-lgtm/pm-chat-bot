@@ -70,8 +70,12 @@ function nodeSummary(node: ScenarioNode, products: PickableProduct[]): string {
       return `決済導線: ${productNames(extractProductIds(node.content))}`;
     case "product_qa":
       return `商品QA: ${productNames(extractProductIds(node.content))}`;
-    case "image":
-      return `画像表示: ${truncate((node.content.caption as string) || (node.content.imageUrl as string) || "")}`;
+    case "image": {
+      const urls =
+        (node.content.imageUrls as string[] | undefined) ??
+        (node.content.imageUrl ? [node.content.imageUrl as string] : []);
+      return `画像表示: ${truncate((node.content.caption as string) || urls[0] || "")}${urls.length > 1 ? `他${urls.length}枚` : ""}`;
+    }
     case "survey":
       return `アンケート: ${((node.content.questions as SurveyQuestion[] | undefined) ?? []).length}件の質問`;
     default:
@@ -189,6 +193,46 @@ function ProductPicker({
           ))}
         </select>
       )}
+    </div>
+  );
+}
+
+function ImageUrlListEditor({
+  urls,
+  onChange,
+  compact,
+}: {
+  urls: string[];
+  onChange: (urls: string[]) => void;
+  compact?: boolean;
+}) {
+  const textSize = compact ? "text-xs" : "text-sm";
+
+  return (
+    <div className="space-y-2">
+      <span className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${textSize}`}>
+        画像URL(複数登録すると、チャット上でカルーセル表示になります)
+      </span>
+      {urls.map((url, index) => (
+        <div key={index} className="flex gap-2">
+          <input
+            className="input"
+            value={url}
+            onChange={(e) => onChange(urls.map((u, i) => (i === index ? e.target.value : u)))}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(urls.filter((_, i) => i !== index))}
+            className={`shrink-0 rounded-md border border-neutral-300 px-3 hover:bg-neutral-50 ${textSize}`}
+          >
+            削除
+          </button>
+        </div>
+      ))}
+      {urls.length === 0 && <p className="text-xs text-neutral-400">画像がまだ登録されていません</p>}
+      <button type="button" onClick={() => onChange([...urls, ""])} className={`text-blue-600 hover:underline ${textSize}`}>
+        + 画像URLを追加
+      </button>
     </div>
   );
 }
@@ -414,6 +458,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeProductNextMap, setNewNodeProductNextMap] = useState<Record<string, string>>({});
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
+  const [newNodeImageUrls, setNewNodeImageUrls] = useState<string[]>([""]);
   const [newNodeImageLinkUrl, setNewNodeImageLinkUrl] = useState("");
   const [newNodeImageCaption, setNewNodeImageCaption] = useState("");
   const [newNodeSurveyQuestions, setNewNodeSurveyQuestions] = useState<SurveyQuestion[]>([]);
@@ -421,8 +466,10 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeOptions, setNewNodeOptions] = useState<OptionDraft[]>([]);
   const [newNodeDefaultNext, setNewNodeDefaultNext] = useState("");
   const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
+  const [newNodeMemo, setNewNodeMemo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [reorderPending, setReorderPending] = useState<string | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   const nodeOptions = nodes.map((n) => ({ id: n.id, summary: nodeSummary(n, products) }));
 
@@ -537,12 +584,13 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
       }
       if (newNodeDefaultNext) nextNodeMap.default = newNodeDefaultNext;
     } else if (newNodeType === "image") {
-      if (!newNodeImageUrl.trim()) {
+      const urls = newNodeImageUrls.map((u) => u.trim()).filter(Boolean);
+      if (urls.length === 0) {
         setError("画像URLを入力してください");
         return;
       }
       content = {
-        imageUrl: newNodeImageUrl.trim(),
+        imageUrls: urls,
         ...(newNodeImageLinkUrl.trim() && { linkUrl: newNodeImageLinkUrl.trim() }),
         ...(newNodeImageCaption.trim() && { caption: newNodeImageCaption.trim() }),
       };
@@ -570,6 +618,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         content,
         nextNodeMap,
         isEntry: newNodeIsEntry,
+        ...(newNodeMemo.trim() && { memo: newNodeMemo.trim() }),
       }),
     });
 
@@ -588,6 +637,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     setNewNodeProductNextMap({});
     setNewNodeText("");
     setNewNodeImageUrl("");
+    setNewNodeImageUrls([""]);
     setNewNodeImageLinkUrl("");
     setNewNodeImageCaption("");
     setNewNodeSurveyQuestions([]);
@@ -595,6 +645,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     setNewNodeOptions([]);
     setNewNodeDefaultNext("");
     setNewNodeIsEntry(false);
+    setNewNodeMemo("");
     router.refresh();
   }
 
@@ -604,27 +655,39 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     router.refresh();
   }
 
-  async function moveNode(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= nodes.length) return;
-    const current = nodes[index];
-    const target = nodes[targetIndex];
+  /** fromIndexのノードをtoPosition(1始まりの表示順)へ移動する。間の全ノードのdisplay_orderを詰め直す。 */
+  async function moveNodeToPosition(fromIndex: number, toPosition: number) {
+    const toIndex = Math.max(0, Math.min(nodes.length - 1, toPosition - 1));
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= nodes.length) return;
 
-    setReorderPending(current.id);
-    await Promise.all([
-      fetch(`/api/scenarios/${scenario.id}/nodes/${current.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayOrder: target.displayOrder }),
-      }),
-      fetch(`/api/scenarios/${scenario.id}/nodes/${target.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayOrder: current.displayOrder }),
-      }),
-    ]);
+    const reordered = [...nodes];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    setReorderPending(moved.id);
+    const changed = reordered
+      .map((node, i) => ({ node, displayOrder: i }))
+      .filter(({ node, displayOrder }) => node.displayOrder !== displayOrder);
+
+    await Promise.all(
+      changed.map(({ node, displayOrder }) =>
+        fetch(`/api/scenarios/${scenario.id}/nodes/${node.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ displayOrder }),
+        }),
+      ),
+    );
     setReorderPending(null);
     router.refresh();
+  }
+
+  function handleDrop(targetIndex: number) {
+    if (draggingIndex === null) return;
+    const fromIndex = draggingIndex;
+    setDraggingIndex(null);
+    if (fromIndex === targetIndex) return;
+    moveNodeToPosition(fromIndex, targetIndex + 1);
   }
 
   return (
@@ -679,12 +742,39 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
 
       <div className="mb-8 space-y-3">
         {nodes.map((node, index) => (
-          <div key={node.id} className="flex items-start gap-2">
-            <div className="flex shrink-0 flex-col gap-1 pt-4">
+          <div
+            key={node.id}
+            className={`flex items-start gap-2 ${draggingIndex === index ? "opacity-40" : ""}`}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop(index)}
+          >
+            <div className="flex shrink-0 flex-col items-center gap-1 pt-4">
+              <div
+                draggable
+                onDragStart={() => setDraggingIndex(index)}
+                onDragEnd={() => setDraggingIndex(null)}
+                title="ドラッグして並び替え"
+                className="cursor-grab select-none rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-50 active:cursor-grabbing"
+              >
+                ⠿
+              </div>
+              <input
+                type="number"
+                key={`${node.id}-${index}`}
+                defaultValue={index + 1}
+                min={1}
+                max={nodes.length}
+                disabled={reorderPending !== null}
+                onBlur={(e) => {
+                  const value = Number(e.target.value);
+                  if (Number.isFinite(value) && value !== index + 1) moveNodeToPosition(index, value);
+                }}
+                className="input w-14 px-1 text-center text-xs"
+              />
               <button
                 type="button"
                 disabled={reorderPending !== null || index === 0}
-                onClick={() => moveNode(index, -1)}
+                onClick={() => moveNodeToPosition(index, index)}
                 className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
               >
                 ▲
@@ -692,7 +782,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
               <button
                 type="button"
                 disabled={reorderPending !== null || index === nodes.length - 1}
-                onClick={() => moveNode(index, 1)}
+                onClick={() => moveNodeToPosition(index, index + 2)}
                 className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
               >
                 ▼
@@ -860,14 +950,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
 
         {newNodeType === "image" && (
           <>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">画像URL</span>
-              <input
-                className="input"
-                value={newNodeImageUrl}
-                onChange={(e) => setNewNodeImageUrl(e.target.value)}
-              />
-            </label>
+            <ImageUrlListEditor urls={newNodeImageUrls} onChange={setNewNodeImageUrls} />
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-neutral-700">リンクURL(任意・画像タップ時に開く)</span>
               <input
@@ -905,6 +988,18 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
             onChange={(e) => setNewNodeIsEntry(e.target.checked)}
           />
           このノードを開始ノードにする
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-neutral-700">
+            メモ(任意・管理用。チャットボット画面には表示されません)
+          </span>
+          <textarea
+            className="input"
+            rows={2}
+            value={newNodeMemo}
+            onChange={(e) => setNewNodeMemo(e.target.value)}
+          />
         </label>
 
         <button
@@ -955,11 +1050,16 @@ function NodeCard({
   );
   const [text, setText] = useState((node.content.text as string) ?? "");
   const [imageUrl, setImageUrl] = useState((node.content.imageUrl as string) ?? "");
+  const [imageUrls, setImageUrls] = useState<string[]>(
+    (node.content.imageUrls as string[] | undefined) ??
+      (node.content.imageUrl ? [node.content.imageUrl as string] : [""]),
+  );
   const [imageLinkUrl, setImageLinkUrl] = useState((node.content.linkUrl as string) ?? "");
   const [imageCaption, setImageCaption] = useState((node.content.caption as string) ?? "");
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>(
     (node.content.questions as SurveyQuestion[] | undefined) ?? [],
   );
+  const [memo, setMemo] = useState(node.memo ?? "");
   const [options, setOptions] = useState<OptionDraft[]>(
     ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
       label: o.label,
@@ -986,9 +1086,14 @@ function NodeCard({
     );
     setText((node.content.text as string) ?? "");
     setImageUrl((node.content.imageUrl as string) ?? "");
+    setImageUrls(
+      (node.content.imageUrls as string[] | undefined) ??
+        (node.content.imageUrl ? [node.content.imageUrl as string] : [""]),
+    );
     setImageLinkUrl((node.content.linkUrl as string) ?? "");
     setImageCaption((node.content.caption as string) ?? "");
     setSurveyQuestions((node.content.questions as SurveyQuestion[] | undefined) ?? []);
+    setMemo(node.memo ?? "");
     setOptions(
       ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
         label: o.label,
@@ -1064,12 +1169,13 @@ function NodeCard({
       }
       if (defaultNext) nextNodeMap.default = defaultNext;
     } else if (node.type === "image") {
-      if (!imageUrl.trim()) {
+      const urls = imageUrls.map((u) => u.trim()).filter(Boolean);
+      if (urls.length === 0) {
         setError("画像URLを入力してください");
         return;
       }
       content = {
-        imageUrl: imageUrl.trim(),
+        imageUrls: urls,
         ...(imageLinkUrl.trim() && { linkUrl: imageLinkUrl.trim() }),
         ...(imageCaption.trim() && { caption: imageCaption.trim() }),
       };
@@ -1093,7 +1199,7 @@ function NodeCard({
     const res = await fetch(`/api/scenarios/${scenarioId}/nodes/${node.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content, nextNodeMap, isEntry }),
+      body: JSON.stringify({ content, nextNodeMap, isEntry, memo: memo.trim() }),
     });
     setSaving(false);
 
@@ -1138,6 +1244,13 @@ function NodeCard({
       {editing ? (
         <div className="space-y-2">
           {error && <p className="text-xs text-red-600">{error}</p>}
+
+          <label className="block text-xs">
+            <span className="mb-1 block text-neutral-500">
+              メモ(任意・管理用。チャットボット画面には表示されません)
+            </span>
+            <textarea className="input" rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} />
+          </label>
 
           {usesProductPicker(node.type) && (
             <label className="block text-xs">
@@ -1255,10 +1368,7 @@ function NodeCard({
 
           {node.type === "image" && (
             <>
-              <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">画像URL</span>
-                <input className="input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
-              </label>
+              <ImageUrlListEditor urls={imageUrls} onChange={setImageUrls} compact />
               <label className="block text-xs">
                 <span className="mb-1 block text-neutral-500">リンクURL(任意・画像タップ時に開く)</span>
                 <input
@@ -1314,6 +1424,11 @@ function NodeCard({
         </div>
       ) : (
         <>
+          {memo && (
+            <p className="mb-2 rounded bg-amber-50 p-2 text-xs whitespace-pre-wrap text-amber-800">
+              メモ: {memo}
+            </p>
+          )}
           {usesProductPicker(node.type) ? (
             <p className="rounded bg-neutral-50 p-2 text-xs">
               品番:{" "}
@@ -1334,12 +1449,28 @@ function NodeCard({
             </p>
           ) : node.type === "message" ? (
             <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
-              {text || "(未設定)"}
+              {truncate(text, 40) || "(未設定)"}
               {imageUrl && <p className="mt-1 text-neutral-400">画像: {imageUrl}</p>}
             </div>
           ) : node.type === "image" ? (
-            <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
-              {imageUrl ? `画像: ${imageUrl}` : "(未設定)"}
+            <div className="rounded bg-neutral-50 p-2 text-xs">
+              {imageUrls.filter(Boolean).length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {imageUrls
+                    .filter(Boolean)
+                    .map((url, idx) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={idx}
+                        src={url}
+                        alt=""
+                        className="h-16 w-16 rounded border border-neutral-200 object-cover"
+                      />
+                    ))}
+                </div>
+              ) : (
+                "(未設定)"
+              )}
               {imageLinkUrl && <p className="mt-1 text-neutral-400">リンク: {imageLinkUrl}</p>}
               {imageCaption && <p className="mt-1 text-neutral-500">{imageCaption}</p>}
             </div>
@@ -1360,7 +1491,7 @@ function NodeCard({
             </div>
           ) : (
             <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
-              {text || "(未設定)"}
+              {truncate(text, 40) || "(未設定)"}
               {options.length > 0 && (
                 <p className="mt-1 text-neutral-500">
                   選択肢: {options.map((o) => o.label || o.value).join("、")}

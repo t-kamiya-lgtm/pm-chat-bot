@@ -11,6 +11,7 @@ import { ProductDetailPanel } from "@/components/chat/ProductDetailPanel";
 import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 import { SurveyForm } from "@/components/chat/SurveyForm";
+import { ImageCarousel } from "@/components/chat/ImageCarousel";
 
 interface GreetingItem {
   type: "image" | "text";
@@ -21,6 +22,7 @@ interface GreetingItem {
 
 type TimelineItem =
   | { id: string; kind: "bot-text"; text: string; imageUrl?: string; linkUrl?: string }
+  | { id: string; kind: "image-carousel"; imageUrls: string[]; linkUrl?: string; caption?: string }
   | { id: string; kind: "user-text"; text: string }
   | {
       id: string;
@@ -169,6 +171,7 @@ export function ChatWidget() {
     const content = node.content as {
       text?: string;
       imageUrl?: string;
+      imageUrls?: string[];
       linkUrl?: string;
       caption?: string;
       productId?: string;
@@ -194,16 +197,30 @@ export function ChatWidget() {
         break;
       }
       case "image": {
-        setTimeline((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            kind: "bot-text",
-            text: content.caption ?? "",
-            imageUrl: content.imageUrl,
-            linkUrl: content.linkUrl,
-          },
-        ]);
+        const urls = content.imageUrls ?? (content.imageUrl ? [content.imageUrl] : []);
+        if (urls.length > 1) {
+          setTimeline((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              kind: "image-carousel",
+              imageUrls: urls,
+              linkUrl: content.linkUrl,
+              caption: content.caption,
+            },
+          ]);
+        } else {
+          setTimeline((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              kind: "bot-text",
+              text: content.caption ?? "",
+              imageUrl: urls[0],
+              linkUrl: content.linkUrl,
+            },
+          ]);
+        }
         const next = node.next_node_map.default;
         if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId), 300);
         break;
@@ -414,6 +431,15 @@ export function ChatWidget() {
                     imageUrl: item.imageUrl,
                     linkUrl: item.linkUrl,
                   }}
+                />
+              );
+            case "image-carousel":
+              return (
+                <ImageCarousel
+                  key={item.id}
+                  imageUrls={item.imageUrls}
+                  linkUrl={item.linkUrl}
+                  caption={item.caption}
                 />
               );
             case "user-text":

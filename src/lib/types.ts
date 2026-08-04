@@ -111,6 +111,8 @@ export interface ScenarioNode {
   nextNodeMap: Record<string, string>;
   isEntry: boolean;
   displayOrder: number;
+  /** 管理用メモ。チャットボット画面には表示されない。 */
+  memo: string | null;
   createdAt: string;
 }
 

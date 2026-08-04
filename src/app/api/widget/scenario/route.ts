@@ -38,9 +38,10 @@ export async function GET(request: Request) {
   if (scenarioError) return NextResponse.json({ error: scenarioError.message }, { status: 500 });
   if (!scenario) return NextResponse.json({ error: "no published scenario" }, { status: 404 });
 
+  // memoは管理用メモのため、チャットボット側には一切送らない
   const { data: nodes, error: nodesError } = await supabase
     .from("scenario_nodes")
-    .select("*")
+    .select("id, scenario_id, type, content, next_node_map, is_entry, display_order, created_at")
     .eq("scenario_id", scenario.id);
   if (nodesError) return NextResponse.json({ error: nodesError.message }, { status: 500 });
 

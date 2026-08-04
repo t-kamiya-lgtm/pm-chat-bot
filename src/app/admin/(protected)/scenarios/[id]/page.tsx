@@ -19,6 +19,7 @@ function mapNodeRow(row: Record<string, unknown>): ScenarioNode {
     nextNodeMap: row.next_node_map as Record<string, string>,
     isEntry: row.is_entry as boolean,
     displayOrder: (row.display_order as number | null) ?? 0,
+    memo: (row.memo as string | null) ?? null,
     createdAt: row.created_at as string,
   };
 }
