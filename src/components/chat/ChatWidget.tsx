@@ -246,7 +246,7 @@ export function ChatWidget() {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
 
     const node = nodesById[item.nodeId];
-    const next = node?.next_node_map.default;
+    const next = node?.next_node_map[productId] ?? node?.next_node_map.default;
     if (next && nodesById[next]?.type === "checkout") {
       advance(next, nodesById, productsById, item.id);
     } else {

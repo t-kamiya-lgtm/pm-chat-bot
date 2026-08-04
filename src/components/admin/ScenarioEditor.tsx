@@ -218,6 +218,49 @@ function OptionalProductSelect({
   );
 }
 
+function ProductNextNodeEditor({
+  productIds,
+  products,
+  nextNodeByProduct,
+  onChange,
+  nodeOptions,
+  compact,
+}: {
+  productIds: string[];
+  products: PickableProduct[];
+  nextNodeByProduct: Record<string, string>;
+  onChange: (map: Record<string, string>) => void;
+  nodeOptions: { id: string; summary: string }[];
+  compact?: boolean;
+}) {
+  if (productIds.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-md border border-neutral-200 p-3">
+      <span
+        className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${
+          compact ? "text-xs" : "text-sm"
+        }`}
+      >
+        商品ごとの次のノード(任意・選んだ商品によって行き先を分けられます。未設定の商品は下の「次に進むノード」に進みます)
+      </span>
+      {productIds.map((id) => {
+        const product = products.find((p) => p.id === id);
+        return (
+          <NextNodeSelect
+            key={id}
+            label={product ? productLabel(product) : id}
+            nodeOptions={nodeOptions}
+            value={nextNodeByProduct[id] ?? ""}
+            onChange={(v) => onChange({ ...nextNodeByProduct, [id]: v })}
+            compact={compact}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function OptionsEditor({
   options,
   onChange,
@@ -299,6 +342,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
   const [newNodeCrossSellProductId, setNewNodeCrossSellProductId] = useState("");
+  const [newNodeProductNextMap, setNewNodeProductNextMap] = useState<Record<string, string>>({});
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
   const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
@@ -373,7 +417,16 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           ...(newNodeCrossSellProductId && { crossSellProductId: newNodeCrossSellProductId }),
         };
       }
-      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
+      if (newNodeType === "product") {
+        nextNodeMap = {};
+        for (const id of newNodeProductIds) {
+          const next = newNodeProductNextMap[id];
+          if (next) nextNodeMap[id] = next;
+        }
+        if (newNodeDefaultNext) nextNodeMap.default = newNodeDefaultNext;
+      } else if (newNodeDefaultNext) {
+        nextNodeMap = { default: newNodeDefaultNext };
+      }
     } else if (newNodeType === "message") {
       if (!newNodeText.trim()) {
         setError("メッセージ本文を入力してください");
@@ -427,6 +480,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     setNewNodeProductIds([]);
     setNewNodeUpsellProductId("");
     setNewNodeCrossSellProductId("");
+    setNewNodeProductNextMap({});
     setNewNodeText("");
     setNewNodeImageUrl("");
     setNewNodeChoiceText("");
@@ -543,6 +597,16 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           </label>
         )}
 
+        {newNodeType === "product" && (
+          <ProductNextNodeEditor
+            productIds={newNodeProductIds}
+            products={products}
+            nextNodeByProduct={newNodeProductNextMap}
+            onChange={setNewNodeProductNextMap}
+            nodeOptions={nodeOptions}
+          />
+        )}
+
         {newNodeType === "checkout" && (
           <div className="space-y-3 rounded-md border border-neutral-200 p-3">
             <p className="text-xs text-neutral-500">
@@ -651,6 +715,13 @@ function NodeCard({
   const [crossSellProductId, setCrossSellProductId] = useState(
     (node.content.crossSellProductId as string) ?? "",
   );
+  const [productNextMap, setProductNextMap] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      extractProductIds(node.content)
+        .filter((id) => node.nextNodeMap[id])
+        .map((id) => [id, node.nextNodeMap[id]]),
+    ),
+  );
   const [text, setText] = useState((node.content.text as string) ?? "");
   const [imageUrl, setImageUrl] = useState((node.content.imageUrl as string) ?? "");
   const [options, setOptions] = useState<OptionDraft[]>(
@@ -666,9 +737,13 @@ function NodeCard({
   const [saving, setSaving] = useState(false);
 
   function startEditing() {
-    setProductIds(extractProductIds(node.content));
+    const ids = extractProductIds(node.content);
+    setProductIds(ids);
     setUpsellProductId((node.content.upsellProductId as string) ?? "");
     setCrossSellProductId((node.content.crossSellProductId as string) ?? "");
+    setProductNextMap(
+      Object.fromEntries(ids.filter((id) => node.nextNodeMap[id]).map((id) => [id, node.nextNodeMap[id]])),
+    );
     setText((node.content.text as string) ?? "");
     setImageUrl((node.content.imageUrl as string) ?? "");
     setOptions(
@@ -702,7 +777,16 @@ function NodeCard({
           ...(crossSellProductId && { crossSellProductId }),
         };
       }
-      if (defaultNext) nextNodeMap = { default: defaultNext };
+      if (node.type === "product") {
+        nextNodeMap = {};
+        for (const id of productIds) {
+          const next = productNextMap[id];
+          if (next) nextNodeMap[id] = next;
+        }
+        if (defaultNext) nextNodeMap.default = defaultNext;
+      } else if (defaultNext) {
+        nextNodeMap = { default: defaultNext };
+      }
     } else if (node.type === "message") {
       if (!text.trim()) {
         setError("メッセージ本文を入力してください");
@@ -796,6 +880,17 @@ function NodeCard({
                 onChange={setProductIds}
               />
             </label>
+          )}
+
+          {node.type === "product" && (
+            <ProductNextNodeEditor
+              productIds={productIds}
+              products={products}
+              nextNodeByProduct={productNextMap}
+              onChange={setProductNextMap}
+              nodeOptions={nodeOptions}
+              compact
+            />
           )}
 
           {node.type === "checkout" && (
@@ -929,7 +1024,17 @@ function NodeCard({
                   .filter(Boolean)
                   .join("、") ||
                 (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")
-              : (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")}
+              : node.type === "product"
+                ? productIds
+                    .map((id) => {
+                      const target = nodeOptions.find((n) => n.id === productNextMap[id]);
+                      const product = products.find((p) => p.id === id);
+                      return target && product ? `${product.name}→${target.summary}` : null;
+                    })
+                    .filter(Boolean)
+                    .join("、") ||
+                  (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")
+                : (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")}
           </p>
         </>
       )}
