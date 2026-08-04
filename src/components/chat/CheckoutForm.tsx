@@ -210,7 +210,6 @@ interface Props {
   crossSellProduct?: WidgetProduct;
   crossSellImageUrl?: string;
   crossSellComment?: string;
-  greeting?: string;
   completionMessage?: string;
   termsText?: string;
   privacyText?: string;
@@ -228,7 +227,6 @@ export function CheckoutForm({
   crossSellProduct,
   crossSellImageUrl,
   crossSellComment,
-  greeting,
   completionMessage,
   termsText,
   privacyText,
@@ -1083,8 +1081,6 @@ export function CheckoutForm({
 
   return (
     <div className="space-y-3">
-      {greeting && <MessageBubble message={{ id: "greeting", from: "bot", kind: "text", text: greeting }} />}
-
       <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="font-medium">{activeProduct.name} のご注文</p>

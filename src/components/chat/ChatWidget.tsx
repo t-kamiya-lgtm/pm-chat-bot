@@ -40,7 +40,6 @@ type TimelineItem =
       crossSellImageUrl?: string;
       crossSellComment?: string;
       sourceItemId?: string;
-      greeting?: string;
       completionMessage?: string;
       termsText?: string;
       privacyText?: string;
@@ -74,38 +73,47 @@ export function ChatWidget() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/widget/checkout-messages")
-      .then((res) => res.json())
-      .then(
-        (body: {
-          greeting?: string;
-          completionMessage?: string;
-          termsText?: string;
-          privacyText?: string;
-        }) => setCheckoutMessages(body),
-      )
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     const scenarioUrl = previewScenarioId
       ? `/api/widget/scenario?id=${previewScenarioId}&preview=1`
       : "/api/widget/scenario";
-    fetch(scenarioUrl)
-      .then(async (res) => {
+
+    Promise.all([
+      fetch("/api/widget/checkout-messages")
+        .then((res) => res.json())
+        .catch(
+          () =>
+            ({}) as {
+              greeting?: string;
+              completionMessage?: string;
+              termsText?: string;
+              privacyText?: string;
+            },
+        ),
+      fetch(scenarioUrl).then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? "読み込みに失敗しました");
-        return res.json();
-      })
-      .then((body: { nodes: WidgetScenarioNode[]; products: WidgetProduct[] }) => {
+        return res.json() as Promise<{ nodes: WidgetScenarioNode[]; products: WidgetProduct[] }>;
+      }),
+    ])
+      .then(([messagesBody, scenarioBody]) => {
+        setCheckoutMessages(messagesBody);
+
         const nodeMap: Record<string, WidgetScenarioNode> = {};
-        for (const node of body.nodes) nodeMap[node.id] = node;
+        for (const node of scenarioBody.nodes) nodeMap[node.id] = node;
         const productMap: Record<string, WidgetProduct> = {};
-        for (const product of body.products) productMap[product.id] = product;
+        for (const product of scenarioBody.products) productMap[product.id] = product;
 
         setNodesById(nodeMap);
         setProductsById(productMap);
 
-        const entry = body.nodes.find((n) => n.is_entry) ?? body.nodes[0];
+        // 決済フォーム設定の「あいさつ文」は、商品選択より前に会話冒頭で1度だけ表示する
+        if (messagesBody.greeting) {
+          setTimeline((prev) => [
+            ...prev,
+            { id: nextId(), kind: "bot-text", text: messagesBody.greeting },
+          ]);
+        }
+
+        const entry = scenarioBody.nodes.find((n) => n.is_entry) ?? scenarioBody.nodes[0];
         if (entry) advance(entry.id, nodeMap, productMap);
       })
       .catch((err) => setLoadError((err as Error).message));
@@ -201,7 +209,6 @@ export function ChatWidget() {
               crossSellImageUrl: content.crossSellImageUrl,
               crossSellComment: content.crossSellComment,
               sourceItemId,
-              greeting: checkoutMessages.greeting,
               completionMessage: checkoutMessages.completionMessage,
               termsText: checkoutMessages.termsText,
               privacyText: checkoutMessages.privacyText,
@@ -271,7 +278,6 @@ export function ChatWidget() {
           nodeId: item.nodeId,
           productId,
           sourceItemId: item.id,
-          greeting: checkoutMessages.greeting,
           completionMessage: checkoutMessages.completionMessage,
           termsText: checkoutMessages.termsText,
           privacyText: checkoutMessages.privacyText,
@@ -368,7 +374,6 @@ export function ChatWidget() {
                   }
                   crossSellImageUrl={item.crossSellImageUrl}
                   crossSellComment={item.crossSellComment}
-                  greeting={item.greeting}
                   completionMessage={item.completionMessage}
                   termsText={item.termsText}
                   privacyText={item.privacyText}
