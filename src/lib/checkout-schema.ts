@@ -15,6 +15,11 @@ export const customerInputSchema = z.object({
   address: addressSchema,
 });
 
+/** 注文者と別の住所へ届ける場合のお届け先(任意)。 */
+export const shippingAddressSchema = addressSchema.extend({
+  recipientName: z.string().min(1),
+});
+
 export const subscriptionIntervalSchema = z.enum(["biweekly", "monthly", "bimonthly"]);
 
 export const checkoutBaseSchema = z.object({
@@ -28,6 +33,7 @@ export const checkoutBaseSchema = z.object({
   agreedTerms: z.literal(true),
   agreedPrivacy: z.literal(true),
   addonProductId: z.string().uuid().optional(),
+  shippingAddress: shippingAddressSchema.optional(),
 });
 
 export const deferredCheckoutSchema = checkoutBaseSchema.extend({

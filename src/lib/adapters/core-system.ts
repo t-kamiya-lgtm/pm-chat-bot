@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Address, OrderType, SubscriptionInterval } from "@/lib/types";
+import type { Address, OrderType, ShippingAddress, SubscriptionInterval } from "@/lib/types";
 
 export type CoreSystemPaymentMethod = "deferred_invoice" | "cod";
 
@@ -19,6 +19,7 @@ export interface CoreSystemOrderInput {
   shippingFee: number; // 商品ごとに設定された送料
   paymentFee: number; // payment_method_fees から算出した手数料
   addonProduct?: { id: string; amount: number }; // クロスセルで追加された商品(任意)
+  shippingAddress?: ShippingAddress; // 注文者と別の届け先(任意、未指定時は注文者住所と同じ)
 }
 
 /**

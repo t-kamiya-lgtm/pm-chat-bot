@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { autoWireCheckoutNode } from "@/lib/scenario-auto-wire";
 
 const nodeSchema = z.object({
   type: z.enum(["message", "choice", "product", "checkout", "product_qa"]),
@@ -48,5 +49,11 @@ export async function POST(request: Request, { params }: RouteParams) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (data.type === "checkout") {
+    const content = data.content as { productId?: string };
+    await autoWireCheckoutNode(supabase, scenarioId, data.id, content.productId);
+  }
+
   return NextResponse.json({ node: data }, { status: 201 });
 }

@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     deliveryDate,
     deliveryTimeSlot,
     addonProductId,
+    shippingAddress,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
       agreed_terms_at: new Date().toISOString(),
       addon_product_id: addonProduct?.id ?? null,
       addon_amount: addonProduct ? addonAmount : null,
+      shipping_address: shippingAddress ?? null,
     })
     .select("id")
     .single();
@@ -113,6 +115,7 @@ export async function POST(request: Request) {
     shippingFee: product.shipping_fee,
     paymentFee,
     addonProduct: addonProduct ? { id: addonProduct.id, amount: addonAmount } : undefined,
+    shippingAddress: shippingAddress ?? undefined,
   });
 
   await supabase

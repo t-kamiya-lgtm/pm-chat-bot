@@ -114,6 +114,11 @@ export interface Address {
   line2?: string;
 }
 
+/** 注文者と別の住所へ届ける場合のお届け先(任意)。 */
+export interface ShippingAddress extends Address {
+  recipientName: string;
+}
+
 export interface Customer {
   id: string;
   email: string;
@@ -141,6 +146,7 @@ export interface Order {
   status: OrderStatus;
   stripePaymentIntentId: string | null;
   stripeSubscriptionId: string | null;
+  shippingAddress: ShippingAddress | null;
   createdAt: string;
   updatedAt: string;
 }

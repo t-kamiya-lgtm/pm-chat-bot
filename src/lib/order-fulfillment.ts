@@ -73,6 +73,7 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     status: row.status as Order["status"],
     stripePaymentIntentId: row.stripe_payment_intent_id as string | null,
     stripeSubscriptionId: row.stripe_subscription_id as string | null,
+    shippingAddress: (row.shipping_address as Order["shippingAddress"]) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

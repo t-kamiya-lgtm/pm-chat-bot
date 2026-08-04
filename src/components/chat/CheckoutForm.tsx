@@ -42,6 +42,11 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
   },
 ];
 
+const SHIPPING_ADDRESS_FIELD_KEYS = ["postalCode", "prefecture", "city", "line1"] as const;
+type ShippingAddressFieldKey = (typeof SHIPPING_ADDRESS_FIELD_KEYS)[number];
+type ShippingFieldKey = "recipientName" | ShippingAddressFieldKey;
+const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = ["recipientName", ...SHIPPING_ADDRESS_FIELD_KEYS];
+
 /** モバイルでキーボード表示時に入力欄が隠れないよう、フォーカス時に画面中央へスクロールする。 */
 function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
   const target = e.target;
@@ -87,6 +92,8 @@ function buildWizardSteps(order: CheckoutFieldKey[]): WizardStep[] {
 function validateField(key: CheckoutFieldKey, value: string): string | null {
   const trimmed = value.trim();
   switch (key) {
+    case "paymentMethod":
+      return null;
     case "name":
       return trimmed ? null : "お名前を入力してください";
     case "email":
@@ -120,18 +127,50 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
   }
 }
 
+function validateShippingField(key: ShippingFieldKey, value: string): string | null {
+  const trimmed = value.trim();
+  switch (key) {
+    case "recipientName":
+      return trimmed ? null : "お届け先のお名前を入力してください";
+    case "postalCode":
+      return /^\d{7}$/.test(value.replace(/[^0-9]/g, ""))
+        ? null
+        : "郵便番号は7桁の数字で入力してください";
+    case "prefecture":
+      return trimmed ? null : "都道府県を入力してください";
+    case "city":
+      return trimmed ? null : "市区町村を入力してください";
+    case "line1":
+      return trimmed ? null : "番地・建物名を入力してください";
+    default:
+      return null;
+  }
+}
+
 function stepQuestionText(step: WizardStep): string {
   if (step.kind === "address") return "お届け先の住所を教えてください。";
   if (step.kind === "delivery") return "お届け希望日・時間帯を教えてください。";
+  if (step.key === "paymentMethod") return "お支払い方法をお選びください。";
   return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。${step.key === "phone" ? "(任意)" : ""}`;
 }
 
-function stepAnswerText(step: WizardStep, values: Record<CheckoutFieldKey, string>): string {
+function stepAnswerText(
+  step: WizardStep,
+  values: Record<CheckoutFieldKey, string>,
+  shipping?: { enabled: boolean; recipientName: string; postalCode: string; prefecture: string; city: string; line1: string },
+): string {
   if (step.kind === "address") {
-    return `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`;
+    const base = `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`;
+    if (shipping?.enabled) {
+      return `${base}(お届け先: ${shipping.recipientName} 〒${shipping.postalCode} ${shipping.prefecture}${shipping.city}${shipping.line1})`;
+    }
+    return base;
   }
   if (step.kind === "delivery") {
     return `${values.deliveryDate || "(未指定)"} ${values.deliveryTimeSlot || ""}`.trim();
+  }
+  if (step.key === "paymentMethod") {
+    return PAYMENT_METHOD_OPTIONS.find((o) => o.value === values.paymentMethod)?.label ?? "(未選択)";
   }
   return values[step.key] || "(未入力)";
 }
@@ -148,7 +187,7 @@ interface Props {
   onBack: () => void;
 }
 
-type Stage = "options" | "wizard" | "confirm";
+type Stage = "options" | "wizard" | "review" | "agreement";
 
 export function CheckoutForm({
   product,
@@ -168,7 +207,6 @@ export function CheckoutForm({
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
     activeProduct.subscription_intervals[0] ?? "monthly",
   );
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("stripe");
   const [paymentFee, setPaymentFee] = useState(0);
 
   const [fieldOrder, setFieldOrder] = useState<CheckoutFieldKey[]>(DEFAULT_CHECKOUT_FIELD_ORDER);
@@ -176,6 +214,7 @@ export function CheckoutForm({
   const [stepIndex, setStepIndex] = useState(0);
   const [returningToConfirm, setReturningToConfirm] = useState(false);
   const [values, setValues] = useState<Record<CheckoutFieldKey, string>>({
+    paymentMethod: "stripe",
     name: "",
     email: "",
     phone: "",
@@ -186,10 +225,25 @@ export function CheckoutForm({
     deliveryDate: "",
     deliveryTimeSlot: "",
   });
+  const paymentMethod = values.paymentMethod as PaymentMethod;
   const [touched, setTouched] = useState<Partial<Record<CheckoutFieldKey, boolean>>>({});
   const [addressLookupStatus, setAddressLookupStatus] = useState<"idle" | "loading" | "not_found">(
     "idle",
   );
+
+  const [shipToDifferentAddress, setShipToDifferentAddress] = useState(false);
+  const [shippingValues, setShippingValues] = useState<Record<ShippingFieldKey, string>>({
+    recipientName: "",
+    postalCode: "",
+    prefecture: "",
+    city: "",
+    line1: "",
+  });
+  const [shippingTouched, setShippingTouched] = useState<Partial<Record<ShippingFieldKey, boolean>>>({});
+  const [shippingAddressLookupStatus, setShippingAddressLookupStatus] = useState<
+    "idle" | "loading" | "not_found"
+  >("idle");
+
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
 
@@ -245,6 +299,38 @@ export function CheckoutForm({
     };
   }, [values.postalCode]);
 
+  useEffect(() => {
+    if (!shipToDifferentAddress) return;
+    const digitsOnly = shippingValues.postalCode.replace(/[^0-9]/g, "");
+    if (digitsOnly.length !== 7) return;
+
+    let cancelled = false;
+
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setShippingAddressLookupStatus("loading");
+      })
+      .then(() => fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${digitsOnly}`))
+      .then((res) => res.json())
+      .then((body: { results?: { address1: string; address2: string }[] }) => {
+        if (cancelled) return;
+        const result = body.results?.[0];
+        if (result) {
+          setShippingValues((prev) => ({ ...prev, prefecture: result.address1, city: result.address2 }));
+          setShippingAddressLookupStatus("idle");
+        } else {
+          setShippingAddressLookupStatus("not_found");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setShippingAddressLookupStatus("idle");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shippingValues.postalCode, shipToDifferentAddress]);
+
   function handleUpsellSelect() {
     if (!upsellProduct) return;
     setActiveProduct(upsellProduct);
@@ -284,6 +370,15 @@ export function CheckoutForm({
     };
     const addonProductId =
       addonSelected && crossSellProduct ? crossSellProduct.id : undefined;
+    const shippingAddress = shipToDifferentAddress
+      ? {
+          recipientName: shippingValues.recipientName,
+          postalCode: shippingValues.postalCode,
+          prefecture: shippingValues.prefecture,
+          city: shippingValues.city,
+          line1: shippingValues.line1,
+        }
+      : undefined;
 
     try {
       if (paymentMethod === "stripe") {
@@ -297,12 +392,14 @@ export function CheckoutForm({
                 customer,
                 ...delivery,
                 ...(addonProductId && { addonProductId }),
+                ...(shippingAddress && { shippingAddress }),
               }
             : {
                 productId: activeProduct.id,
                 customer,
                 ...delivery,
                 ...(addonProductId && { addonProductId }),
+                ...(shippingAddress && { shippingAddress }),
               };
 
         const res = await fetch(endpoint, {
@@ -326,6 +423,7 @@ export function CheckoutForm({
             customer,
             ...delivery,
             ...(addonProductId && { addonProductId }),
+            ...(shippingAddress && { shippingAddress }),
           }),
         });
         const data = await res.json();
@@ -349,19 +447,31 @@ export function CheckoutForm({
     const step = steps[stepIndex];
     const keysToValidate =
       step.kind === "address" ? ADDRESS_FIELD_KEYS : step.kind === "delivery" ? DELIVERY_FIELD_KEYS : [step.key];
-    const hasError = keysToValidate.some((key) => validateField(key, values[key]));
-    if (hasError) {
+    const hasFieldError = keysToValidate.some((key) => validateField(key, values[key]));
+    const hasShippingError =
+      step.kind === "address" &&
+      shipToDifferentAddress &&
+      SHIPPING_FIELD_KEYS.some((key) => validateShippingField(key, shippingValues[key]));
+
+    if (hasFieldError || hasShippingError) {
       setTouched((prev) => {
         const next = { ...prev };
         for (const key of keysToValidate) next[key] = true;
         return next;
       });
+      if (hasShippingError) {
+        setShippingTouched((prev) => {
+          const next = { ...prev };
+          for (const key of SHIPPING_FIELD_KEYS) next[key] = true;
+          return next;
+        });
+      }
       return;
     }
 
     if (returningToConfirm || stepIndex === steps.length - 1) {
       setReturningToConfirm(false);
-      setStage("confirm");
+      setStage("review");
     } else {
       setStepIndex((i) => i + 1);
     }
@@ -370,7 +480,7 @@ export function CheckoutForm({
   function handleBackStep() {
     if (returningToConfirm) {
       setReturningToConfirm(false);
-      setStage("confirm");
+      setStage("review");
       return;
     }
     if (stepIndex === 0) {
@@ -429,7 +539,7 @@ export function CheckoutForm({
                   id: `a-${idx}`,
                   from: "user",
                   kind: "text",
-                  text: stepAnswerText(pastStep, values),
+                  text: stepAnswerText(pastStep, values, { enabled: shipToDifferentAddress, ...shippingValues }),
                 }}
               />
             </div>
@@ -477,6 +587,68 @@ export function CheckoutForm({
                 </label>
               );
             })}
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={shipToDifferentAddress}
+                onChange={(e) => setShipToDifferentAddress(e.target.checked)}
+              />
+              お届け先を注文者と別にする
+            </label>
+
+            {shipToDifferentAddress && (
+              <div className="space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-neutral-700">お届け先のお名前</span>
+                  <input
+                    className="input"
+                    value={shippingValues.recipientName}
+                    onChange={(e) =>
+                      setShippingValues((prev) => ({ ...prev, recipientName: e.target.value }))
+                    }
+                    onFocus={scrollFieldIntoView}
+                    onBlur={() => setShippingTouched((prev) => ({ ...prev, recipientName: true }))}
+                  />
+                  {shippingTouched.recipientName &&
+                    validateShippingField("recipientName", shippingValues.recipientName) && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {validateShippingField("recipientName", shippingValues.recipientName)}
+                      </p>
+                    )}
+                </label>
+                {SHIPPING_ADDRESS_FIELD_KEYS.map((key) => {
+                  const errorMsg = validateShippingField(key, shippingValues[key]);
+                  const showError = shippingTouched[key] && errorMsg;
+                  return (
+                    <label key={key} className="block">
+                      <span className="mb-1 block text-sm font-medium text-neutral-700">
+                        {CHECKOUT_FIELD_LABELS[key]}
+                      </span>
+                      <input
+                        className="input"
+                        value={shippingValues[key]}
+                        onChange={(e) =>
+                          setShippingValues((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                        onFocus={scrollFieldIntoView}
+                        onBlur={() => setShippingTouched((prev) => ({ ...prev, [key]: true }))}
+                        placeholder={key === "postalCode" ? "ハイフンなしでも可" : undefined}
+                      />
+                      {key === "postalCode" && shippingAddressLookupStatus === "loading" && (
+                        <p className="mt-1 text-xs text-neutral-400">住所を検索中...</p>
+                      )}
+                      {key === "postalCode" && shippingAddressLookupStatus === "not_found" && (
+                        <p className="mt-1 text-xs text-neutral-400">
+                          住所が見つかりませんでした。都道府県以下は下の欄に入力してください。
+                        </p>
+                      )}
+                      {showError && <p className="mt-1 text-xs text-red-600">{errorMsg}</p>}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : step.kind === "delivery" ? (
           <div className="space-y-3">
@@ -521,6 +693,28 @@ export function CheckoutForm({
               )}
             </label>
           </div>
+        ) : step.key === "paymentMethod" ? (
+          <div className="space-y-2">
+            {PAYMENT_METHOD_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
+                  paymentMethod === option.value ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
+                }`}
+              >
+                <input
+                  type="radio"
+                  className="mt-1"
+                  checked={paymentMethod === option.value}
+                  onChange={() => setValues((prev) => ({ ...prev, paymentMethod: option.value }))}
+                />
+                <span>
+                  <span className="block">{option.label}</span>
+                  <span className="block text-xs text-neutral-500">{option.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         ) : (
           <label className="block">
             <input
@@ -558,9 +752,7 @@ export function CheckoutForm({
     );
   }
 
-  if (stage === "confirm") {
-    const canSubmit = agreedTerms && agreedPrivacy;
-
+  if (stage === "review") {
     return (
       <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
@@ -580,22 +772,6 @@ export function CheckoutForm({
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">ご注文商品</span>
             <span className="font-medium">{activeProduct.name}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-500">お支払い方法</span>
-            <div className="flex items-center gap-2">
-              <span>{PAYMENT_METHOD_OPTIONS.find((o) => o.value === paymentMethod)?.label}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setReturningToConfirm(true);
-                  setStage("options");
-                }}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                編集
-              </button>
-            </div>
           </div>
           {orderType === "subscription" && (
             <div className="flex items-center justify-between">
@@ -691,7 +867,7 @@ export function CheckoutForm({
                     : CHECKOUT_FIELD_LABELS[step.key]}
               </span>
               <div className="flex items-start gap-2 text-right">
-                <span>{stepAnswerText(step, values)}</span>
+                <span>{stepAnswerText(step, values, { enabled: shipToDifferentAddress, ...shippingValues })}</span>
                 <button
                   type="button"
                   onClick={() => goToStep(idx)}
@@ -703,6 +879,44 @@ export function CheckoutForm({
             </div>
           ))}
         </div>
+
+        <AmountBreakdown
+          amount={activeProduct.price}
+          shippingFee={activeProduct.shipping_fee}
+          paymentFee={paymentFee}
+          paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
+          addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
+          addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
+        />
+
+        <button
+          type="button"
+          onClick={() => setStage("agreement")}
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
+        >
+          次へ
+        </button>
+      </div>
+    );
+  }
+
+  if (stage === "agreement") {
+    const canSubmit = agreedTerms && agreedPrivacy;
+
+    return (
+      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <p className="font-medium">ご注文の確定</p>
+          <button
+            type="button"
+            onClick={() => setStage("review")}
+            className="text-xs text-neutral-400 hover:text-neutral-600"
+          >
+            ← 戻る
+          </button>
+        </div>
+
+        {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
         <div className="space-y-3 rounded-md border border-neutral-200 p-3 text-sm">
           <div>
@@ -790,32 +1004,6 @@ export function CheckoutForm({
           </select>
         )}
 
-        <MessageBubble
-          message={{ id: "payment-prompt", from: "bot", kind: "text", text: "次に決済方法をお選びください。" }}
-        />
-
-        <div className="space-y-2">
-          {PAYMENT_METHOD_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
-                paymentMethod === option.value ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
-              }`}
-            >
-              <input
-                type="radio"
-                className="mt-1"
-                checked={paymentMethod === option.value}
-                onChange={() => setPaymentMethod(option.value)}
-              />
-              <span>
-                <span className="block">{option.label}</span>
-                <span className="block text-xs text-neutral-500">{option.description}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-
         <AmountBreakdown
           amount={activeProduct.price}
           shippingFee={activeProduct.shipping_fee}
@@ -830,7 +1018,7 @@ export function CheckoutForm({
           onClick={() => {
             if (returningToConfirm) {
               setReturningToConfirm(false);
-              setStage("confirm");
+              setStage("review");
             } else {
               setStepIndex(0);
               setStage("wizard");

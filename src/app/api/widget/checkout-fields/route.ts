@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { DEFAULT_CHECKOUT_FIELD_ORDER, type CheckoutFieldKey } from "@/lib/checkout-fields";
+import {
+  DEFAULT_CHECKOUT_FIELD_ORDER,
+  mergeCheckoutFieldOrder,
+  type CheckoutFieldKey,
+} from "@/lib/checkout-fields";
 
 /** チャットウィジェット用: 決済フォーム(1問1答)の質問表示順(認証不要)。 */
 export async function GET() {
@@ -14,5 +18,7 @@ export async function GET() {
     return NextResponse.json({ order: DEFAULT_CHECKOUT_FIELD_ORDER });
   }
 
-  return NextResponse.json({ order: data.map((row) => row.field_key as CheckoutFieldKey) });
+  return NextResponse.json({
+    order: mergeCheckoutFieldOrder(data.map((row) => row.field_key as CheckoutFieldKey)),
+  });
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getStripeClient } from "@/lib/stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { customerInputSchema } from "@/lib/checkout-schema";
+import { customerInputSchema, shippingAddressSchema } from "@/lib/checkout-schema";
 import { getProductById } from "@/lib/products";
 import { upsertCustomer, setCustomerStripeId } from "@/lib/customers";
 import { calculateTotal } from "@/lib/fees";
@@ -16,6 +16,7 @@ const requestSchema = z.object({
   agreedTerms: z.literal(true),
   agreedPrivacy: z.literal(true),
   addonProductId: z.string().uuid().optional(),
+  shippingAddress: shippingAddressSchema.optional(),
 });
 
 /**
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     deliveryDate,
     deliveryTimeSlot,
     addonProductId,
+    shippingAddress,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
       agreed_terms_at: new Date().toISOString(),
       addon_product_id: addonProduct?.id ?? null,
       addon_amount: addonProduct ? addonAmount : null,
+      shipping_address: shippingAddress ?? null,
     })
     .select("id")
     .single();

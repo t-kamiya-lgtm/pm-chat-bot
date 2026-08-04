@@ -1,7 +1,11 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CheckoutFieldOrderManager } from "@/components/admin/CheckoutFieldOrderManager";
 import { CheckoutMessagesForm } from "@/components/admin/CheckoutMessagesForm";
-import { DEFAULT_CHECKOUT_FIELD_ORDER, type CheckoutFieldKey } from "@/lib/checkout-fields";
+import {
+  DEFAULT_CHECKOUT_FIELD_ORDER,
+  mergeCheckoutFieldOrder,
+  type CheckoutFieldKey,
+} from "@/lib/checkout-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +18,7 @@ export default async function CheckoutFieldsPage() {
 
   const order =
     data && data.length > 0
-      ? (data.map((row) => row.field_key) as CheckoutFieldKey[])
+      ? mergeCheckoutFieldOrder(data.map((row) => row.field_key) as CheckoutFieldKey[])
       : DEFAULT_CHECKOUT_FIELD_ORDER;
 
   return (
