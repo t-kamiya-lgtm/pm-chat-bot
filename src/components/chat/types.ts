@@ -21,6 +21,7 @@ export interface WidgetScenarioNode {
   content: Record<string, unknown>;
   next_node_map: Record<string, string>;
   is_entry: boolean;
+  display_order: number;
 }
 
 export interface ChatMessage {

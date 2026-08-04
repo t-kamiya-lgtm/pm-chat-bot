@@ -42,7 +42,8 @@ export async function GET(request: Request) {
   const { data: nodes, error: nodesError } = await supabase
     .from("scenario_nodes")
     .select("id, scenario_id, type, content, next_node_map, is_entry, display_order, created_at")
-    .eq("scenario_id", scenario.id);
+    .eq("scenario_id", scenario.id)
+    .order("display_order");
   if (nodesError) return NextResponse.json({ error: nodesError.message }, { status: 500 });
 
   const productIds = Array.from(

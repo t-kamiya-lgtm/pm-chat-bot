@@ -71,6 +71,12 @@ function nextId() {
   return `item-${seq}`;
 }
 
+/** 「次に進むノード」が未設定の場合に自動で進む、表示順で1つ後ろのノードIDを返す。 */
+function sequentialNextId(nodeId: string, orderedIds: string[]): string | undefined {
+  const index = orderedIds.indexOf(nodeId);
+  return index === -1 ? undefined : orderedIds[index + 1];
+}
+
 export function ChatWidget() {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
@@ -78,6 +84,7 @@ export function ChatWidget() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
+  const [orderedNodeIds, setOrderedNodeIds] = useState<string[]>([]);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -123,9 +130,12 @@ export function ChatWidget() {
         for (const node of scenarioBody.nodes) nodeMap[node.id] = node;
         const productMap: Record<string, WidgetProduct> = {};
         for (const product of scenarioBody.products) productMap[product.id] = product;
+        // 表示順(display_order)に並んだノードID一覧。次のノードが未設定の場合、この順で自動的に進む
+        const orderedIds = scenarioBody.nodes.map((n) => n.id);
 
         setNodesById(nodeMap);
         setProductsById(productMap);
+        setOrderedNodeIds(orderedIds);
 
         // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
         // 商品選択より前に会話冒頭で1度だけ表示する
@@ -149,7 +159,7 @@ export function ChatWidget() {
         }
 
         const entry = scenarioBody.nodes.find((n) => n.is_entry) ?? scenarioBody.nodes[0];
-        if (entry) advance(entry.id, nodeMap, productMap);
+        if (entry) advance(entry.id, nodeMap, productMap, undefined, orderedIds);
       })
       .catch((err) => setLoadError((err as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -164,6 +174,7 @@ export function ChatWidget() {
     nodeMap: Record<string, WidgetScenarioNode> = nodesById,
     productMap: Record<string, WidgetProduct> = productsById,
     sourceItemId?: string,
+    orderedIds: string[] = orderedNodeIds,
   ) {
     const node = nodeMap[nodeId];
     if (!node) return;
@@ -192,8 +203,8 @@ export function ChatWidget() {
           ...prev,
           { id: nextId(), kind: "bot-text", text: content.text ?? "", imageUrl: content.imageUrl },
         ]);
-        const next = node.next_node_map.default;
-        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId), 300);
+        const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
+        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
         break;
       }
       case "image": {
@@ -221,8 +232,8 @@ export function ChatWidget() {
             },
           ]);
         }
-        const next = node.next_node_map.default;
-        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId), 300);
+        const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
+        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
         break;
       }
       case "choice": {
@@ -338,7 +349,10 @@ export function ChatWidget() {
     setTimeline((prev) => [...prev, { id: nextId(), kind: "user-text", text: option.label }]);
 
     const node = nodesById[item.nodeId];
-    const next = node?.next_node_map[option.value] ?? node?.next_node_map.default;
+    const next =
+      node?.next_node_map[option.value] ??
+      node?.next_node_map.default ??
+      (node && sequentialNextId(node.id, orderedNodeIds));
     if (next) advance(next, nodesById, productsById, item.id);
   }
 
@@ -377,7 +391,7 @@ export function ChatWidget() {
     setSurveyAnswers((prev) => ({ ...prev, ...answers }));
 
     const node = nodesById[item.nodeId];
-    const next = node?.next_node_map.default;
+    const next = node?.next_node_map.default ?? (node && sequentialNextId(node.id, orderedNodeIds));
     if (next) advance(next, nodesById, productsById, item.id);
   }
 
@@ -385,7 +399,7 @@ export function ChatWidget() {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
 
     const node = nodesById[item.nodeId];
-    const next = node?.next_node_map.default;
+    const next = node?.next_node_map.default ?? (node && sequentialNextId(node.id, orderedNodeIds));
     if (next) advance(next, nodesById, productsById, item.id);
   }
 

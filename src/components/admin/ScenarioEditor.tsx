@@ -131,7 +131,7 @@ function NextNodeSelect({
         {label}
       </span>
       <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">(進まない/ここで終了)</option>
+        <option value="">(未設定・自動的に一覧の次のノードへ進みます。最後のノードの場合はここで終了)</option>
         {nodeOptions.map((n) => (
           <option key={n.id} value={n.id}>
             {n.summary}
@@ -1639,7 +1639,7 @@ function NodeCard({
                   })
                   .filter(Boolean)
                   .join("、") ||
-                (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")
+                (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")
               : node.type === "product"
                 ? productIds
                     .map((id) => {
@@ -1649,8 +1649,8 @@ function NodeCard({
                     })
                     .filter(Boolean)
                     .join("、") ||
-                  (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")
-                : (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "未設定")}
+                  (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")
+                : (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")}
           </p>
         </>
       )}
