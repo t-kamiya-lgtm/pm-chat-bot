@@ -287,6 +287,38 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     router.refresh();
   }
 
+  async function handleRenameScenario() {
+    const name = window.prompt("新しいシナリオ名を入力してください", scenario.name);
+    if (!name || name === scenario.name) return;
+
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleDeleteScenario() {
+    if (
+      !window.confirm(`「${scenario.name}」を削除しますか？中のノードもすべて削除され、取り消せません。`)
+    )
+      return;
+
+    const res = await fetch(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.push("/admin/scenarios");
+  }
+
   async function handleAddNode(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -371,7 +403,23 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{scenario.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">{scenario.name}</h1>
+          <button
+            type="button"
+            onClick={handleRenameScenario}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            名前を編集
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteScenario}
+            className="text-sm text-red-600 hover:underline"
+          >
+            削除
+          </button>
+        </div>
         <button
           type="button"
           onClick={togglePublish}
