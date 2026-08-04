@@ -17,7 +17,7 @@ export interface QaCandidate {
 export interface ProductQaGenerator {
   generateCandidates(
     productGroupName: string,
-    spec: Pick<ProductSpec, "ingredients" | "allergens" | "volume" | "usage" | "extra">,
+    spec: Pick<ProductSpec, "ingredients" | "allergens" | "volume" | "usage" | "nutrition" | "extra">,
     existingCategories: string[],
   ): Promise<QaCandidate[]>;
 }
@@ -31,7 +31,7 @@ const ANTHROPIC_MODEL = "claude-sonnet-5";
 export class AnthropicProductQaGenerator implements ProductQaGenerator {
   async generateCandidates(
     productGroupName: string,
-    spec: Pick<ProductSpec, "ingredients" | "allergens" | "volume" | "usage" | "extra">,
+    spec: Pick<ProductSpec, "ingredients" | "allergens" | "volume" | "usage" | "nutrition" | "extra">,
     existingCategories: string[],
   ): Promise<QaCandidate[]> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -53,6 +53,7 @@ export class AnthropicProductQaGenerator implements ProductQaGenerator {
 アレルギー: ${spec.allergens ?? "情報なし"}
 容量: ${spec.volume ?? "情報なし"}
 使い方: ${spec.usage ?? "情報なし"}
+栄養成分表示: ${spec.nutrition ?? "情報なし"}
 その他仕様: ${JSON.stringify(spec.extra ?? {})}
 
 ${categoryHint}`;
@@ -99,7 +100,7 @@ function extractJsonArray(text: string): string {
 export class TemplateProductQaGenerator implements ProductQaGenerator {
   async generateCandidates(
     productGroupName: string,
-    spec: Pick<ProductSpec, "ingredients" | "allergens" | "volume" | "usage" | "extra">,
+    spec: Pick<ProductSpec, "ingredients" | "allergens" | "volume" | "usage" | "nutrition" | "extra">,
   ): Promise<QaCandidate[]> {
     const candidates: QaCandidate[] = [];
 
@@ -129,6 +130,13 @@ export class TemplateProductQaGenerator implements ProductQaGenerator {
         category: "容量・使い方について",
         question: `${productGroupName}の使い方を教えてください`,
         answer: spec.usage,
+      });
+    }
+    if (spec.nutrition) {
+      candidates.push({
+        category: "栄養成分表示について",
+        question: `${productGroupName}の栄養成分を教えてください`,
+        answer: spec.nutrition,
       });
     }
 

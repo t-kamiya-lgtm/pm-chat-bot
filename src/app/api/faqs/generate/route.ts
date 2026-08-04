@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       allergens: spec.allergens,
       volume: spec.volume,
       usage: spec.usage,
+      nutrition: spec.nutrition,
       extra: spec.extra,
     },
     (existingCategories ?? []).map((c) => c.title),

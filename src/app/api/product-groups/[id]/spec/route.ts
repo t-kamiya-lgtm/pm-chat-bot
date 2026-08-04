@@ -8,6 +8,7 @@ const specInputSchema = z.object({
   allergens: z.string().optional(),
   volume: z.string().optional(),
   usage: z.string().optional(),
+  nutrition: z.string().optional(),
   extra: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -51,6 +52,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
         allergens: input.allergens ?? null,
         volume: input.volume ?? null,
         usage: input.usage ?? null,
+        nutrition: input.nutrition ?? null,
         extra: input.extra,
       },
       { onConflict: "product_group_id" },

@@ -8,6 +8,7 @@ export interface ProductSpecFormValues {
   allergens: string;
   volume: string;
   usage: string;
+  nutrition: string;
 }
 
 export function ProductSpecForm({
@@ -19,7 +20,7 @@ export function ProductSpecForm({
 }) {
   const router = useRouter();
   const [values, setValues] = useState<ProductSpecFormValues>(
-    initialValues ?? { ingredients: "", allergens: "", volume: "", usage: "" },
+    initialValues ?? { ingredients: "", allergens: "", volume: "", usage: "", nutrition: "" },
   );
   const [status, setStatus] = useState<"idle" | "saving" | "generating" | "done">("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -93,6 +94,12 @@ export function ProductSpecForm({
           value={values.usage}
           onChange={(v) => setValues((p) => ({ ...p, usage: v }))}
         />
+        <SpecField
+          label="栄養成分表示"
+          value={values.nutrition}
+          onChange={(v) => setValues((p) => ({ ...p, nutrition: v }))}
+          rows={5}
+        />
 
         <div className="flex gap-3">
           <button
@@ -120,10 +127,12 @@ function SpecField({
   label,
   value,
   onChange,
+  rows = 2,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  rows?: number;
 }) {
   return (
     <label className="block">
@@ -132,7 +141,7 @@ function SpecField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="input"
-        rows={2}
+        rows={rows}
       />
     </label>
   );

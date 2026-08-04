@@ -47,6 +47,7 @@ export interface ProductSpec {
   allergens: string | null;
   volume: string | null;
   usage: string | null;
+  nutrition: string | null;
   extra: Record<string, unknown>;
   updatedAt: string;
 }

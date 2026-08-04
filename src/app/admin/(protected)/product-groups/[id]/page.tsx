@@ -129,6 +129,7 @@ export default async function ProductGroupDetailPage({
             allergens: spec?.allergens ?? "",
             volume: spec?.volume ?? "",
             usage: spec?.usage ?? "",
+            nutrition: spec?.nutrition ?? "",
           }}
         />
       </section>
