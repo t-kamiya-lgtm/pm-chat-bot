@@ -202,6 +202,13 @@ function stepAnswerText(
   return values[step.key] || "(未入力)";
 }
 
+interface GreetingItem {
+  type: "image" | "text";
+  imageUrl?: string;
+  linkUrl?: string;
+  text?: string;
+}
+
 interface Props {
   product: WidgetProduct;
   upsellProduct?: WidgetProduct;
@@ -210,14 +217,26 @@ interface Props {
   crossSellProduct?: WidgetProduct;
   crossSellImageUrl?: string;
   crossSellComment?: string;
-  completionMessage?: string;
+  completionItems?: GreetingItem[];
   termsText?: string;
   privacyText?: string;
-  onComplete: (result: { ok: boolean; message: string }) => void;
+  sessionId: string;
+  surveyResponses?: Record<string, string>;
+  onComplete: (result: { ok: boolean; items: GreetingItem[] }) => void;
   onBack: () => void;
 }
 
 type Stage = "options" | "wizard" | "review" | "agreement";
+
+const DEFAULT_SUCCESS_ITEMS: GreetingItem[] = [
+  { type: "text", text: "お支払いが完了しました。ありがとうございます。" },
+];
+const DEFAULT_ACCEPTED_ITEMS: GreetingItem[] = [
+  { type: "text", text: "ご注文を受け付けました。詳しいお支払い方法は追ってご案内します。" },
+];
+const FAILED_ITEMS: GreetingItem[] = [
+  { type: "text", text: "ご注文の受付に失敗しました。恐れ入りますが再度お試しください。" },
+];
 
 export function CheckoutForm({
   product,
@@ -227,9 +246,11 @@ export function CheckoutForm({
   crossSellProduct,
   crossSellImageUrl,
   crossSellComment,
-  completionMessage,
+  completionItems,
   termsText,
   privacyText,
+  sessionId,
+  surveyResponses,
   onComplete,
   onBack,
 }: Props) {
@@ -379,6 +400,22 @@ export function CheckoutForm({
     };
   }, [shippingValues.postalCode, shipToDifferentAddress]);
 
+  function captureLead() {
+    const hasAny = values.name.trim() || values.phone.trim() || values.email.trim();
+    if (!hasAny) return;
+    fetch("/api/widget/leads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        name: values.name.trim() || undefined,
+        phone: values.phone.trim() || undefined,
+        email: values.email.trim() || undefined,
+        productId: activeProduct.id,
+      }),
+    }).catch(() => {});
+  }
+
   function handleUpsellSelect() {
     if (!upsellProduct) return;
     setActiveProduct(upsellProduct);
@@ -433,6 +470,8 @@ export function CheckoutForm({
       if (paymentMethod === "stripe") {
         const endpoint =
           orderType === "subscription" ? "/api/checkout/subscription" : "/api/checkout/payment-intent";
+        const surveyResponsesPayload =
+          surveyResponses && Object.keys(surveyResponses).length > 0 ? surveyResponses : undefined;
         const body =
           orderType === "subscription"
             ? {
@@ -442,6 +481,7 @@ export function CheckoutForm({
                 ...delivery,
                 ...(addonProductId && { addonProductId }),
                 ...(shippingAddress && { shippingAddress }),
+                ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
               }
             : {
                 productId: activeProduct.id,
@@ -449,6 +489,7 @@ export function CheckoutForm({
                 ...delivery,
                 ...(addonProductId && { addonProductId }),
                 ...(shippingAddress && { shippingAddress }),
+                ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
               };
 
         const res = await fetch(endpoint, {
@@ -473,6 +514,8 @@ export function CheckoutForm({
             ...delivery,
             ...(addonProductId && { addonProductId }),
             ...(shippingAddress && { shippingAddress }),
+            ...(surveyResponses &&
+              Object.keys(surveyResponses).length > 0 && { surveyResponses }),
           }),
         });
         const data = await res.json();
@@ -480,9 +523,11 @@ export function CheckoutForm({
 
         onComplete({
           ok: data.accepted,
-          message: data.accepted
-            ? completionMessage || "ご注文を受け付けました。詳しいお支払い方法は追ってご案内します。"
-            : "ご注文の受付に失敗しました。恐れ入りますが再度お試しください。",
+          items: data.accepted
+            ? completionItems && completionItems.length > 0
+              ? completionItems
+              : DEFAULT_ACCEPTED_ITEMS
+            : FAILED_ITEMS,
         });
       }
     } catch (err) {
@@ -552,7 +597,7 @@ export function CheckoutForm({
         onSuccess={() =>
           onComplete({
             ok: true,
-            message: completionMessage || "お支払いが完了しました。ありがとうございます。",
+            items: completionItems && completionItems.length > 0 ? completionItems : DEFAULT_SUCCESS_ITEMS,
           })
         }
         onError={(message) => setError(message)}
@@ -799,7 +844,10 @@ export function CheckoutForm({
               value={values[step.key]}
               onChange={(e) => setValues((prev) => ({ ...prev, [step.key]: e.target.value }))}
               onFocus={scrollFieldIntoView}
-              onBlur={() => setTouched((prev) => ({ ...prev, [step.key]: true }))}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, [step.key]: true }));
+                captureLead();
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();

@@ -2,6 +2,11 @@ import type { ChatMessage } from "@/components/chat/types";
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.from === "user";
+  const image = message.imageUrl && (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={message.imageUrl} alt="" className="block h-auto w-full object-cover" />
+  );
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
@@ -9,10 +14,14 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           isUser ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-900"
         }`}
       >
-        {message.imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={message.imageUrl} alt="" className="block h-auto w-full object-cover" />
-        )}
+        {image &&
+          (message.linkUrl ? (
+            <a href={message.linkUrl} target="_blank" rel="noopener noreferrer">
+              {image}
+            </a>
+          ) : (
+            image
+          ))}
         {message.text && <div className="px-4 py-2 whitespace-pre-wrap">{message.text}</div>}
       </div>
     </div>

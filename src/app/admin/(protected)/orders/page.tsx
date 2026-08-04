@@ -24,6 +24,13 @@ export default async function AdminOrdersPage() {
     .order("created_at", { ascending: false })
     .limit(100);
 
+  function formatSurveyResponses(value: Record<string, string> | null) {
+    if (!value || Object.keys(value).length === 0) return null;
+    return Object.entries(value)
+      .map(([q, a]) => `${q}: ${a}`)
+      .join("\n");
+  }
+
   function formatDeliveryDate(value: string | null) {
     if (!value) return "-";
     return new Date(value).toLocaleDateString("ja-JP");
@@ -44,6 +51,7 @@ export default async function AdminOrdersPage() {
               <th className="px-4 py-2">金額</th>
               <th className="px-4 py-2">状態</th>
               <th className="px-4 py-2">お届け希望日時</th>
+              <th className="px-4 py-2">アンケート</th>
             </tr>
           </thead>
           <tbody>
@@ -60,31 +68,44 @@ export default async function AdminOrdersPage() {
                   status: string;
                   delivery_date: string | null;
                   delivery_time_slot: string | null;
+                  survey_responses: Record<string, string> | null;
                   customers: { name: string; email: string } | null;
                   products: { name: string } | null;
                 },
-              ) => (
-                <tr key={order.id} className="border-t border-neutral-100">
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {new Date(order.created_at).toLocaleString("ja-JP")}
-                  </td>
-                  <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
-                  <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
-                  <td className="px-4 py-2">{order.type === "subscription" ? "定期" : "単発"}</td>
-                  <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
-                  <td className="px-4 py-2">
-                    {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
-                  </td>
-                  <td className="px-4 py-2">{STATUS_LABELS[order.status]}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {formatDeliveryDate(order.delivery_date)} {order.delivery_time_slot ?? ""}
-                  </td>
-                </tr>
-              ),
+              ) => {
+                const surveyText = formatSurveyResponses(order.survey_responses);
+                return (
+                  <tr key={order.id} className="border-t border-neutral-100">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {new Date(order.created_at).toLocaleString("ja-JP")}
+                    </td>
+                    <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
+                    <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
+                    <td className="px-4 py-2">{order.type === "subscription" ? "定期" : "単発"}</td>
+                    <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
+                    <td className="px-4 py-2">
+                      {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
+                    </td>
+                    <td className="px-4 py-2">{STATUS_LABELS[order.status]}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {formatDeliveryDate(order.delivery_date)} {order.delivery_time_slot ?? ""}
+                    </td>
+                    <td className="px-4 py-2">
+                      {surveyText ? (
+                        <span title={surveyText} className="cursor-help underline decoration-dotted">
+                          {Object.keys(order.survey_responses ?? {}).length}件
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                );
+              },
             )}
             {!orders?.length && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={9} className="px-4 py-6 text-center text-neutral-400">
                   注文はまだありません
                 </td>
               </tr>

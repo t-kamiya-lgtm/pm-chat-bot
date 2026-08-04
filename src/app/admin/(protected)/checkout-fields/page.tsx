@@ -34,8 +34,21 @@ export default async function CheckoutFieldsPage() {
         全商品共通のテンプレートとして、決済フォーム開始時・注文確定後にチャット上へ自動表示されます。
       </p>
       <CheckoutMessagesForm
-        initialGreeting={messages?.greeting ?? ""}
-        initialCompletionMessage={messages?.completion_message ?? ""}
+        initialGreetingItems={
+          messages?.greeting_items?.length > 0
+            ? messages.greeting_items
+            : messages?.greeting
+              ? [{ type: "text", text: messages.greeting }]
+              : []
+        }
+        initialCompletionItems={
+          messages?.completion_items?.length > 0
+            ? messages.completion_items
+            : messages?.completion_message
+              ? [{ type: "text", text: messages.completion_message }]
+              : []
+        }
+        initialPrivacyNotice={messages?.privacy_notice ?? ""}
         initialTermsText={messages?.terms_text ?? ""}
         initialPrivacyText={messages?.privacy_text ?? ""}
       />

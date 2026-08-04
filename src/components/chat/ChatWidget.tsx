@@ -3,15 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
+import type { SurveyQuestion } from "@/lib/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChoiceButtons, type ChoiceOption } from "@/components/chat/ChoiceButtons";
 import { ProductCarousel } from "@/components/chat/ProductCarousel";
 import { ProductDetailPanel } from "@/components/chat/ProductDetailPanel";
 import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
+import { SurveyForm } from "@/components/chat/SurveyForm";
+
+interface GreetingItem {
+  type: "image" | "text";
+  imageUrl?: string;
+  linkUrl?: string;
+  text?: string;
+}
 
 type TimelineItem =
-  | { id: string; kind: "bot-text"; text: string; imageUrl?: string }
+  | { id: string; kind: "bot-text"; text: string; imageUrl?: string; linkUrl?: string }
   | { id: string; kind: "user-text"; text: string }
   | {
       id: string;
@@ -30,6 +39,13 @@ type TimelineItem =
     }
   | {
       id: string;
+      kind: "survey";
+      nodeId: string;
+      questions: SurveyQuestion[];
+      resolved: boolean;
+    }
+  | {
+      id: string;
       kind: "checkout";
       nodeId: string;
       productId: string;
@@ -40,11 +56,11 @@ type TimelineItem =
       crossSellImageUrl?: string;
       crossSellComment?: string;
       sourceItemId?: string;
-      completionMessage?: string;
+      completionItems?: GreetingItem[];
       termsText?: string;
       privacyText?: string;
     }
-  | { id: string; kind: "checkout-result"; ok: boolean; text: string }
+  | { id: string; kind: "checkout-result"; ok: boolean; items: GreetingItem[] }
   | { id: string; kind: "faq"; productId: string };
 
 let seq = 0;
@@ -56,12 +72,15 @@ function nextId() {
 export function ChatWidget() {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
+  const [sessionId] = useState(() => crypto.randomUUID());
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
+  const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
-    greeting?: string;
-    completionMessage?: string;
+    greetingItems?: GreetingItem[];
+    completionItems?: GreetingItem[];
+    privacyNotice?: string;
     termsText?: string;
     privacyText?: string;
   }>({});
@@ -83,8 +102,9 @@ export function ChatWidget() {
         .catch(
           () =>
             ({}) as {
-              greeting?: string;
-              completionMessage?: string;
+              greetingItems?: GreetingItem[];
+              completionItems?: GreetingItem[];
+              privacyNotice?: string;
               termsText?: string;
               privacyText?: string;
             },
@@ -105,11 +125,24 @@ export function ChatWidget() {
         setNodesById(nodeMap);
         setProductsById(productMap);
 
-        // 決済フォーム設定の「あいさつ文」は、商品選択より前に会話冒頭で1度だけ表示する
-        if (messagesBody.greeting) {
+        // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
+        // 商品選択より前に会話冒頭で1度だけ表示する
+        for (const greetingItem of messagesBody.greetingItems ?? []) {
           setTimeline((prev) => [
             ...prev,
-            { id: nextId(), kind: "bot-text", text: messagesBody.greeting },
+            {
+              id: nextId(),
+              kind: "bot-text",
+              text: greetingItem.type === "text" ? greetingItem.text ?? "" : "",
+              imageUrl: greetingItem.type === "image" ? greetingItem.imageUrl : undefined,
+              linkUrl: greetingItem.type === "image" ? greetingItem.linkUrl : undefined,
+            },
+          ]);
+        }
+        if (messagesBody.privacyNotice) {
+          setTimeline((prev) => [
+            ...prev,
+            { id: nextId(), kind: "bot-text", text: messagesBody.privacyNotice ?? "" },
           ]);
         }
 
@@ -136,9 +169,12 @@ export function ChatWidget() {
     const content = node.content as {
       text?: string;
       imageUrl?: string;
+      linkUrl?: string;
+      caption?: string;
       productId?: string;
       productIds?: string[];
       options?: ChoiceOption[];
+      questions?: SurveyQuestion[];
       upsellProductId?: string;
       upsellImageUrl?: string;
       upsellComment?: string;
@@ -157,6 +193,21 @@ export function ChatWidget() {
         if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId), 300);
         break;
       }
+      case "image": {
+        setTimeline((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            kind: "bot-text",
+            text: content.caption ?? "",
+            imageUrl: content.imageUrl,
+            linkUrl: content.linkUrl,
+          },
+        ]);
+        const next = node.next_node_map.default;
+        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId), 300);
+        break;
+      }
       case "choice": {
         setTimeline((prev) => [
           ...prev,
@@ -166,6 +217,19 @@ export function ChatWidget() {
             nodeId: node.id,
             text: content.text ?? "",
             options: content.options ?? [],
+            resolved: false,
+          },
+        ]);
+        break;
+      }
+      case "survey": {
+        setTimeline((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            kind: "survey",
+            nodeId: node.id,
+            questions: content.questions ?? [],
             resolved: false,
           },
         ]);
@@ -209,7 +273,7 @@ export function ChatWidget() {
               crossSellImageUrl: content.crossSellImageUrl,
               crossSellComment: content.crossSellComment,
               sourceItemId,
-              completionMessage: checkoutMessages.completionMessage,
+              completionItems: checkoutMessages.completionItems,
               termsText: checkoutMessages.termsText,
               privacyText: checkoutMessages.privacyText,
             },
@@ -278,7 +342,7 @@ export function ChatWidget() {
           nodeId: item.nodeId,
           productId,
           sourceItemId: item.id,
-          completionMessage: checkoutMessages.completionMessage,
+          completionItems: checkoutMessages.completionItems,
           termsText: checkoutMessages.termsText,
           privacyText: checkoutMessages.privacyText,
         },
@@ -289,6 +353,23 @@ export function ChatWidget() {
   function handleFaqPromptSelect(item: Extract<TimelineItem, { kind: "faq-prompt" }>) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
     setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId: item.productId }]);
+  }
+
+  function handleSurveySubmit(item: Extract<TimelineItem, { kind: "survey" }>, answers: Record<string, string>) {
+    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+    setSurveyAnswers((prev) => ({ ...prev, ...answers }));
+
+    const node = nodesById[item.nodeId];
+    const next = node?.next_node_map.default;
+    if (next) advance(next, nodesById, productsById, item.id);
+  }
+
+  function handleSurveySkip(item: Extract<TimelineItem, { kind: "survey" }>) {
+    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+
+    const node = nodesById[item.nodeId];
+    const next = node?.next_node_map.default;
+    if (next) advance(next, nodesById, productsById, item.id);
   }
 
   function handleCheckoutBack(item: Extract<TimelineItem, { kind: "checkout" }>) {
@@ -304,10 +385,10 @@ export function ChatWidget() {
     );
   }
 
-  function handleCheckoutComplete(result: { ok: boolean; message: string }) {
+  function handleCheckoutComplete(result: { ok: boolean; items: GreetingItem[] }) {
     setTimeline((prev) => [
       ...prev,
-      { id: nextId(), kind: "checkout-result", ok: result.ok, text: result.message },
+      { id: nextId(), kind: "checkout-result", ok: result.ok, items: result.items },
     ]);
   }
 
@@ -325,7 +406,14 @@ export function ChatWidget() {
               return (
                 <MessageBubble
                   key={item.id}
-                  message={{ id: item.id, from: "bot", kind: "text", text: item.text, imageUrl: item.imageUrl }}
+                  message={{
+                    id: item.id,
+                    from: "bot",
+                    kind: "text",
+                    text: item.text,
+                    imageUrl: item.imageUrl,
+                    linkUrl: item.linkUrl,
+                  }}
                 />
               );
             case "user-text":
@@ -359,6 +447,15 @@ export function ChatWidget() {
                   onSelect={() => handleFaqPromptSelect(item)}
                 />
               );
+            case "survey":
+              return item.resolved ? null : (
+                <SurveyForm
+                  key={item.id}
+                  questions={item.questions}
+                  onSubmit={(answers) => handleSurveySubmit(item, answers)}
+                  onSkip={() => handleSurveySkip(item)}
+                />
+              );
             case "checkout": {
               const product = productsById[item.productId];
               if (!product) return null;
@@ -374,9 +471,11 @@ export function ChatWidget() {
                   }
                   crossSellImageUrl={item.crossSellImageUrl}
                   crossSellComment={item.crossSellComment}
-                  completionMessage={item.completionMessage}
+                  completionItems={item.completionItems}
                   termsText={item.termsText}
                   privacyText={item.privacyText}
+                  sessionId={sessionId}
+                  surveyResponses={surveyAnswers}
                   onComplete={handleCheckoutComplete}
                   onBack={() => handleCheckoutBack(item)}
                 />
@@ -393,13 +492,32 @@ export function ChatWidget() {
               );
             case "checkout-result":
               return (
-                <div
-                  key={item.id}
-                  className={`max-w-[85%] rounded-lg p-3 text-sm ${
-                    item.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"
-                  }`}
-                >
-                  {item.text}
+                <div key={item.id} className="max-w-[85%] space-y-2">
+                  {item.items.map((resultItem, idx) => (
+                    <div
+                      key={idx}
+                      className={`overflow-hidden rounded-lg text-sm ${
+                        item.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {resultItem.type === "image" && resultItem.imageUrl && (
+                        <>
+                          {resultItem.linkUrl ? (
+                            <a href={resultItem.linkUrl} target="_blank" rel="noopener noreferrer">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={resultItem.imageUrl} alt="" className="block h-auto w-full object-cover" />
+                            </a>
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={resultItem.imageUrl} alt="" className="block h-auto w-full object-cover" />
+                          )}
+                        </>
+                      )}
+                      {resultItem.type === "text" && resultItem.text && (
+                        <div className="p-3">{resultItem.text}</div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               );
             default:

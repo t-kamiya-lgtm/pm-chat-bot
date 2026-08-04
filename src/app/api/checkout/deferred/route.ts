@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     deliveryTimeSlot,
     addonProductId,
     shippingAddress,
+    surveyResponses,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       addon_product_id: addonProduct?.id ?? null,
       addon_amount: addonProduct ? addonAmount : null,
       shipping_address: shippingAddress ?? null,
+      survey_responses: surveyResponses ?? null,
     })
     .select("id")
     .single();

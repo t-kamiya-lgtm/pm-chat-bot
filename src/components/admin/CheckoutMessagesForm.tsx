@@ -3,19 +3,160 @@
 import { useState } from "react";
 import { Toast } from "@/components/admin/Toast";
 
+export interface GreetingItemDraft {
+  type: "image" | "text";
+  imageUrl: string;
+  linkUrl: string;
+  text: string;
+}
+
+const MAX_ITEMS = 5;
+const EMPTY_ITEM: GreetingItemDraft = { type: "text", imageUrl: "", linkUrl: "", text: "" };
+
+function GreetingItemsEditor({
+  label,
+  description,
+  items,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  items: GreetingItemDraft[];
+  onChange: (items: GreetingItemDraft[]) => void;
+}) {
+  function update(index: number, patch: Partial<GreetingItemDraft>) {
+    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+  function remove(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+  }
+  function add() {
+    if (items.length >= MAX_ITEMS) return;
+    onChange([...items, { ...EMPTY_ITEM }]);
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-neutral-200 p-4">
+      <div>
+        <p className="text-sm font-medium text-neutral-700">{label}</p>
+        <p className="mt-0.5 text-xs text-neutral-500">{description}</p>
+      </div>
+
+      {items.map((item, index) => (
+        <div key={index} className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-neutral-500">項目 {index + 1}</span>
+            <button
+              type="button"
+              onClick={() => remove(index)}
+              className="text-xs text-red-600 hover:underline"
+            >
+              削除
+            </button>
+          </div>
+
+          <div className="flex gap-4 text-xs">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={item.type === "text"}
+                onChange={() => update(index, { type: "text" })}
+              />
+              コメント入力
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={item.type === "image"}
+                onChange={() => update(index, { type: "image" })}
+              />
+              画像アップロード(+リンク)
+            </label>
+          </div>
+
+          {item.type === "text" ? (
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="コメント本文"
+              value={item.text}
+              onChange={(e) => update(index, { text: e.target.value })}
+            />
+          ) : (
+            <>
+              <input
+                className="input"
+                placeholder="画像URL"
+                value={item.imageUrl}
+                onChange={(e) => update(index, { imageUrl: e.target.value })}
+              />
+              <input
+                className="input"
+                placeholder="リンクURL(任意・画像タップ時に開く)"
+                value={item.linkUrl}
+                onChange={(e) => update(index, { linkUrl: e.target.value })}
+              />
+            </>
+          )}
+        </div>
+      ))}
+
+      {items.length === 0 && <p className="text-xs text-neutral-400">項目がまだありません</p>}
+
+      <button
+        type="button"
+        onClick={add}
+        disabled={items.length >= MAX_ITEMS}
+        className="text-xs text-blue-600 hover:underline disabled:cursor-not-allowed disabled:text-neutral-400 disabled:no-underline"
+      >
+        + 項目を追加({items.length}/{MAX_ITEMS})
+      </button>
+    </div>
+  );
+}
+
+interface RawGreetingItem {
+  type: "image" | "text";
+  imageUrl?: string;
+  linkUrl?: string;
+  text?: string;
+}
+
+function toDraft(items: RawGreetingItem[]): GreetingItemDraft[] {
+  return items.map((item) => ({
+    type: item.type,
+    imageUrl: item.imageUrl ?? "",
+    linkUrl: item.linkUrl ?? "",
+    text: item.text ?? "",
+  }));
+}
+
+function toPayload(items: GreetingItemDraft[]) {
+  return items.map((item) =>
+    item.type === "image"
+      ? { type: "image" as const, imageUrl: item.imageUrl.trim(), linkUrl: item.linkUrl.trim() || undefined }
+      : { type: "text" as const, text: item.text.trim() },
+  );
+}
+
 export function CheckoutMessagesForm({
-  initialGreeting,
-  initialCompletionMessage,
+  initialGreetingItems,
+  initialCompletionItems,
+  initialPrivacyNotice,
   initialTermsText,
   initialPrivacyText,
 }: {
-  initialGreeting: string;
-  initialCompletionMessage: string;
+  initialGreetingItems: RawGreetingItem[];
+  initialCompletionItems: RawGreetingItem[];
+  initialPrivacyNotice: string;
   initialTermsText: string;
   initialPrivacyText: string;
 }) {
-  const [greeting, setGreeting] = useState(initialGreeting);
-  const [completionMessage, setCompletionMessage] = useState(initialCompletionMessage);
+  const [greetingItems, setGreetingItems] = useState<GreetingItemDraft[]>(toDraft(initialGreetingItems));
+  const [completionItems, setCompletionItems] = useState<GreetingItemDraft[]>(
+    toDraft(initialCompletionItems),
+  );
+  const [privacyNotice, setPrivacyNotice] = useState(initialPrivacyNotice);
   const [termsText, setTermsText] = useState(initialTermsText);
   const [privacyText, setPrivacyText] = useState(initialPrivacyText);
   const [saving, setSaving] = useState(false);
@@ -29,7 +170,13 @@ export function CheckoutMessagesForm({
     const res = await fetch("/api/checkout-messages", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ greeting, completionMessage, termsText, privacyText }),
+      body: JSON.stringify({
+        greetingItems: toPayload(greetingItems),
+        completionItems: toPayload(completionItems),
+        privacyNotice,
+        termsText,
+        privacyText,
+      }),
     });
 
     setSaving(false);
@@ -42,29 +189,31 @@ export function CheckoutMessagesForm({
     <form onSubmit={handleSave} className="max-w-xl space-y-4">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-neutral-700">
-          あいさつ文(任意・注文フォーム開始時に全商品共通で表示)
-        </span>
-        <textarea
-          className="input"
-          rows={4}
-          value={greeting}
-          onChange={(e) => setGreeting(e.target.value)}
-        />
-      </label>
+      <GreetingItemsEditor
+        label="あいさつ文(最大5項目・注文フォーム開始時に全商品共通で表示)"
+        description="画像(+リンク)またはコメントを、表示したい順に登録してください。"
+        items={greetingItems}
+        onChange={setGreetingItems}
+      />
 
       <label className="block text-sm">
         <span className="mb-1 block font-medium text-neutral-700">
-          注文確認メッセージ(任意・注文確定後に全商品共通で表示)
+          個人情報利用に関する注意文(任意・あいさつ文の直後に表示)
         </span>
         <textarea
           className="input"
           rows={3}
-          value={completionMessage}
-          onChange={(e) => setCompletionMessage(e.target.value)}
+          value={privacyNotice}
+          onChange={(e) => setPrivacyNotice(e.target.value)}
         />
       </label>
+
+      <GreetingItemsEditor
+        label="注文確認メッセージ(最大5項目・注文確定後に全商品共通で表示)"
+        description="画像(+リンク)またはコメントを、表示したい順に登録してください。"
+        items={completionItems}
+        onChange={setCompletionItems}
+      />
 
       <label className="block text-sm">
         <span className="mb-1 block font-medium text-neutral-700">

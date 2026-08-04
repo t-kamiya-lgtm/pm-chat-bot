@@ -17,6 +17,7 @@ const requestSchema = z.object({
   agreedPrivacy: z.literal(true),
   addonProductId: z.string().uuid().optional(),
   shippingAddress: shippingAddressSchema.optional(),
+  surveyResponses: z.record(z.string(), z.string()).optional(),
 });
 
 /**
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
     deliveryTimeSlot,
     addonProductId,
     shippingAddress,
+    surveyResponses,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -97,6 +99,7 @@ export async function POST(request: Request) {
       addon_product_id: addonProduct?.id ?? null,
       addon_amount: addonProduct ? addonAmount : null,
       shipping_address: shippingAddress ?? null,
+      survey_responses: surveyResponses ?? null,
     })
     .select("id")
     .single();

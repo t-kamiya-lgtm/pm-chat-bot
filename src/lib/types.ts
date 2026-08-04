@@ -94,7 +94,14 @@ export type ScenarioNodeType =
   | "choice"
   | "product"
   | "checkout"
-  | "product_qa";
+  | "product_qa"
+  | "image"
+  | "survey";
+
+export interface SurveyQuestion {
+  label: string;
+  required: boolean;
+}
 
 export interface ScenarioNode {
   id: string;
@@ -149,6 +156,27 @@ export interface Order {
   stripePaymentIntentId: string | null;
   stripeSubscriptionId: string | null;
   shippingAddress: ShippingAddress | null;
+  surveyResponses: Record<string, string> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 決済フォームの挨拶文・注文確認メッセージの1項目(画像+リンク、またはコメント)。 */
+export interface GreetingItem {
+  type: "image" | "text";
+  imageUrl?: string;
+  linkUrl?: string;
+  text?: string;
+}
+
+/** 入力途中で離脱した見込み客の情報。 */
+export interface Lead {
+  id: string;
+  sessionId: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  productId: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -74,6 +74,7 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     stripePaymentIntentId: row.stripe_payment_intent_id as string | null,
     stripeSubscriptionId: row.stripe_subscription_id as string | null,
     shippingAddress: (row.shipping_address as Order["shippingAddress"]) ?? null,
+    surveyResponses: (row.survey_responses as Order["surveyResponses"]) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/admin/scenarios", label: "シナリオ" },
   { href: "/admin/faqs", label: "商品QA" },
   { href: "/admin/orders", label: "注文" },
+  { href: "/admin/leads", label: "離脱リード" },
   { href: "/admin/checkout-fields", label: "決済フォーム設定" },
 ];
 

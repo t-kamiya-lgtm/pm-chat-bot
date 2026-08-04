@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Product, Scenario, ScenarioNode, ScenarioNodeType } from "@/lib/types";
+import type { Product, Scenario, ScenarioNode, ScenarioNodeType, SurveyQuestion } from "@/lib/types";
 
 const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   message: "メッセージ表示",
@@ -10,6 +10,8 @@ const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   product: "商品提示",
   checkout: "決済導線",
   product_qa: "商品QA",
+  image: "画像表示",
+  survey: "アンケート",
 };
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
@@ -68,6 +70,10 @@ function nodeSummary(node: ScenarioNode, products: PickableProduct[]): string {
       return `決済導線: ${productNames(extractProductIds(node.content))}`;
     case "product_qa":
       return `商品QA: ${productNames(extractProductIds(node.content))}`;
+    case "image":
+      return `画像表示: ${truncate((node.content.caption as string) || (node.content.imageUrl as string) || "")}`;
+    case "survey":
+      return `アンケート: ${((node.content.questions as SurveyQuestion[] | undefined) ?? []).length}件の質問`;
     default:
       return node.type;
   }
@@ -329,6 +335,65 @@ function OptionsEditor({
   );
 }
 
+function SurveyQuestionsEditor({
+  questions,
+  onChange,
+  compact,
+}: {
+  questions: SurveyQuestion[];
+  onChange: (questions: SurveyQuestion[]) => void;
+  compact?: boolean;
+}) {
+  function update(index: number, patch: Partial<SurveyQuestion>) {
+    onChange(questions.map((q, i) => (i === index ? { ...q, ...patch } : q)));
+  }
+  function remove(index: number) {
+    onChange(questions.filter((_, i) => i !== index));
+  }
+  function add() {
+    onChange([...questions, { label: "", required: false }]);
+  }
+
+  const textSize = compact ? "text-xs" : "text-sm";
+
+  return (
+    <div className="space-y-2">
+      <span className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${textSize}`}>
+        質問項目(お客様は全体をスキップできます。項目ごとに回答必須にできます)
+      </span>
+      {questions.map((question, index) => (
+        <div key={index} className="space-y-2 rounded-md border border-neutral-200 p-2">
+          <input
+            className="input"
+            placeholder="質問文(例: 現在お悩みのことはありますか？)"
+            value={question.label}
+            onChange={(e) => update(index, { label: e.target.value })}
+          />
+          <label className="flex items-center gap-2 text-xs text-neutral-600">
+            <input
+              type="checkbox"
+              checked={question.required}
+              onChange={(e) => update(index, { required: e.target.checked })}
+            />
+            回答必須にする
+          </label>
+          <button
+            type="button"
+            onClick={() => remove(index)}
+            className={`text-red-600 hover:underline ${textSize}`}
+          >
+            この質問を削除
+          </button>
+        </div>
+      ))}
+      {questions.length === 0 && <p className="text-xs text-neutral-400">質問がまだありません</p>}
+      <button type="button" onClick={add} className={`text-blue-600 hover:underline ${textSize}`}>
+        + 質問を追加
+      </button>
+    </div>
+  );
+}
+
 interface Props {
   scenario: Scenario;
   nodes: ScenarioNode[];
@@ -349,6 +414,9 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeProductNextMap, setNewNodeProductNextMap] = useState<Record<string, string>>({});
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
+  const [newNodeImageLinkUrl, setNewNodeImageLinkUrl] = useState("");
+  const [newNodeImageCaption, setNewNodeImageCaption] = useState("");
+  const [newNodeSurveyQuestions, setNewNodeSurveyQuestions] = useState<SurveyQuestion[]>([]);
   const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
   const [newNodeOptions, setNewNodeOptions] = useState<OptionDraft[]>([]);
   const [newNodeDefaultNext, setNewNodeDefaultNext] = useState("");
@@ -446,7 +514,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         ...(newNodeImageUrl.trim() && { imageUrl: newNodeImageUrl.trim() }),
       };
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
-    } else {
+    } else if (newNodeType === "choice") {
       if (!newNodeChoiceText.trim()) {
         setError("質問文を入力してください");
         return;
@@ -468,6 +536,30 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         if (o.nextNodeId) nextNodeMap[o.value.trim()] = o.nextNodeId;
       }
       if (newNodeDefaultNext) nextNodeMap.default = newNodeDefaultNext;
+    } else if (newNodeType === "image") {
+      if (!newNodeImageUrl.trim()) {
+        setError("画像URLを入力してください");
+        return;
+      }
+      content = {
+        imageUrl: newNodeImageUrl.trim(),
+        ...(newNodeImageLinkUrl.trim() && { linkUrl: newNodeImageLinkUrl.trim() }),
+        ...(newNodeImageCaption.trim() && { caption: newNodeImageCaption.trim() }),
+      };
+      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
+    } else {
+      if (newNodeSurveyQuestions.length === 0) {
+        setError("質問を1つ以上追加してください");
+        return;
+      }
+      if (newNodeSurveyQuestions.some((q) => !q.label.trim())) {
+        setError("質問文を入力してください");
+        return;
+      }
+      content = {
+        questions: newNodeSurveyQuestions.map((q) => ({ label: q.label.trim(), required: q.required })),
+      };
+      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     }
 
     const res = await fetch(`/api/scenarios/${scenario.id}/nodes`, {
@@ -496,6 +588,9 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     setNewNodeProductNextMap({});
     setNewNodeText("");
     setNewNodeImageUrl("");
+    setNewNodeImageLinkUrl("");
+    setNewNodeImageCaption("");
+    setNewNodeSurveyQuestions([]);
     setNewNodeChoiceText("");
     setNewNodeOptions([]);
     setNewNodeDefaultNext("");
@@ -763,6 +858,39 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
           </>
         )}
 
+        {newNodeType === "image" && (
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">画像URL</span>
+              <input
+                className="input"
+                value={newNodeImageUrl}
+                onChange={(e) => setNewNodeImageUrl(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">リンクURL(任意・画像タップ時に開く)</span>
+              <input
+                className="input"
+                value={newNodeImageLinkUrl}
+                onChange={(e) => setNewNodeImageLinkUrl(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">キャプション(任意)</span>
+              <input
+                className="input"
+                value={newNodeImageCaption}
+                onChange={(e) => setNewNodeImageCaption(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+
+        {newNodeType === "survey" && (
+          <SurveyQuestionsEditor questions={newNodeSurveyQuestions} onChange={setNewNodeSurveyQuestions} />
+        )}
+
         <NextNodeSelect
           label={newNodeType === "choice" ? "どの選択肢にも一致しない場合に進むノード(任意)" : "次に進むノード"}
           nodeOptions={nodeOptions}
@@ -827,6 +955,11 @@ function NodeCard({
   );
   const [text, setText] = useState((node.content.text as string) ?? "");
   const [imageUrl, setImageUrl] = useState((node.content.imageUrl as string) ?? "");
+  const [imageLinkUrl, setImageLinkUrl] = useState((node.content.linkUrl as string) ?? "");
+  const [imageCaption, setImageCaption] = useState((node.content.caption as string) ?? "");
+  const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>(
+    (node.content.questions as SurveyQuestion[] | undefined) ?? [],
+  );
   const [options, setOptions] = useState<OptionDraft[]>(
     ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
       label: o.label,
@@ -853,6 +986,9 @@ function NodeCard({
     );
     setText((node.content.text as string) ?? "");
     setImageUrl((node.content.imageUrl as string) ?? "");
+    setImageLinkUrl((node.content.linkUrl as string) ?? "");
+    setImageCaption((node.content.caption as string) ?? "");
+    setSurveyQuestions((node.content.questions as SurveyQuestion[] | undefined) ?? []);
     setOptions(
       ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
         label: o.label,
@@ -905,7 +1041,7 @@ function NodeCard({
       }
       content = { text: text.trim(), ...(imageUrl.trim() && { imageUrl: imageUrl.trim() }) };
       if (defaultNext) nextNodeMap = { default: defaultNext };
-    } else {
+    } else if (node.type === "choice") {
       if (!text.trim()) {
         setError("質問文を入力してください");
         return;
@@ -927,6 +1063,30 @@ function NodeCard({
         if (o.nextNodeId) nextNodeMap[o.value.trim()] = o.nextNodeId;
       }
       if (defaultNext) nextNodeMap.default = defaultNext;
+    } else if (node.type === "image") {
+      if (!imageUrl.trim()) {
+        setError("画像URLを入力してください");
+        return;
+      }
+      content = {
+        imageUrl: imageUrl.trim(),
+        ...(imageLinkUrl.trim() && { linkUrl: imageLinkUrl.trim() }),
+        ...(imageCaption.trim() && { caption: imageCaption.trim() }),
+      };
+      if (defaultNext) nextNodeMap = { default: defaultNext };
+    } else {
+      if (surveyQuestions.length === 0) {
+        setError("質問を1つ以上追加してください");
+        return;
+      }
+      if (surveyQuestions.some((q) => !q.label.trim())) {
+        setError("質問文を入力してください");
+        return;
+      }
+      content = {
+        questions: surveyQuestions.map((q) => ({ label: q.label.trim(), required: q.required })),
+      };
+      if (defaultNext) nextNodeMap = { default: defaultNext };
     }
 
     setSaving(true);
@@ -1093,6 +1253,35 @@ function NodeCard({
             </>
           )}
 
+          {node.type === "image" && (
+            <>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">画像URL</span>
+                <input className="input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">リンクURL(任意・画像タップ時に開く)</span>
+                <input
+                  className="input"
+                  value={imageLinkUrl}
+                  onChange={(e) => setImageLinkUrl(e.target.value)}
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">キャプション(任意)</span>
+                <input
+                  className="input"
+                  value={imageCaption}
+                  onChange={(e) => setImageCaption(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+
+          {node.type === "survey" && (
+            <SurveyQuestionsEditor questions={surveyQuestions} onChange={setSurveyQuestions} compact />
+          )}
+
           <NextNodeSelect
             label={node.type === "choice" ? "どの選択肢にも一致しない場合に進むノード(任意)" : "次に進むノード"}
             nodeOptions={nodeOptions}
@@ -1147,6 +1336,27 @@ function NodeCard({
             <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
               {text || "(未設定)"}
               {imageUrl && <p className="mt-1 text-neutral-400">画像: {imageUrl}</p>}
+            </div>
+          ) : node.type === "image" ? (
+            <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
+              {imageUrl ? `画像: ${imageUrl}` : "(未設定)"}
+              {imageLinkUrl && <p className="mt-1 text-neutral-400">リンク: {imageLinkUrl}</p>}
+              {imageCaption && <p className="mt-1 text-neutral-500">{imageCaption}</p>}
+            </div>
+          ) : node.type === "survey" ? (
+            <div className="rounded bg-neutral-50 p-2 text-xs">
+              {surveyQuestions.length > 0 ? (
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {surveyQuestions.map((q, idx) => (
+                    <li key={idx}>
+                      {q.label || "(未設定)"}
+                      {q.required && <span className="ml-1 text-red-500">(必須)</span>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                "(質問未設定)"
+              )}
             </div>
           ) : (
             <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">

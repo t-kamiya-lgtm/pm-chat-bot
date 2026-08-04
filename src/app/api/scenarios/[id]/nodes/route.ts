@@ -5,7 +5,7 @@ import { requireCatalogRole } from "@/lib/require-role";
 import { autoWireCheckoutNode } from "@/lib/scenario-auto-wire";
 
 const nodeSchema = z.object({
-  type: z.enum(["message", "choice", "product", "checkout", "product_qa"]),
+  type: z.enum(["message", "choice", "product", "checkout", "product_qa", "image", "survey"]),
   content: z.record(z.string(), z.unknown()).default({}),
   nextNodeMap: z.record(z.string(), z.string()).default({}),
   isEntry: z.boolean().default(false),

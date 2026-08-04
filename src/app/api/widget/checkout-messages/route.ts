@@ -5,9 +5,24 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export async function GET() {
   const supabase = createSupabaseAdminClient();
   const { data } = await supabase.from("checkout_messages").select("*").eq("id", 1).maybeSingle();
+
+  const greetingItems =
+    data?.greeting_items?.length > 0
+      ? data.greeting_items
+      : data?.greeting
+        ? [{ type: "text", text: data.greeting }]
+        : [];
+  const completionItems =
+    data?.completion_items?.length > 0
+      ? data.completion_items
+      : data?.completion_message
+        ? [{ type: "text", text: data.completion_message }]
+        : [];
+
   return NextResponse.json({
-    greeting: data?.greeting || undefined,
-    completionMessage: data?.completion_message || undefined,
+    greetingItems,
+    completionItems,
+    privacyNotice: data?.privacy_notice || undefined,
     termsText: data?.terms_text || undefined,
     privacyText: data?.privacy_text || undefined,
   });

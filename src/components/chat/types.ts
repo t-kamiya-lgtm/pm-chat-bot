@@ -17,7 +17,7 @@ export interface WidgetProduct {
 export interface WidgetScenarioNode {
   id: string;
   scenario_id: string;
-  type: "message" | "choice" | "product" | "checkout" | "product_qa";
+  type: "message" | "choice" | "product" | "checkout" | "product_qa" | "image" | "survey";
   content: Record<string, unknown>;
   next_node_map: Record<string, string>;
   is_entry: boolean;
@@ -29,6 +29,7 @@ export interface ChatMessage {
   kind: "text" | "product" | "checkout" | "faq" | "checkout-result";
   text?: string;
   imageUrl?: string;
+  linkUrl?: string;
   productId?: string;
   nodeId?: string;
   breakdown?: { amount: number; shippingFee: number; paymentFee: number; total: number };
