@@ -43,7 +43,12 @@ interface OptionDraft {
   label: string;
   value: string;
   nextNodeId: string;
+  /** 設定すると、次のノードへ進む代わりにこの商品のQ&Aをその場で表示する(nextNodeIdより優先)。 */
+  qaProductId?: string;
 }
+
+/** 選択肢のnextNodeMapで、実ノードの代わりに商品Q&Aをその場表示するためのsentinel値。 */
+const QA_TARGET_PREFIX = "qa:";
 
 const UNGROUPED_KEY = "__ungrouped__";
 
@@ -64,6 +69,27 @@ function extractProductIds(content: Record<string, unknown>): string[] {
 
 function truncate(text: string, max = 24) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function buildChoiceNextNodeMap(options: OptionDraft[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const o of options) {
+    if (o.qaProductId) map[o.value.trim()] = `${QA_TARGET_PREFIX}${o.qaProductId}`;
+    else if (o.nextNodeId) map[o.value.trim()] = o.nextNodeId;
+  }
+  return map;
+}
+
+/** next_node_mapの値からQ&A sentinelを検出し、選択肢の遷移先情報に変換する。 */
+function parseChoiceOptionTarget(
+  nextNodeMap: Record<string, string>,
+  value: string,
+): Pick<OptionDraft, "nextNodeId" | "qaProductId"> {
+  const target = nextNodeMap[value] ?? "";
+  if (target.startsWith(QA_TARGET_PREFIX)) {
+    return { nextNodeId: "", qaProductId: target.slice(QA_TARGET_PREFIX.length) };
+  }
+  return { nextNodeId: target };
 }
 
 function serializeSurveyQuestions(questions: SurveyQuestion[]): SurveyQuestion[] {
@@ -344,11 +370,13 @@ function OptionsEditor({
   options,
   onChange,
   nodeOptions,
+  products,
   compact,
 }: {
   options: OptionDraft[];
   onChange: (options: OptionDraft[]) => void;
   nodeOptions: { id: string; summary: string }[];
+  products: PickableProduct[];
   compact?: boolean;
 }) {
   function update(index: number, patch: Partial<OptionDraft>) {
@@ -372,23 +400,36 @@ function OptionsEditor({
         <div key={index} className="space-y-2 rounded-md border border-neutral-200 p-2">
           <input
             className="input"
-            placeholder="表示ラベル(例: はい)"
+            placeholder="表示ラベル(例: Q&Aを見る)"
             value={option.label}
             onChange={(e) => update(index, { label: e.target.value })}
           />
           <input
             className="input"
-            placeholder="内部値(例: yes、他ノードから参照する識別子)"
+            placeholder="内部値(例: qa、他ノードから参照する識別子)"
             value={option.value}
             onChange={(e) => update(index, { value: e.target.value })}
           />
-          <NextNodeSelect
-            label="この選択肢を選んだ時に進むノード"
-            nodeOptions={nodeOptions}
-            value={option.nextNodeId}
-            onChange={(v) => update(index, { nextNodeId: v })}
+          <OptionalProductSelect
+            label="Q&Aをその場で表示する商品(設定すると下の「次に進むノード」より優先されます)"
+            products={products}
+            value={option.qaProductId ?? ""}
+            onChange={(id) => update(index, { qaProductId: id || undefined })}
             compact={compact}
           />
+          {option.qaProductId ? (
+            <p className={`text-neutral-400 ${textSize}`}>
+              Q&A表示が設定されているため、次のノードへは進みません
+            </p>
+          ) : (
+            <NextNodeSelect
+              label="この選択肢を選んだ時に進むノード"
+              nodeOptions={nodeOptions}
+              value={option.nextNodeId}
+              onChange={(v) => update(index, { nextNodeId: v })}
+              compact={compact}
+            />
+          )}
           <button
             type="button"
             onClick={() => remove(index)}
@@ -682,10 +723,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         text: newNodeChoiceText.trim(),
         options: newNodeOptions.map((o) => ({ label: o.label.trim(), value: o.value.trim() })),
       };
-      nextNodeMap = {};
-      for (const o of newNodeOptions) {
-        if (o.nextNodeId) nextNodeMap[o.value.trim()] = o.nextNodeId;
-      }
+      nextNodeMap = buildChoiceNextNodeMap(newNodeOptions);
       if (newNodeDefaultNext) nextNodeMap.default = newNodeDefaultNext;
     } else if (newNodeType === "image") {
       const urls = newNodeImageUrls.map((u) => u.trim()).filter(Boolean);
@@ -774,21 +812,42 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     const toIndex = Math.max(0, Math.min(nodes.length - 1, toPosition - 1));
     if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= nodes.length) return;
 
+    const moved = nodes[fromIndex];
     const reordered = [...nodes];
-    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
 
     setReorderPending(moved.id);
-    const changed = reordered
-      .map((node, i) => ({ node, displayOrder: i }))
-      .filter(({ node, displayOrder }) => node.displayOrder !== displayOrder);
+
+    const patches = new Map<string, { displayOrder?: number; nextNodeMap?: Record<string, string> }>();
+    reordered.forEach((node, i) => {
+      if (node.displayOrder !== i) patches.set(node.id, { displayOrder: i });
+    });
+
+    // 2つのノードの間に挿入した場合、直前のノードが直後のノードへ直接繋がっている(=挿入したノードを飛ばしてしまう)なら、
+    // 挿入したノードを経由するように繋ぎ直す
+    const newIndex = reordered.indexOf(moved);
+    const newPrev = reordered[newIndex - 1];
+    const newNext = reordered[newIndex + 1];
+    if (newPrev && newNext && newPrev.nextNodeMap.default === newNext.id) {
+      patches.set(newPrev.id, {
+        ...patches.get(newPrev.id),
+        nextNodeMap: { ...newPrev.nextNodeMap, default: moved.id },
+      });
+      if (!moved.nextNodeMap.default) {
+        patches.set(moved.id, {
+          ...patches.get(moved.id),
+          nextNodeMap: { ...moved.nextNodeMap, default: newNext.id },
+        });
+      }
+    }
 
     await Promise.all(
-      changed.map(({ node, displayOrder }) =>
-        fetch(`/api/scenarios/${scenario.id}/nodes/${node.id}`, {
+      Array.from(patches.entries()).map(([nodeId, patch]) =>
+        fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ displayOrder }),
+          body: JSON.stringify(patch),
         }),
       ),
     );
@@ -1058,6 +1117,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
               options={newNodeOptions}
               onChange={setNewNodeOptions}
               nodeOptions={nodeOptions}
+              products={products}
             />
           </>
         )}
@@ -1178,7 +1238,7 @@ function NodeCard({
     ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
       label: o.label,
       value: o.value,
-      nextNodeId: node.nextNodeMap[o.value] ?? "",
+      ...parseChoiceOptionTarget(node.nextNodeMap, o.value),
     })),
   );
   const [defaultNext, setDefaultNext] = useState(node.nextNodeMap.default ?? "");
@@ -1212,7 +1272,7 @@ function NodeCard({
       ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
         label: o.label,
         value: o.value,
-        nextNodeId: node.nextNodeMap[o.value] ?? "",
+        ...parseChoiceOptionTarget(node.nextNodeMap, o.value),
       })),
     );
     setDefaultNext(node.nextNodeMap.default ?? "");
@@ -1277,10 +1337,7 @@ function NodeCard({
         text: text.trim(),
         options: options.map((o) => ({ label: o.label.trim(), value: o.value.trim() })),
       };
-      nextNodeMap = {};
-      for (const o of options) {
-        if (o.nextNodeId) nextNodeMap[o.value.trim()] = o.nextNodeId;
-      }
+      nextNodeMap = buildChoiceNextNodeMap(options);
       if (defaultNext) nextNodeMap.default = defaultNext;
     } else if (node.type === "image") {
       const urls = imageUrls.map((u) => u.trim()).filter(Boolean);
@@ -1486,7 +1543,13 @@ function NodeCard({
                   onChange={(e) => setText(e.target.value)}
                 />
               </label>
-              <OptionsEditor options={options} onChange={setOptions} nodeOptions={nodeOptions} compact />
+              <OptionsEditor
+                options={options}
+                onChange={setOptions}
+                nodeOptions={nodeOptions}
+                products={products}
+                compact
+              />
             </>
           )}
 
@@ -1634,6 +1697,10 @@ function NodeCard({
             {node.type === "choice"
               ? options
                   .map((o) => {
+                    if (o.qaProductId) {
+                      const productName = products.find((p) => p.id === o.qaProductId)?.name ?? "未設定";
+                      return `${o.label || o.value}→Q&A表示(${productName})`;
+                    }
                     const target = nodeOptions.find((n) => n.id === o.nextNodeId);
                     return target ? `${o.label || o.value}→${target.summary}` : null;
                   })

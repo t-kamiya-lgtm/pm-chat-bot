@@ -46,11 +46,19 @@ export async function GET(request: Request) {
     .order("display_order");
   if (nodesError) return NextResponse.json({ error: nodesError.message }, { status: 500 });
 
+  const QA_TARGET_PREFIX = "qa:";
+
   const productIds = Array.from(
     new Set(
       (nodes ?? [])
-        .filter((n) => n.type === "product" || n.type === "checkout" || n.type === "product_qa")
         .flatMap((n) => {
+          if (n.type === "choice") {
+            // 選択肢分岐ノードの「その場でQ&Aを表示する」設定(next_node_mapのsentinel値)から商品IDを拾う
+            return Object.values(n.next_node_map as Record<string, string>)
+              .filter((v) => v.startsWith(QA_TARGET_PREFIX))
+              .map((v) => v.slice(QA_TARGET_PREFIX.length));
+          }
+          if (n.type !== "product" && n.type !== "checkout" && n.type !== "product_qa") return [];
           const content = n.content as {
             productId?: string;
             productIds?: string[];

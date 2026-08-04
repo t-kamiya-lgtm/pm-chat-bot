@@ -77,6 +77,9 @@ function sequentialNextId(nodeId: string, orderedIds: string[]): string | undefi
   return index === -1 ? undefined : orderedIds[index + 1];
 }
 
+/** 選択肢分岐ノードで、実ノードの代わりに商品Q&Aをその場表示するためのsentinel値のprefix。 */
+const QA_TARGET_PREFIX = "qa:";
+
 export function ChatWidget() {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
@@ -353,7 +356,14 @@ export function ChatWidget() {
       node?.next_node_map[option.value] ??
       node?.next_node_map.default ??
       (node && sequentialNextId(node.id, orderedNodeIds));
-    if (next) advance(next, nodesById, productsById, item.id);
+    if (!next) return;
+
+    if (next.startsWith(QA_TARGET_PREFIX)) {
+      const productId = next.slice(QA_TARGET_PREFIX.length);
+      setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId }]);
+      return;
+    }
+    advance(next, nodesById, productsById, item.id);
   }
 
   function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>, productId: string) {
