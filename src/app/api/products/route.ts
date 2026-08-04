@@ -55,6 +55,21 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdminClient();
 
+  if (input.smaregiProductId) {
+    const { data: existing, error: existingError } = await supabase
+      .from("products")
+      .select("id, name")
+      .eq("smaregi_product_id", input.smaregiProductId)
+      .maybeSingle();
+    if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+    if (existing) {
+      return NextResponse.json(
+        { error: `スマレジ品番「${input.smaregiProductId}」は既に「${existing.name}」で使用されています` },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data: lastProduct } = await supabase
     .from("products")
     .select("display_order")

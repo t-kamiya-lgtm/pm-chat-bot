@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
   one_time: "単品",
@@ -26,6 +27,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
   const [products, setProducts] = useState(initialProducts);
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const filtered = products.filter((p) => {
     const q = search.trim().toLowerCase();
@@ -69,8 +71,53 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
     router.refresh();
   }
 
+  async function handleDuplicate(product: ProductRow) {
+    setPending(product.id);
+    const res = await fetch(`/api/products/${product.id}/duplicate`, { method: "POST" });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setPending(null);
+      setToast({ message: `複製に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
+      return;
+    }
+
+    const body: {
+      product: {
+        id: string;
+        name: string;
+        price: number;
+        shipping_fee: number;
+        order_type: string;
+        subscription_intervals: string[];
+        smaregi_product_id: string | null;
+        display_order: number;
+      };
+    } = await res.json();
+    const created = body.product;
+
+    setProducts((prev) => [
+      ...prev,
+      {
+        id: created.id,
+        name: created.name,
+        price: created.price,
+        shippingFee: created.shipping_fee,
+        orderType: created.order_type,
+        subscriptionIntervals: created.subscription_intervals,
+        smaregiProductId: created.smaregi_product_id,
+        displayOrder: created.display_order,
+        productGroupName: product.productGroupName,
+      },
+    ]);
+    setPending(null);
+    setToast({ message: `「${product.name}」を複製しました`, type: "success" });
+    router.refresh();
+  }
+
   return (
     <div>
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <div className="mb-4">
         <input
           className="input max-w-sm"
@@ -136,7 +183,15 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
                       `(${product.subscriptionIntervals.join(" / ")})`}
                   </td>
                   <td className="px-4 py-2">{product.smaregiProductId ?? "-"}</td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      disabled={pending !== null}
+                      onClick={() => handleDuplicate(product)}
+                      className="mr-3 text-xs text-blue-600 hover:underline disabled:opacity-30"
+                    >
+                      複製
+                    </button>
                     <button
                       type="button"
                       disabled={pending === product.id}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Toast } from "@/components/admin/Toast";
 
 export function CheckoutMessagesForm({
   initialGreeting,
@@ -18,12 +19,12 @@ export function CheckoutMessagesForm({
   const [termsText, setTermsText] = useState(initialTermsText);
   const [privacyText, setPrivacyText] = useState(initialPrivacyText);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setMessage(null);
+    setToast(null);
 
     const res = await fetch("/api/checkout-messages", {
       method: "PATCH",
@@ -32,12 +33,14 @@ export function CheckoutMessagesForm({
     });
 
     setSaving(false);
-    setMessage(res.ok ? "保存しました" : "保存に失敗しました");
+    setToast(
+      res.ok ? { message: "保存しました", type: "success" } : { message: "保存に失敗しました", type: "error" },
+    );
   }
 
   return (
     <form onSubmit={handleSave} className="max-w-xl space-y-4">
-      {message && <p className="text-sm text-neutral-600">{message}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <label className="block text-sm">
         <span className="mb-1 block font-medium text-neutral-700">

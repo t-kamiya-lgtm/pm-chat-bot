@@ -108,7 +108,9 @@ export function ProductForm({
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setErrorMessage(JSON.stringify(body.error ?? "登録に失敗しました"));
+      setErrorMessage(
+        typeof body.error === "string" ? body.error : JSON.stringify(body.error ?? "登録に失敗しました"),
+      );
       return;
     }
 

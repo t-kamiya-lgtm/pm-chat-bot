@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 
 export interface ProductSpecFormValues {
   ingredients: string;
@@ -23,12 +24,12 @@ export function ProductSpecForm({
     initialValues ?? { ingredients: "", allergens: "", volume: "", usage: "", nutrition: "" },
   );
   const [status, setStatus] = useState<"idle" | "saving" | "generating" | "done">("idle");
-  const [message, setMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setStatus("saving");
-    setMessage(null);
+    setToast(null);
 
     const res = await fetch(`/api/product-groups/${productGroupId}/spec`, {
       method: "PUT",
@@ -38,17 +39,17 @@ export function ProductSpecForm({
 
     if (!res.ok) {
       setStatus("idle");
-      setMessage("仕様情報の保存に失敗しました");
+      setToast({ message: "仕様情報の保存に失敗しました", type: "error" });
       return;
     }
     setStatus("idle");
-    setMessage("仕様情報を保存しました");
+    setToast({ message: "仕様情報を保存しました", type: "success" });
     router.refresh();
   }
 
   async function handleGenerateFaqs() {
     setStatus("generating");
-    setMessage(null);
+    setToast(null);
 
     const res = await fetch("/api/faqs/generate", {
       method: "POST",
@@ -59,19 +60,22 @@ export function ProductSpecForm({
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setStatus("idle");
-      setMessage(`QA生成に失敗しました: ${JSON.stringify(body.error ?? "")}`);
+      setToast({ message: `QA生成に失敗しました: ${JSON.stringify(body.error ?? "")}`, type: "error" });
       return;
     }
     const body = await res.json();
     setStatus("done");
-    setMessage(`${body.faqs?.length ?? 0}件のQA候補を生成しました(要レビュー)`);
+    setToast({
+      message: `${body.faqs?.length ?? 0}件のQA候補を生成しました(要レビュー)`,
+      type: "success",
+    });
     router.refresh();
   }
 
   return (
     <div className="mt-8 max-w-xl space-y-5 border-t border-neutral-200 pt-6">
       <h2 className="text-lg font-medium">商品仕様情報(商品QA生成の元データ)</h2>
-      {message && <p className="text-sm text-neutral-600">{message}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <form onSubmit={handleSave} className="space-y-4">
         <SpecField
