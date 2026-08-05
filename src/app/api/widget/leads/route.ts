@@ -8,6 +8,7 @@ const leadInputSchema = z.object({
   phone: z.string().optional(),
   email: z.string().optional(),
   productId: z.string().uuid().optional(),
+  surveyResponses: z.record(z.string(), z.string()).optional(),
 });
 
 /**
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { sessionId, name, phone, email, productId } = parsed.data;
+  const { sessionId, name, phone, email, productId, surveyResponses } = parsed.data;
 
   const supabase = createSupabaseAdminClient();
   const { error } = await supabase.from("leads").upsert(
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
       ...(phone !== undefined && { phone: phone || null }),
       ...(email !== undefined && { email: email || null }),
       ...(productId !== undefined && { product_id: productId }),
+      ...(surveyResponses !== undefined && { survey_responses: surveyResponses }),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "session_id" },

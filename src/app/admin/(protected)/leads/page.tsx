@@ -41,6 +41,7 @@ export default async function AdminLeadsPage() {
               <th className="px-4 py-2">電話番号</th>
               <th className="px-4 py-2">メールアドレス</th>
               <th className="px-4 py-2">選択商品</th>
+              <th className="px-4 py-2">アンケート</th>
             </tr>
           </thead>
           <tbody>
@@ -52,21 +53,35 @@ export default async function AdminLeadsPage() {
                 phone: string | null;
                 email: string | null;
                 products: { name: string } | null;
-              }) => (
-                <tr key={lead.id} className="border-t border-neutral-100">
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {new Date(lead.updated_at).toLocaleString("ja-JP")}
-                  </td>
-                  <td className="px-4 py-2">{lead.name ?? "-"}</td>
-                  <td className="px-4 py-2">{lead.phone ?? "-"}</td>
-                  <td className="px-4 py-2">{lead.email ?? "-"}</td>
-                  <td className="px-4 py-2">{lead.products?.name ?? "-"}</td>
-                </tr>
-              ),
+                survey_responses: Record<string, string> | null;
+              }) => {
+                const surveyEntries = Object.entries(lead.survey_responses ?? {});
+                const surveyText = surveyEntries.map(([q, a]) => `${q}: ${a}`).join("\n");
+                return (
+                  <tr key={lead.id} className="border-t border-neutral-100">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {new Date(lead.updated_at).toLocaleString("ja-JP")}
+                    </td>
+                    <td className="px-4 py-2">{lead.name ?? "-"}</td>
+                    <td className="px-4 py-2">{lead.phone ?? "-"}</td>
+                    <td className="px-4 py-2">{lead.email ?? "-"}</td>
+                    <td className="px-4 py-2">{lead.products?.name ?? "-"}</td>
+                    <td className="px-4 py-2">
+                      {surveyEntries.length > 0 ? (
+                        <span title={surveyText} className="cursor-help underline decoration-dotted">
+                          {surveyEntries.length}件
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                );
+              },
             )}
             {!leads?.length && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={6} className="px-4 py-6 text-center text-neutral-400">
                   離脱リードはまだありません
                 </td>
               </tr>

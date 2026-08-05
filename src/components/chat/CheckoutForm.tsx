@@ -28,7 +28,8 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
   {
     value: "stripe",
     label: "クレジットカード / Apple Pay / Google Pay / PayPay",
-    description: "画面内でそのままお支払いいただけます",
+    description:
+      "画面内でそのままお支払いいただけます。このあとの注文確認画面にて、決済処理をお願いします。",
   },
   {
     value: "deferred_invoice",
@@ -685,6 +686,17 @@ export function CheckoutForm({
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
         <div className="space-y-2">
+          <div className="space-y-1">
+            <MessageBubble message={{ id: "q-product", from: "bot", kind: "text", text: "ご注文商品" }} />
+            <MessageBubble
+              message={{
+                id: "a-product",
+                from: "user",
+                kind: "text",
+                text: `${activeProduct.name}${quantity > 1 ? ` × ${quantity}点` : ""}`,
+              }}
+            />
+          </div>
           {steps.slice(0, stepIndex).map((pastStep, idx) => (
             <div key={idx} className="space-y-1">
               <MessageBubble

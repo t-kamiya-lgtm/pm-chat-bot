@@ -476,17 +476,37 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId: item.productId }]);
   }
 
+  /** アンケート回答は注文が完了しなくても見込み客情報として残るよう、その都度leadsへ保存する。 */
+  function persistSurveyAnswers(merged: Record<string, string>) {
+    if (Object.keys(merged).length === 0) return;
+    fetch("/api/widget/leads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId, surveyResponses: merged }),
+    }).catch(() => {});
+  }
+
   function handleSurveySubmit(item: Extract<TimelineItem, { kind: "survey" }>, answers: Record<string, string>) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
-    setSurveyAnswers((prev) => ({ ...prev, ...answers }));
+    const merged = { ...surveyAnswers, ...answers };
+    setSurveyAnswers(merged);
+    persistSurveyAnswers(merged);
 
     const node = nodesById[item.nodeId];
     const next = node?.next_node_map.default ?? (node && sequentialNextId(node.id, orderedNodeIds));
     if (next) advance(next, nodesById, productsById, item.id);
   }
 
-  function handleSurveySkip(item: Extract<TimelineItem, { kind: "survey" }>) {
+  function handleSurveySkip(
+    item: Extract<TimelineItem, { kind: "survey" }>,
+    partialAnswers: Record<string, string>,
+  ) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+    if (Object.keys(partialAnswers).length > 0) {
+      const merged = { ...surveyAnswers, ...partialAnswers };
+      setSurveyAnswers(merged);
+      persistSurveyAnswers(merged);
+    }
 
     const node = nodesById[item.nodeId];
     const next = node?.next_node_map.default ?? (node && sequentialNextId(node.id, orderedNodeIds));
@@ -589,7 +609,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   key={item.id}
                   questions={item.questions}
                   onSubmit={(answers) => handleSurveySubmit(item, answers)}
-                  onSkip={() => handleSurveySkip(item)}
+                  onSkip={(partialAnswers) => handleSurveySkip(item, partialAnswers)}
                 />
               );
             case "checkout": {

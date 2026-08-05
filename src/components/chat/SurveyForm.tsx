@@ -148,7 +148,7 @@ export function SurveyForm({
 }: {
   questions: SurveyQuestion[];
   onSubmit: (answers: Record<string, string>) => void;
-  onSkip: () => void;
+  onSkip: (partialAnswers: Record<string, string>) => void;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [values, setValues] = useState<string[]>(() => questions.map(() => ""));
@@ -158,17 +158,21 @@ export function SurveyForm({
   const isLastStep = stepIndex === questions.length - 1;
   const hasError = step.required && !values[stepIndex].trim();
 
+  function collectAnswers(): Record<string, string> {
+    const answers: Record<string, string> = {};
+    questions.forEach((q, i) => {
+      if (values[i].trim()) answers[q.label] = values[i].trim();
+    });
+    return answers;
+  }
+
   function handleNext() {
     if (hasError) {
       setTouched(true);
       return;
     }
     if (isLastStep) {
-      const answers: Record<string, string> = {};
-      questions.forEach((q, i) => {
-        if (values[i].trim()) answers[q.label] = values[i].trim();
-      });
-      onSubmit(answers);
+      onSubmit(collectAnswers());
     } else {
       setTouched(false);
       setStepIndex((i) => i + 1);
@@ -181,7 +185,11 @@ export function SurveyForm({
         <span>
           アンケート {stepIndex + 1} / {questions.length}
         </span>
-        <button type="button" onClick={onSkip} className="hover:text-neutral-600">
+        <button
+          type="button"
+          onClick={() => onSkip(collectAnswers())}
+          className="hover:text-neutral-600"
+        >
           スキップする
         </button>
       </div>
