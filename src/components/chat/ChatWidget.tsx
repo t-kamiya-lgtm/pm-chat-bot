@@ -307,7 +307,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
 
         if (node.type === "checkout") {
           setTimeline((prev) => [
-            ...prev,
+            // 決済導線は同時に1つだけ有効にする(未完了のまま残っている決済フォームは
+            // 新しい注文を始めた時点で無効化する)
+            ...prev.filter((i) => i.kind !== "checkout"),
             {
               id: nextId(),
               kind: "checkout",
@@ -452,7 +454,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     } else {
       // シナリオ側で決済導線への接続が未設定でも購入導線を提供する
       setTimeline((prev) => [
-        ...prev,
+        // 決済導線は同時に1つだけ有効にする(未完了のまま残っている決済フォームは
+        // 新しい注文を始めた時点で無効化する)
+        ...prev.filter((i) => i.kind !== "checkout"),
         {
           id: nextId(),
           kind: "checkout",
