@@ -114,7 +114,7 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
         ? null
         : "正しいメールアドレスを入力してください";
     case "phone":
-      if (!trimmed) return null;
+      if (!trimmed) return "電話番号を入力してください";
       return /^0\d{9,10}$/.test(trimmed.replace(/[^0-9]/g, ""))
         ? null
         : "正しい電話番号を入力してください(ハイフンなし10〜11桁)";
@@ -168,7 +168,7 @@ function stepQuestionText(step: WizardStep): string {
   if (step.kind === "address") return "お届け先の住所を教えてください。";
   if (step.kind === "delivery") return "お届け希望日・時間帯を教えてください。";
   if (step.key === "paymentMethod") return "お支払い方法をお選びください。";
-  return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。${step.key === "phone" ? "(任意)" : ""}`;
+  return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。`;
 }
 
 interface ShippingSummary {
