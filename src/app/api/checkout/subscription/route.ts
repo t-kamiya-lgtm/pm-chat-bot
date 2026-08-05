@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       items: [{ price: price.id, quantity }],
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
-      expand: ["latest_invoice"],
+      expand: ["latest_invoice.confirmation_secret"],
       metadata: {
         productId,
         customerId: customer.id,
