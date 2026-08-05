@@ -74,7 +74,8 @@ function truncate(text: string, max = 24) {
 function buildChoiceNextNodeMap(options: OptionDraft[]): Record<string, string> {
   const map: Record<string, string> = {};
   for (const o of options) {
-    if (o.qaProductId) map[o.value.trim()] = `${QA_TARGET_PREFIX}${o.qaProductId}`;
+    // Q&Aをその場で表示するproductIdと、Q&Aを閉じた時/「購入へ進む」ボタンで進む次のノードIDを、"|"区切りで両方保持する
+    if (o.qaProductId) map[o.value.trim()] = `${QA_TARGET_PREFIX}${o.qaProductId}|${o.nextNodeId ?? ""}`;
     else if (o.nextNodeId) map[o.value.trim()] = o.nextNodeId;
   }
   return map;
@@ -87,7 +88,8 @@ function parseChoiceOptionTarget(
 ): Pick<OptionDraft, "nextNodeId" | "qaProductId"> {
   const target = nextNodeMap[value] ?? "";
   if (target.startsWith(QA_TARGET_PREFIX)) {
-    return { nextNodeId: "", qaProductId: target.slice(QA_TARGET_PREFIX.length) };
+    const [productId, nextNodeId] = target.slice(QA_TARGET_PREFIX.length).split("|");
+    return { nextNodeId: nextNodeId ?? "", qaProductId: productId };
   }
   return { nextNodeId: target };
 }
@@ -490,26 +492,24 @@ function OptionsEditor({
             />
           </label>
           <ProductGroupSelect
-            label="Q&Aをその場で表示するアイテム(商品Q&Aはアイテム単位のため品番ではなくアイテムを選択・設定すると下の「次に進むノード」より優先されます)"
+            label="Q&Aをその場で表示するアイテム(設定すると、この選択肢では次のノードへ進む前にQ&Aを表示します)"
             products={products}
             value={option.qaProductId ?? ""}
             onChange={(id) => update(index, { qaProductId: id || undefined })}
             allowEmpty
             compact={compact}
           />
-          {option.qaProductId ? (
-            <p className={`text-neutral-400 ${textSize}`}>
-              Q&A表示が設定されているため、次のノードへは進みません
-            </p>
-          ) : (
-            <NextNodeSelect
-              label="この選択肢を選んだ時に進むノード"
-              nodeOptions={nodeOptions}
-              value={option.nextNodeId}
-              onChange={(v) => update(index, { nextNodeId: v })}
-              compact={compact}
-            />
-          )}
+          <NextNodeSelect
+            label={
+              option.qaProductId
+                ? "Q&Aを閉じた時・Q&A表示中の「購入へ進む」ボタンで進むノード"
+                : "この選択肢を選んだ時に進むノード"
+            }
+            nodeOptions={nodeOptions}
+            value={option.nextNodeId}
+            onChange={(v) => update(index, { nextNodeId: v })}
+            compact={compact}
+          />
         </div>
       ))}
       {options.length === 0 && (
@@ -1795,7 +1795,8 @@ function NodeCard({
                     if (o.qaProductId) {
                       const groupName =
                         products.find((p) => p.id === o.qaProductId)?.productGroupName ?? "未設定";
-                      return `${o.label || o.value}→Q&A表示(${groupName})`;
+                      const after = nodeOptions.find((n) => n.id === o.nextNodeId);
+                      return `${o.label || o.value}→Q&A表示(${groupName})→${after?.summary ?? "自動: 一覧の次のノードへ進む"}`;
                     }
                     const target = nodeOptions.find((n) => n.id === o.nextNodeId);
                     return target ? `${o.label || o.value}→${target.summary}` : null;

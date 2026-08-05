@@ -19,10 +19,13 @@ export function FaqPanel({
   productId,
   productName,
   onClose,
+  onProceed,
 }: {
   productId: string;
   productName?: string;
   onClose: () => void;
+  /** 設定されている場合、Q&A表示中も常に「購入へ進む」ボタンを表示する。 */
+  onProceed?: () => void;
 }) {
   const [categories, setCategories] = useState<FaqCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<FaqCategory | null>(null);
@@ -44,6 +47,16 @@ export function FaqPanel({
           閉じる
         </button>
       </div>
+
+      {onProceed && (
+        <button
+          type="button"
+          onClick={onProceed}
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
+        >
+          購入へ進む
+        </button>
+      )}
 
       {inquirySent ? (
         <p className="text-sm text-neutral-600">

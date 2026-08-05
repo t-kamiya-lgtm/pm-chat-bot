@@ -63,7 +63,7 @@ type TimelineItem =
       privacyText?: string;
     }
   | { id: string; kind: "checkout-result"; ok: boolean; items: GreetingItem[] }
-  | { id: string; kind: "faq"; productId: string };
+  | { id: string; kind: "faq"; productId: string; nextNodeId?: string };
 
 let seq = 0;
 function nextId() {
@@ -337,7 +337,8 @@ export function ChatWidget() {
           ]);
           break;
         }
-        setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId }]);
+        const faqNextNodeId = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
+        setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId, nextNodeId: faqNextNodeId }]);
         break;
       }
       default:
@@ -359,11 +360,22 @@ export function ChatWidget() {
     if (!next) return;
 
     if (next.startsWith(QA_TARGET_PREFIX)) {
-      const productId = next.slice(QA_TARGET_PREFIX.length);
-      setTimeline((prev) => [...prev, { id: nextId(), kind: "faq", productId }]);
+      const [productId, encodedNextNodeId] = next.slice(QA_TARGET_PREFIX.length).split("|");
+      const faqNextNodeId =
+        encodedNextNodeId || node?.next_node_map.default || (node && sequentialNextId(node.id, orderedNodeIds));
+      setTimeline((prev) => [
+        ...prev,
+        { id: nextId(), kind: "faq", productId, nextNodeId: faqNextNodeId || undefined },
+      ]);
       return;
     }
     advance(next, nodesById, productsById, item.id);
+  }
+
+  /** Q&Aパネルを閉じる(「購入へ進む」ボタンでも同じ動作)。次のノードが設定されていれば自動的に進む。 */
+  function handleFaqClose(item: Extract<TimelineItem, { kind: "faq" }>) {
+    setTimeline((prev) => prev.filter((i) => i.id !== item.id));
+    if (item.nextNodeId) advance(item.nextNodeId, nodesById, productsById);
   }
 
   function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>, productId: string) {
@@ -537,7 +549,8 @@ export function ChatWidget() {
                   key={item.id}
                   productId={item.productId}
                   productName={productsById[item.productId]?.name}
-                  onClose={() => setTimeline((prev) => prev.filter((i) => i.id !== item.id))}
+                  onClose={() => handleFaqClose(item)}
+                  onProceed={item.nextNodeId ? () => handleFaqClose(item) : undefined}
                 />
               );
             case "checkout-result":
