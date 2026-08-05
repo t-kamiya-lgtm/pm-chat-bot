@@ -170,7 +170,7 @@ function validateShippingField(key: ShippingFieldKey, value: string): string | n
 }
 
 function stepQuestionText(step: WizardStep): string {
-  if (step.kind === "address") return "お届け先の住所を教えてください。";
+  if (step.kind === "address") return "ご注文者様のご住所を教えてください。";
   if (step.kind === "delivery") return "お届け希望日・時間帯を教えてください。";
   if (step.key === "paymentMethod") return "お支払い方法をお選びください。";
   return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。`;
@@ -446,12 +446,6 @@ export function CheckoutForm({
     if (!upsellProduct) return;
     setActiveProduct(upsellProduct);
     setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
-    setQuantity(1);
-  }
-
-  function handleUpsellRevert() {
-    setActiveProduct(product);
-    setSubscriptionInterval(product.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
   }
 
@@ -1024,7 +1018,10 @@ export function CheckoutForm({
         <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">ご注文商品</span>
-            <span className="font-medium">{activeProduct.name}</span>
+            <span className="font-medium">
+              {activeProduct.name}
+              {quantity > 1 && ` × ${quantity}`}
+            </span>
           </div>
           {orderType === "subscription" && (
             <div className="flex items-center justify-between">
@@ -1062,13 +1059,24 @@ export function CheckoutForm({
                   <div className="flex min-w-0 flex-1 flex-col">
                     <p className="font-medium text-amber-800">{upsellProduct.name} に変更中です</p>
                     <p className="mt-1 text-amber-700">{upsellProduct.price.toLocaleString()}円</p>
-                    <button
-                      type="button"
-                      onClick={handleUpsellRevert}
-                      className="mt-auto self-end rounded-md border border-amber-400 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
-                    >
-                      元の商品に戻す
-                    </button>
+                    <div className="mt-auto flex items-center justify-end gap-2">
+                      <span className="text-xs text-amber-800">数量</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                        className="h-6 w-6 rounded border border-amber-400 text-xs text-amber-800 hover:bg-amber-100"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center text-xs text-amber-800">{quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.min(99, q + 1))}
+                        className="h-6 w-6 rounded border border-amber-400 text-xs text-amber-800 hover:bg-amber-100"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1134,38 +1142,97 @@ export function CheckoutForm({
           </div>
         )}
 
-        <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
-          {steps.map((step, idx) => (
-            <div
-              key={step.kind === "field" ? step.key : step.kind}
-              className="flex items-start justify-between gap-3"
-            >
-              <span className="shrink-0 text-neutral-500">
-                {step.kind === "address"
-                  ? "お届け先住所"
-                  : step.kind === "delivery"
-                    ? "お届け希望日・時間帯"
-                    : CHECKOUT_FIELD_LABELS[step.key]}
-              </span>
-              <div className="flex items-start gap-2 text-right">
-                <span>
-                  {stepAnswerText(
-                    step,
-                    values,
-                    { enabled: shipToDifferentAddress, ...shippingValues },
-                    deliveryDateIsAsap,
+        <div className="space-y-3 rounded-md border border-neutral-200 p-3 text-sm">
+          {steps.map((step, idx) => {
+            // お名前・電話番号は住所とまとめて「ご注文者様情報」として表示するため、単独では表示しない
+            if (step.kind === "field" && (step.key === "name" || step.key === "phone")) return null;
+
+            if (step.kind === "address") {
+              return (
+                <div key="address" className="space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="shrink-0 font-medium text-neutral-700">ご注文者様情報</span>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(idx)}
+                      className="shrink-0 text-xs text-blue-600 hover:underline"
+                    >
+                      編集
+                    </button>
+                  </div>
+                  <div className="space-y-1 pl-1 text-neutral-600">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="shrink-0 text-neutral-500">お名前</span>
+                      <span className="text-right">{values.name || "(未入力)"}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="shrink-0 text-neutral-500">電話番号</span>
+                      <span className="text-right">{values.phone || "(未入力)"}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="shrink-0 text-neutral-500">住所</span>
+                      <span className="text-right">
+                        〒{values.postalCode} {values.prefecture}
+                        {values.city}
+                        {values.line1}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <span className="shrink-0 font-medium text-neutral-700">お届け先</span>
+                  </div>
+                  {shipToDifferentAddress ? (
+                    <div className="space-y-1 pl-1 text-neutral-600">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="shrink-0 text-neutral-500">お名前</span>
+                        <span className="text-right">{shippingValues.recipientName || "(未入力)"}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="shrink-0 text-neutral-500">電話番号</span>
+                        <span className="text-right">{shippingValues.recipientPhone || "(未入力)"}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="shrink-0 text-neutral-500">住所</span>
+                        <span className="text-right">
+                          〒{shippingValues.postalCode} {shippingValues.prefecture}
+                          {shippingValues.city}
+                          {shippingValues.line1}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="pl-1 text-neutral-600">注文者住所にお届け</p>
                   )}
+                </div>
+              );
+            }
+
+            return (
+              <div key={step.kind === "field" ? step.key : step.kind} className="flex items-start justify-between gap-3">
+                <span className="shrink-0 text-neutral-500">
+                  {step.kind === "delivery" ? "お届け希望日・時間帯" : CHECKOUT_FIELD_LABELS[step.key]}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => goToStep(idx)}
-                  className="shrink-0 text-xs text-blue-600 hover:underline"
-                >
-                  編集
-                </button>
+                <div className="flex items-start gap-2 text-right">
+                  <span>
+                    {stepAnswerText(
+                      step,
+                      values,
+                      { enabled: shipToDifferentAddress, ...shippingValues },
+                      deliveryDateIsAsap,
+                      postDeliveryRestricted,
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => goToStep(idx)}
+                    className="shrink-0 text-xs text-blue-600 hover:underline"
+                  >
+                    編集
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <AmountBreakdown
