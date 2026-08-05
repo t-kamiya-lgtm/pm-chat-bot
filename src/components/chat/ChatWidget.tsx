@@ -192,6 +192,7 @@ export function ChatWidget() {
       productIds?: string[];
       options?: ChoiceOption[];
       questions?: SurveyQuestion[];
+      introText?: string;
       upsellProductId?: string;
       upsellImageUrl?: string;
       upsellComment?: string;
@@ -254,6 +255,9 @@ export function ChatWidget() {
         break;
       }
       case "survey": {
+        if (content.introText) {
+          setTimeline((prev) => [...prev, { id: nextId(), kind: "bot-text", text: content.introText ?? "" }]);
+        }
         setTimeline((prev) => [
           ...prev,
           {

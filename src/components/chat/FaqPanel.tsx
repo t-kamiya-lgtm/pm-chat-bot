@@ -28,8 +28,8 @@ export function FaqPanel({
   onProceed?: () => void;
 }) {
   const [categories, setCategories] = useState<FaqCategory[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<FaqCategory | null>(null);
-  const [selectedFaq, setSelectedFaq] = useState<Faq | null>(null);
+  const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [showInquiry, setShowInquiry] = useState(false);
   const [inquirySent, setInquirySent] = useState(false);
 
@@ -48,67 +48,51 @@ export function FaqPanel({
         </button>
       </div>
 
-      {onProceed && (
-        <button
-          type="button"
-          onClick={onProceed}
-          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
-        >
-          購入へ進む
-        </button>
-      )}
-
       {inquirySent ? (
         <p className="text-sm text-neutral-600">
           お問い合わせを受け付けました。担当者よりご連絡いたします。
         </p>
       ) : showInquiry ? (
         <InquiryForm productName={productName} onSent={() => setInquirySent(true)} />
-      ) : selectedFaq ? (
-        <div className="space-y-2 text-sm">
-          <p className="font-medium">{selectedFaq.question}</p>
-          <p className="text-neutral-600">{selectedFaq.answer}</p>
-          <button
-            type="button"
-            onClick={() => setSelectedFaq(null)}
-            className="text-xs text-blue-600 hover:underline"
-          >
-            質問一覧に戻る
-          </button>
-        </div>
-      ) : selectedCategory ? (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-neutral-500">{selectedCategory.title}</p>
-          {selectedCategory.faqs.map((faq) => (
-            <button
-              key={faq.id}
-              type="button"
-              onClick={() => setSelectedFaq(faq)}
-              className="rounded-md border border-neutral-200 px-3 py-2 text-left text-sm hover:bg-neutral-50"
-            >
-              {faq.question}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setSelectedCategory(null)}
-            className="text-xs text-blue-600 hover:underline"
-          >
-            カテゴリ一覧に戻る
-          </button>
-        </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              onClick={() => setSelectedCategory(category)}
-              className="rounded-md border border-neutral-200 px-3 py-2 text-left text-sm hover:bg-neutral-50"
-            >
-              {category.title}
-            </button>
-          ))}
+          {categories.map((category) => {
+            const categoryOpen = openCategoryId === category.id;
+            return (
+              <div key={category.id} className="rounded-md border border-neutral-200">
+                <button
+                  type="button"
+                  onClick={() => setOpenCategoryId(categoryOpen ? null : category.id)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                >
+                  <span>{category.title}</span>
+                  <span className="text-neutral-400">{categoryOpen ? "▲" : "▼"}</span>
+                </button>
+                {categoryOpen && (
+                  <div className="divide-y divide-neutral-100 border-t border-neutral-200">
+                    {category.faqs.map((faq) => {
+                      const faqOpen = openFaqId === faq.id;
+                      return (
+                        <div key={faq.id}>
+                          <button
+                            type="button"
+                            onClick={() => setOpenFaqId(faqOpen ? null : faq.id)}
+                            className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                          >
+                            <span>{faq.question}</span>
+                            <span className="shrink-0 text-neutral-400">{faqOpen ? "▲" : "▼"}</span>
+                          </button>
+                          {faqOpen && (
+                            <p className="px-3 pb-2 text-sm text-neutral-600">{faq.answer}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <button
             type="button"
             onClick={() => setShowInquiry(true)}
@@ -117,6 +101,16 @@ export function FaqPanel({
             その他のご質問はこちら
           </button>
         </div>
+      )}
+
+      {onProceed && (
+        <button
+          type="button"
+          onClick={onProceed}
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
+        >
+          購入へ進む
+        </button>
       )}
     </div>
   );

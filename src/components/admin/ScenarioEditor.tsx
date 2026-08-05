@@ -679,6 +679,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [newNodeImageUrls, setNewNodeImageUrls] = useState<string[]>([""]);
   const [newNodeImageLinkUrl, setNewNodeImageLinkUrl] = useState("");
   const [newNodeImageCaption, setNewNodeImageCaption] = useState("");
+  const [newNodeSurveyIntro, setNewNodeSurveyIntro] = useState("");
   const [newNodeSurveyQuestions, setNewNodeSurveyQuestions] = useState<SurveyQuestion[]>([]);
   const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
   const [newNodeOptions, setNewNodeOptions] = useState<OptionDraft[]>([]);
@@ -830,6 +831,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         return;
       }
       content = {
+        ...(newNodeSurveyIntro.trim() && { introText: newNodeSurveyIntro.trim() }),
         questions: serializeSurveyQuestions(newNodeSurveyQuestions),
       };
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
@@ -865,6 +867,7 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     setNewNodeImageUrls([""]);
     setNewNodeImageLinkUrl("");
     setNewNodeImageCaption("");
+    setNewNodeSurveyIntro("");
     setNewNodeSurveyQuestions([]);
     setNewNodeChoiceText("");
     setNewNodeOptions([]);
@@ -1226,7 +1229,20 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         )}
 
         {newNodeType === "survey" && (
-          <SurveyQuestionsEditor questions={newNodeSurveyQuestions} onChange={setNewNodeSurveyQuestions} />
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                アンケート冒頭のコメント(任意・例: よろしければアンケートにご協力ください)
+              </span>
+              <textarea
+                className="input"
+                rows={2}
+                value={newNodeSurveyIntro}
+                onChange={(e) => setNewNodeSurveyIntro(e.target.value)}
+              />
+            </label>
+            <SurveyQuestionsEditor questions={newNodeSurveyQuestions} onChange={setNewNodeSurveyQuestions} />
+          </>
         )}
 
         <NextNodeSelect
@@ -1311,6 +1327,7 @@ function NodeCard({
   );
   const [imageLinkUrl, setImageLinkUrl] = useState((node.content.linkUrl as string) ?? "");
   const [imageCaption, setImageCaption] = useState((node.content.caption as string) ?? "");
+  const [surveyIntro, setSurveyIntro] = useState((node.content.introText as string) ?? "");
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>(
     (node.content.questions as SurveyQuestion[] | undefined) ?? [],
   );
@@ -1347,6 +1364,7 @@ function NodeCard({
     );
     setImageLinkUrl((node.content.linkUrl as string) ?? "");
     setImageCaption((node.content.caption as string) ?? "");
+    setSurveyIntro((node.content.introText as string) ?? "");
     setSurveyQuestions((node.content.questions as SurveyQuestion[] | undefined) ?? []);
     setMemo(node.memo ?? "");
     setOptions(
@@ -1452,6 +1470,7 @@ function NodeCard({
         return;
       }
       content = {
+        ...(surveyIntro.trim() && { introText: surveyIntro.trim() }),
         questions: serializeSurveyQuestions(surveyQuestions),
       };
       if (defaultNext) nextNodeMap = { default: defaultNext };
@@ -1666,7 +1685,20 @@ function NodeCard({
           )}
 
           {node.type === "survey" && (
-            <SurveyQuestionsEditor questions={surveyQuestions} onChange={setSurveyQuestions} compact />
+            <>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">
+                  アンケート冒頭のコメント(任意・例: よろしければアンケートにご協力ください)
+                </span>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={surveyIntro}
+                  onChange={(e) => setSurveyIntro(e.target.value)}
+                />
+              </label>
+              <SurveyQuestionsEditor questions={surveyQuestions} onChange={setSurveyQuestions} compact />
+            </>
           )}
 
           <NextNodeSelect
@@ -1758,6 +1790,7 @@ function NodeCard({
             </div>
           ) : node.type === "survey" ? (
             <div className="rounded bg-neutral-50 p-2 text-xs">
+              {surveyIntro && <p className="mb-1 text-neutral-600">{surveyIntro}</p>}
               {surveyQuestions.length > 0 ? (
                 <ul className="list-disc space-y-0.5 pl-4">
                   {surveyQuestions.map((q, idx) => (
