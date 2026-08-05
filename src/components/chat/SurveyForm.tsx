@@ -143,15 +143,19 @@ function SurveyStepInput({
 
 export function SurveyForm({
   questions,
+  initialAnswers,
   onSubmit,
   onSkip,
 }: {
   questions: SurveyQuestion[];
+  initialAnswers?: Record<string, string>;
   onSubmit: (answers: Record<string, string>) => void;
   onSkip: (partialAnswers: Record<string, string>) => void;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
-  const [values, setValues] = useState<string[]>(() => questions.map(() => ""));
+  const [values, setValues] = useState<string[]>(() =>
+    questions.map((q) => initialAnswers?.[q.label] ?? ""),
+  );
   const [touched, setTouched] = useState(false);
 
   const step = questions[stepIndex];

@@ -45,6 +45,7 @@ type TimelineItem =
       nodeId: string;
       questions: SurveyQuestion[];
       resolved: boolean;
+      answers?: Record<string, string>;
     }
   | {
       id: string;
@@ -98,6 +99,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     privacyText?: string;
   }>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 注文完了後は、個人情報を含む過去のやり取り(アンケート等)を編集できないようにする
+  const [orderConfirmed, setOrderConfirmed] = useState(false);
   const [detailContext, setDetailContext] = useState<{
     item: Extract<TimelineItem, { kind: "product" }>;
     productId: string;
@@ -376,6 +379,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     setDetailContext(null);
     setLoadError(null);
     setSessionId(crypto.randomUUID());
+    setOrderConfirmed(false);
 
     for (const greetingItem of checkoutMessages.greetingItems ?? []) {
       setTimeline((prev) => [
@@ -487,7 +491,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   }
 
   function handleSurveySubmit(item: Extract<TimelineItem, { kind: "survey" }>, answers: Record<string, string>) {
-    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true, answers } : i)));
     const merged = { ...surveyAnswers, ...answers };
     setSurveyAnswers(merged);
     persistSurveyAnswers(merged);
@@ -501,7 +505,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     item: Extract<TimelineItem, { kind: "survey" }>,
     partialAnswers: Record<string, string>,
   ) {
-    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+    setTimeline((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, resolved: true, answers: partialAnswers } : i)),
+    );
     if (Object.keys(partialAnswers).length > 0) {
       const merged = { ...surveyAnswers, ...partialAnswers };
       setSurveyAnswers(merged);
@@ -511,6 +517,12 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     const node = nodesById[item.nodeId];
     const next = node?.next_node_map.default ?? (node && sequentialNextId(node.id, orderedNodeIds));
     if (next) advance(next, nodesById, productsById, item.id);
+  }
+
+  /** 注文完了前であれば、回答済みのアンケートをスレッドを遡って編集できるようにする。 */
+  function handleSurveyEdit(item: Extract<TimelineItem, { kind: "survey" }>) {
+    if (orderConfirmed) return;
+    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: false } : i)));
   }
 
   function handleCheckoutBack(item: Extract<TimelineItem, { kind: "checkout" }>) {
@@ -534,6 +546,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       ...prev.filter((i) => i.id !== item.id),
       { id: nextId(), kind: "checkout-result", ok: result.ok, items: result.items },
     ]);
+    if (result.ok) setOrderConfirmed(true);
 
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     resetTimerRef.current = setTimeout(resetConversation, RESET_AFTER_COMPLETE_MS);
@@ -604,10 +617,41 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                 />
               );
             case "survey":
-              return item.resolved ? null : (
+              return item.resolved ? (
+                <div
+                  key={item.id}
+                  className="max-w-[85%] space-y-2 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-neutral-700">アンケート回答</span>
+                    {!orderConfirmed && (
+                      <button
+                        type="button"
+                        onClick={() => handleSurveyEdit(item)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        編集する
+                      </button>
+                    )}
+                  </div>
+                  {item.answers && Object.keys(item.answers).length > 0 ? (
+                    <div className="space-y-1 text-neutral-600">
+                      {Object.entries(item.answers).map(([q, a]) => (
+                        <div key={q}>
+                          <p className="text-xs text-neutral-400">{q}</p>
+                          <p>{a}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-neutral-400">未回答のままスキップしました</p>
+                  )}
+                </div>
+              ) : (
                 <SurveyForm
                   key={item.id}
                   questions={item.questions}
+                  initialAnswers={item.answers}
                   onSubmit={(answers) => handleSurveySubmit(item, answers)}
                   onSkip={(partialAnswers) => handleSurveySkip(item, partialAnswers)}
                 />

@@ -999,22 +999,13 @@ export function CheckoutForm({
     );
   }
 
-  if (stage === "review") {
+  /**
+   * 注文商品・アップセル/クロスセル・注文者情報・金額内訳のまとめ。
+   * 「確認」画面から先へ進んでも情報が消えないよう、確認画面・確定画面の両方から呼び出す。
+   */
+  function renderOrderSummary() {
     return (
-      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <p className="font-medium">ご注文内容の確認</p>
-          <button
-            type="button"
-            onClick={() => goToStep(steps.length - 1)}
-            className="text-xs text-neutral-400 hover:text-neutral-600"
-          >
-            ← 戻る
-          </button>
-        </div>
-
-        {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
-
+      <>
         <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">ご注文商品</span>
@@ -1244,6 +1235,27 @@ export function CheckoutForm({
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
           addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
         />
+      </>
+    );
+  }
+
+  if (stage === "review") {
+    return (
+      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <p className="font-medium">ご注文内容の確認</p>
+          <button
+            type="button"
+            onClick={() => goToStep(steps.length - 1)}
+            className="text-xs text-neutral-400 hover:text-neutral-600"
+          >
+            ← 戻る
+          </button>
+        </div>
+
+        {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+
+        {renderOrderSummary()}
 
         <button
           type="button"
@@ -1273,6 +1285,8 @@ export function CheckoutForm({
         </div>
 
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+
+        {renderOrderSummary()}
 
         <div className="space-y-3 rounded-md border border-neutral-200 p-3 text-sm">
           <div>
@@ -1310,16 +1324,6 @@ export function CheckoutForm({
             </label>
           </div>
         </div>
-
-        <AmountBreakdown
-          amount={activeProduct.price}
-          quantity={quantity}
-          shippingFee={activeProduct.shipping_fee}
-          paymentFee={paymentFee}
-          paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
-          addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
-          addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
-        />
 
         {paymentMethod === "stripe" ? (
           !canSubmit ? (
