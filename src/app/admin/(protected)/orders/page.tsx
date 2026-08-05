@@ -46,6 +46,7 @@ export default async function AdminOrdersPage() {
               <th className="px-4 py-2">日時</th>
               <th className="px-4 py-2">顧客</th>
               <th className="px-4 py-2">商品</th>
+              <th className="px-4 py-2">数量</th>
               <th className="px-4 py-2">種別</th>
               <th className="px-4 py-2">支払い方法</th>
               <th className="px-4 py-2">金額</th>
@@ -63,6 +64,7 @@ export default async function AdminOrdersPage() {
                   type: string;
                   payment_method: string;
                   amount: number;
+                  quantity: number;
                   shipping_fee: number;
                   payment_fee: number;
                   status: string;
@@ -81,6 +83,7 @@ export default async function AdminOrdersPage() {
                     </td>
                     <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
                     <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
+                    <td className="px-4 py-2">{order.quantity}</td>
                     <td className="px-4 py-2">{order.type === "subscription" ? "定期" : "単発"}</td>
                     <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
                     <td className="px-4 py-2">
@@ -105,7 +108,7 @@ export default async function AdminOrdersPage() {
             )}
             {!orders?.length && (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={10} className="px-4 py-6 text-center text-neutral-400">
                   注文はまだありません
                 </td>
               </tr>

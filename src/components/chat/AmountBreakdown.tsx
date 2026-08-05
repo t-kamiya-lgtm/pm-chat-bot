@@ -1,5 +1,6 @@
 export function AmountBreakdown({
   amount,
+  quantity = 1,
   shippingFee,
   paymentFee,
   paymentFeeLabel,
@@ -7,16 +8,18 @@ export function AmountBreakdown({
   addonLabel,
 }: {
   amount: number;
+  quantity?: number;
   shippingFee: number;
   paymentFee: number;
   paymentFeeLabel?: string;
   addonAmount?: number;
   addonLabel?: string;
 }) {
-  const total = amount + shippingFee + paymentFee + (addonAmount ?? 0);
+  const subtotal = amount * quantity;
+  const total = subtotal + shippingFee + paymentFee + (addonAmount ?? 0);
   return (
     <div className="rounded-md bg-neutral-50 p-3 text-sm">
-      <Row label="商品代金" value={amount} />
+      <Row label={quantity > 1 ? `商品代金(数量: ${quantity})` : "商品代金"} value={subtotal} />
       {addonAmount !== undefined && addonAmount > 0 && (
         <Row label={addonLabel ?? "追加商品"} value={addonAmount} />
       )}

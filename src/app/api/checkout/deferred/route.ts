@@ -74,6 +74,7 @@ export async function POST(request: Request) {
       type: orderType,
       payment_method: paymentMethod,
       amount,
+      quantity,
       shipping_fee: product.shipping_fee,
       payment_fee: paymentFee,
       status: "pending",

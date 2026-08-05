@@ -68,6 +68,7 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     type: row.type as Order["type"],
     paymentMethod: row.payment_method as Order["paymentMethod"],
     amount: row.amount as number,
+    quantity: row.quantity as number,
     shippingFee: row.shipping_fee as number,
     paymentFee: row.payment_fee as number,
     status: row.status as Order["status"],

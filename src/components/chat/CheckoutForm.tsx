@@ -256,6 +256,7 @@ export function CheckoutForm({
 }: Props) {
   const [activeProduct, setActiveProduct] = useState<WidgetProduct>(product);
   const [addonSelected, setAddonSelected] = useState(false);
+  const [quantity, setQuantity] = useState(1);
   const orderType = activeProduct.order_type;
   const [stage, setStage] = useState<Stage>("options");
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
@@ -430,11 +431,13 @@ export function CheckoutForm({
     if (!upsellProduct) return;
     setActiveProduct(upsellProduct);
     setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
+    setQuantity(1);
   }
 
   function handleUpsellRevert() {
     setActiveProduct(product);
     setSubscriptionInterval(product.subscription_intervals[0] ?? "monthly");
+    setQuantity(1);
   }
 
   /** 注文者情報・お届け情報など、決済方法によらず共通で送る内容をまとめる。 */
@@ -490,6 +493,7 @@ export function CheckoutForm({
         orderType === "subscription"
           ? {
               productId: activeProduct.id,
+              quantity,
               subscriptionInterval,
               customer,
               ...delivery,
@@ -499,6 +503,7 @@ export function CheckoutForm({
             }
           : {
               productId: activeProduct.id,
+              quantity,
               customer,
               ...delivery,
               ...(addonProductId && { addonProductId }),
@@ -567,6 +572,7 @@ export function CheckoutForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           productId: activeProduct.id,
+          quantity,
           orderType,
           subscriptionInterval: orderType === "subscription" ? subscriptionInterval : undefined,
           paymentMethod,
@@ -1076,6 +1082,7 @@ export function CheckoutForm({
 
         <AmountBreakdown
           amount={activeProduct.price}
+          quantity={quantity}
           shippingFee={activeProduct.shipping_fee}
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
@@ -1151,6 +1158,7 @@ export function CheckoutForm({
 
         <AmountBreakdown
           amount={activeProduct.price}
+          quantity={quantity}
           shippingFee={activeProduct.shipping_fee}
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
@@ -1226,8 +1234,30 @@ export function CheckoutForm({
           </select>
         )}
 
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-neutral-600">数量</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              className="h-8 w-8 rounded-md border border-neutral-300 text-sm hover:bg-neutral-50"
+            >
+              −
+            </button>
+            <span className="w-8 text-center text-sm">{quantity}</span>
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.min(99, q + 1))}
+              className="h-8 w-8 rounded-md border border-neutral-300 text-sm hover:bg-neutral-50"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
         <AmountBreakdown
           amount={activeProduct.price}
+          quantity={quantity}
           shippingFee={activeProduct.shipping_fee}
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}

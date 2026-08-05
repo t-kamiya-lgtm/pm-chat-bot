@@ -108,6 +108,7 @@ export async function POST(request: Request) {
       type: "one_time",
       payment_method: "stripe",
       amount,
+      quantity,
       shipping_fee: product.shipping_fee,
       payment_fee: 0,
       status: "pending",

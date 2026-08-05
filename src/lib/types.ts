@@ -173,6 +173,7 @@ export interface Order {
   type: OrderType;
   paymentMethod: PaymentMethod;
   amount: number;
+  quantity: number;
   shippingFee: number;
   paymentFee: number;
   status: OrderStatus;
