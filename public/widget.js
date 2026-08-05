@@ -8,6 +8,9 @@
   var origin =
     (currentScript && currentScript.getAttribute("data-widget-origin")) ||
     new URL(currentScript.src).origin;
+  // ブランド・商品専用のシナリオを表示したい場合は、シナリオ管理画面で発行したURLの識別子を指定する
+  // 例: <script src="..." data-scenario="brand-a"></script>
+  var scenarioSlug = currentScript && currentScript.getAttribute("data-scenario");
 
   var button = document.createElement("button");
   button.textContent = "チャットで相談する";
@@ -44,7 +47,7 @@
   });
 
   var iframe = document.createElement("iframe");
-  iframe.src = origin + "/widget";
+  iframe.src = origin + (scenarioSlug ? "/widget/" + encodeURIComponent(scenarioSlug) : "/widget");
   Object.assign(iframe.style, { width: "100%", height: "100%", border: "none" });
   container.appendChild(iframe);
 

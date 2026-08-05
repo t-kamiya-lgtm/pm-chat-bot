@@ -80,7 +80,7 @@ function sequentialNextId(nodeId: string, orderedIds: string[]): string | undefi
 /** 選択肢分岐ノードで、実ノードの代わりに商品Q&Aをその場表示するためのsentinel値のprefix。 */
 const QA_TARGET_PREFIX = "qa:";
 
-export function ChatWidget() {
+export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
   const [sessionId] = useState(() => crypto.randomUUID());
@@ -106,7 +106,9 @@ export function ChatWidget() {
   useEffect(() => {
     const scenarioUrl = previewScenarioId
       ? `/api/widget/scenario?id=${previewScenarioId}&preview=1`
-      : "/api/widget/scenario";
+      : scenarioSlug
+        ? `/api/widget/scenario?slug=${encodeURIComponent(scenarioSlug)}`
+        : "/api/widget/scenario";
 
     Promise.all([
       fetch("/api/widget/checkout-messages")

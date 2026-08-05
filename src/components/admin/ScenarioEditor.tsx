@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   Product,
@@ -689,6 +689,17 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [reorderPending, setReorderPending] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) setOrigin(window.location.origin);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const nodeOptions = nodes.map((n) => ({ id: n.id, summary: nodeSummary(n, products) }));
 
@@ -715,6 +726,28 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       window.alert(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleEditSlug() {
+    const input = window.prompt(
+      "公開用URLに使う識別子を入力してください(半角英小文字・数字・ハイフンのみ。空欄で解除)",
+      scenario.slug ?? "",
+    );
+    if (input === null) return;
+    const slug = input.trim() ? input.trim() : null;
+    if (slug === scenario.slug) return;
+
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`公開用URLの設定に失敗しました: ${body.error ?? res.status}`);
       return;
     }
     router.refresh();
@@ -981,6 +1014,28 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
             {scenario.status === "published" ? "下書きに戻す" : "公開する"}
           </button>
         </div>
+      </div>
+
+      <div className="mb-6 flex items-center gap-2 text-sm text-neutral-500">
+        {scenario.slug ? (
+          <>
+            <span className="font-mono text-neutral-700">
+              {origin}/widget/{scenario.slug}
+            </span>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(`${origin}/widget/${scenario.slug}`)}
+              className="text-blue-600 hover:underline"
+            >
+              コピー
+            </button>
+          </>
+        ) : (
+          <span>この商品・ブランド専用の公開URLは未設定です</span>
+        )}
+        <button type="button" onClick={handleEditSlug} className="text-blue-600 hover:underline">
+          {scenario.slug ? "URLを編集" : "専用URLを発行する"}
+        </button>
       </div>
 
       {products.length === 0 && (

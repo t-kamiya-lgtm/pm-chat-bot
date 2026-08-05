@@ -83,6 +83,7 @@ export interface Scenario {
   id: string;
   name: string;
   status: ScenarioStatus;
+  slug: string | null;
   version: number;
   createdBy: string | null;
   createdAt: string;

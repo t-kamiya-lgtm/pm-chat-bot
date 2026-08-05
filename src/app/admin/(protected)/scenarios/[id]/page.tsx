@@ -55,6 +55,7 @@ export default async function ScenarioEditorPage({
           id: scenario.id,
           name: scenario.name,
           status: scenario.status,
+          slug: scenario.slug,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,

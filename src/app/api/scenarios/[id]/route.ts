@@ -7,6 +7,11 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   status: z.enum(["draft", "published"]).optional(),
   displayOrder: z.number().int().optional(),
+  slug: z
+    .string()
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "半角英小文字・数字・ハイフンのみ使用できます")
+    .nullable()
+    .optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -49,12 +54,18 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.status !== undefined && { status: input.status }),
       ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
+      ...(input.slug !== undefined && { slug: input.slug }),
     })
     .eq("id", id)
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "このURLは既に他のシナリオで使用されています" }, { status: 409 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ scenario: data });
 }
 

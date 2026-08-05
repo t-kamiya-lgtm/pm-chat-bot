@@ -9,6 +9,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const scenarioId = searchParams.get("id");
+  const slug = searchParams.get("slug");
   const isPreview = searchParams.get("preview") === "1";
 
   const supabase = createSupabaseAdminClient();
@@ -28,6 +29,14 @@ export async function GET(request: Request) {
       .from("scenarios")
       .select("*")
       .eq("id", scenarioId)
+      .eq("status", "published")
+      .maybeSingle();
+  } else if (slug) {
+    // ブランド・商品ごとに発行した専用URL(/widget/<slug>)からの公開アクセス
+    scenarioResult = await supabase
+      .from("scenarios")
+      .select("*")
+      .eq("slug", slug)
       .eq("status", "published")
       .maybeSingle();
   } else {
