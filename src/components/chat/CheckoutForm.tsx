@@ -351,11 +351,15 @@ export function CheckoutForm({
       })
       .then(() => fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${digitsOnly}`))
       .then((res) => res.json())
-      .then((body: { results?: { address1: string; address2: string }[] }) => {
+      .then((body: { results?: { address1: string; address2: string; address3: string }[] }) => {
         if (cancelled) return;
         const result = body.results?.[0];
         if (result) {
-          setValues((prev) => ({ ...prev, prefecture: result.address1, city: result.address2 }));
+          setValues((prev) => ({
+            ...prev,
+            prefecture: result.address1,
+            city: `${result.address2}${result.address3}`,
+          }));
           setAddressLookupStatus("idle");
         } else {
           setAddressLookupStatus("not_found");
@@ -383,11 +387,15 @@ export function CheckoutForm({
       })
       .then(() => fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${digitsOnly}`))
       .then((res) => res.json())
-      .then((body: { results?: { address1: string; address2: string }[] }) => {
+      .then((body: { results?: { address1: string; address2: string; address3: string }[] }) => {
         if (cancelled) return;
         const result = body.results?.[0];
         if (result) {
-          setShippingValues((prev) => ({ ...prev, prefecture: result.address1, city: result.address2 }));
+          setShippingValues((prev) => ({
+            ...prev,
+            prefecture: result.address1,
+            city: `${result.address2}${result.address3}`,
+          }));
           setShippingAddressLookupStatus("idle");
         } else {
           setShippingAddressLookupStatus("not_found");
