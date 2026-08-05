@@ -45,6 +45,7 @@ export default async function EditProductPage({
           listPrice: product.list_price ?? null,
           priceLabel: product.price_label ?? "",
           shippingFee: product.shipping_fee,
+          isMailDeliverable: product.is_mail_deliverable ?? false,
           imageUrls: product.image_urls?.length ? product.image_urls : product.image_url ? [product.image_url] : [],
           smaregiProductId: product.smaregi_product_id ?? "",
           orderType: product.order_type,

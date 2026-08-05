@@ -41,6 +41,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       list_price: source.list_price,
       price_label: source.price_label,
       shipping_fee: source.shipping_fee,
+      is_mail_deliverable: source.is_mail_deliverable,
       image_url: source.image_url,
       image_urls: source.image_urls,
       smaregi_product_id: null,

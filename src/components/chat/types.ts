@@ -8,6 +8,7 @@ export interface WidgetProduct {
   list_price: number | null;
   price_label: string | null;
   shipping_fee: number;
+  is_mail_deliverable: boolean;
   image_url: string | null;
   image_urls: string[];
   order_type: "one_time" | "subscription";

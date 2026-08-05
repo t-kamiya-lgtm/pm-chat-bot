@@ -190,6 +190,7 @@ function stepAnswerText(
   values: Record<CheckoutFieldKey, string>,
   shipping?: ShippingSummary,
   deliveryDateIsAsap?: boolean,
+  postDeliveryRestricted?: boolean,
 ): string {
   if (step.kind === "address") {
     const base = `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`;
@@ -199,6 +200,7 @@ function stepAnswerText(
     return base;
   }
   if (step.kind === "delivery") {
+    if (postDeliveryRestricted) return "指定不可(ポスト投函)";
     const dateText = deliveryDateIsAsap ? "最短希望" : values.deliveryDate || "(未指定)";
     return `${dateText} ${values.deliveryTimeSlot || ""}`.trim();
   }
@@ -264,6 +266,10 @@ export function CheckoutForm({
   const [addonSelected, setAddonSelected] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const orderType = activeProduct.order_type;
+  // ポスト投函対象商品は、単品1点のみの注文の場合に限りお届け日・時間帯の指定を受け付けない
+  // (2点以上、または他商品と同時注文の場合は宅配便出荷となるため指定可能)
+  const postDeliveryRestricted =
+    activeProduct.is_mail_deliverable && quantity === 1 && !(addonSelected && crossSellProduct);
   const [stage, setStage] = useState<Stage>("options");
   const [subscriptionInterval, setSubscriptionInterval] = useState<SubscriptionInterval>(
     activeProduct.subscription_intervals[0] ?? "monthly",
@@ -461,8 +467,8 @@ export function CheckoutForm({
       },
     };
     const delivery = {
-      deliveryDate: values.deliveryDate,
-      deliveryTimeSlot: values.deliveryTimeSlot,
+      deliveryDate: postDeliveryRestricted ? "" : values.deliveryDate,
+      deliveryTimeSlot: postDeliveryRestricted ? "" : values.deliveryTimeSlot,
       agreedTerms: true as const,
       agreedPrivacy: true as const,
     };
@@ -694,6 +700,7 @@ export function CheckoutForm({
                     values,
                     { enabled: shipToDifferentAddress, ...shippingValues },
                     deliveryDateIsAsap,
+                    postDeliveryRestricted,
                   ),
                 }}
               />
@@ -824,74 +831,80 @@ export function CheckoutForm({
             )}
           </div>
         ) : step.kind === "delivery" ? (
-          <div className="space-y-3">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-neutral-700">お届け希望日</span>
-              <label className="mb-2 flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={deliveryDateIsAsap}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setDeliveryDateIsAsap(checked);
-                    if (checked) {
-                      setValues((prev) => ({ ...prev, deliveryDate: minDeliveryDate() }));
+          postDeliveryRestricted ? (
+            <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+              この商品はポスト投函になるため、お届け日指定ができません。
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-neutral-700">お届け希望日</span>
+                <label className="mb-2 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={deliveryDateIsAsap}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setDeliveryDateIsAsap(checked);
+                      if (checked) {
+                        setValues((prev) => ({ ...prev, deliveryDate: minDeliveryDate() }));
+                        setTouched((prev) => ({ ...prev, deliveryDate: true }));
+                      }
+                    }}
+                  />
+                  最短希望(お届け日を指定しない)
+                </label>
+                {deliveryDateIsAsap ? (
+                  <p className="text-sm text-neutral-500">
+                    最短のお届け予定日({values.deliveryDate})で承ります。
+                  </p>
+                ) : (
+                  <input
+                    autoFocus
+                    type="date"
+                    className="input"
+                    min={minDeliveryDate()}
+                    value={values.deliveryDate}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const corrected = raw && raw < minDeliveryDate() ? minDeliveryDate() : raw;
+                      setValues((prev) => ({ ...prev, deliveryDate: corrected }));
                       setTouched((prev) => ({ ...prev, deliveryDate: true }));
-                    }
-                  }}
-                />
-                最短希望(お届け日を指定しない)
+                    }}
+                    onFocus={scrollFieldIntoView}
+                    onBlur={() => setTouched((prev) => ({ ...prev, deliveryDate: true }))}
+                  />
+                )}
+                {touched.deliveryDate && validateField("deliveryDate", values.deliveryDate) && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {validateField("deliveryDate", values.deliveryDate)}
+                  </p>
+                )}
               </label>
-              {deliveryDateIsAsap ? (
-                <p className="text-sm text-neutral-500">
-                  最短のお届け予定日({values.deliveryDate})で承ります。
-                </p>
-              ) : (
-                <input
-                  autoFocus
-                  type="date"
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-neutral-700">お届け希望時間帯</span>
+                <select
                   className="input"
-                  min={minDeliveryDate()}
-                  value={values.deliveryDate}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const corrected = raw && raw < minDeliveryDate() ? minDeliveryDate() : raw;
-                    setValues((prev) => ({ ...prev, deliveryDate: corrected }));
-                    setTouched((prev) => ({ ...prev, deliveryDate: true }));
-                  }}
+                  value={values.deliveryTimeSlot}
+                  onChange={(e) => setValues((prev) => ({ ...prev, deliveryTimeSlot: e.target.value }))}
                   onFocus={scrollFieldIntoView}
-                  onBlur={() => setTouched((prev) => ({ ...prev, deliveryDate: true }))}
-                />
-              )}
-              {touched.deliveryDate && validateField("deliveryDate", values.deliveryDate) && (
-                <p className="mt-1 text-xs text-red-600">
-                  {validateField("deliveryDate", values.deliveryDate)}
-                </p>
-              )}
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-neutral-700">お届け希望時間帯</span>
-              <select
-                className="input"
-                value={values.deliveryTimeSlot}
-                onChange={(e) => setValues((prev) => ({ ...prev, deliveryTimeSlot: e.target.value }))}
-                onFocus={scrollFieldIntoView}
-                onBlur={() => setTouched((prev) => ({ ...prev, deliveryTimeSlot: true }))}
-              >
-                <option value="">選択してください</option>
-                {DELIVERY_TIME_SLOTS.map((slot) => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                  </option>
-                ))}
-              </select>
-              {touched.deliveryTimeSlot && validateField("deliveryTimeSlot", values.deliveryTimeSlot) && (
-                <p className="mt-1 text-xs text-red-600">
-                  {validateField("deliveryTimeSlot", values.deliveryTimeSlot)}
-                </p>
-              )}
-            </label>
-          </div>
+                  onBlur={() => setTouched((prev) => ({ ...prev, deliveryTimeSlot: true }))}
+                >
+                  <option value="">選択してください</option>
+                  {DELIVERY_TIME_SLOTS.map((slot) => (
+                    <option key={slot} value={slot}>
+                      {slot}
+                    </option>
+                  ))}
+                </select>
+                {touched.deliveryTimeSlot && validateField("deliveryTimeSlot", values.deliveryTimeSlot) && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {validateField("deliveryTimeSlot", values.deliveryTimeSlot)}
+                  </p>
+                )}
+              </label>
+            </div>
+          )
         ) : step.key === "paymentMethod" ? (
           <div className="space-y-2">
             {PAYMENT_METHOD_OPTIONS.map((option) => (
@@ -1294,6 +1307,12 @@ export function CheckoutForm({
             </button>
           </div>
         </div>
+
+        {postDeliveryRestricted && (
+          <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+            この商品はポスト投函になるため、お届け日指定ができません。
+          </p>
+        )}
 
         <AmountBreakdown
           amount={activeProduct.price}

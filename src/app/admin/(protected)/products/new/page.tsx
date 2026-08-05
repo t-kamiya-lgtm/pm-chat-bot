@@ -31,6 +31,7 @@ export default async function NewProductPage({
                 listPrice: null,
                 priceLabel: "",
                 shippingFee: 0,
+                isMailDeliverable: false,
                 imageUrls: [],
                 smaregiProductId: "",
                 orderType: "one_time",

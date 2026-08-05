@@ -19,6 +19,7 @@ export interface ProductFormValues {
   listPrice: number | null;
   priceLabel: string;
   shippingFee: number;
+  isMailDeliverable: boolean;
   imageUrls: string[];
   smaregiProductId: string;
   orderType: ProductOrderType;
@@ -34,6 +35,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     listPrice: null,
     priceLabel: "",
     shippingFee: 0,
+    isMailDeliverable: false,
     imageUrls: [],
     smaregiProductId: "",
     orderType: "one_time",
@@ -92,6 +94,7 @@ export function ProductForm({
       listPrice: values.listPrice === null ? null : Number(values.listPrice),
       priceLabel: values.priceLabel || null,
       shippingFee: Number(values.shippingFee),
+      isMailDeliverable: values.isMailDeliverable,
       imageUrls: values.imageUrls.map((u) => u.trim()).filter(Boolean),
       smaregiProductId: values.smaregiProductId || undefined,
       orderType: values.orderType,
@@ -182,6 +185,15 @@ export function ProductForm({
           />
         </Field>
       </div>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={values.isMailDeliverable}
+          onChange={(e) => setValues((p) => ({ ...p, isMailDeliverable: e.target.checked }))}
+        />
+        ポスト投函対象(単品1点のみの注文ではお届け日・時間帯の指定を受け付けません)
+      </label>
 
       <div className="rounded-md border border-neutral-200 p-3">
         <p className="mb-3 text-sm font-medium text-neutral-700">

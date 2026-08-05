@@ -12,6 +12,7 @@ const productUpdateSchema = z.object({
   listPrice: z.number().int().min(0).nullable().optional(),
   priceLabel: z.string().nullable().optional(),
   shippingFee: z.number().int().min(0).optional(),
+  isMailDeliverable: z.boolean().optional(),
   imageUrl: z.string().url().optional(),
   imageUrls: z.array(z.string().url()).optional(),
   smaregiProductId: z.string().optional(),
@@ -74,6 +75,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.listPrice !== undefined && { list_price: input.listPrice }),
       ...(input.priceLabel !== undefined && { price_label: input.priceLabel }),
       ...(input.shippingFee !== undefined && { shipping_fee: input.shippingFee }),
+      ...(input.isMailDeliverable !== undefined && { is_mail_deliverable: input.isMailDeliverable }),
       ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
       ...(input.imageUrls !== undefined && {
         image_urls: input.imageUrls,
