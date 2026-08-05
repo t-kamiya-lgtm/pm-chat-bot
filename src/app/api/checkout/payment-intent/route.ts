@@ -55,30 +55,49 @@ export async function POST(request: Request) {
 
   const customer = await upsertCustomer(customerInput);
 
-  const stripe = getStripeClient();
   let stripeCustomerId = customer.stripe_customer_id;
-  if (!stripeCustomerId) {
-    const stripeCustomer = await stripe.customers.create({
-      email: customer.email,
-      name: customer.name,
-      phone: customer.phone ?? undefined,
+  let paymentIntent;
+  try {
+    const stripe = getStripeClient();
+    if (!stripeCustomerId) {
+      const stripeCustomer = await stripe.customers.create({
+        email: customer.email,
+        name: customer.name,
+        phone: customer.phone ?? undefined,
+      });
+      stripeCustomerId = stripeCustomer.id;
+      await setCustomerStripeId(customer.id, stripeCustomerId);
+    }
+
+    paymentIntent = await stripe.paymentIntents.create({
+      amount: breakdown.total,
+      currency: "jpy",
+      customer: stripeCustomerId,
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        productId,
+        customerId: customer.id,
+        quantity: String(quantity),
+        ...(addonProduct && { addonProductId: addonProduct.id }),
+      },
     });
-    stripeCustomerId = stripeCustomer.id;
-    await setCustomerStripeId(customer.id, stripeCustomerId);
+  } catch (err) {
+    console.error("[checkout/payment-intent] Stripe error", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "決済の準備に失敗しました" },
+      { status: 500 },
+    );
   }
 
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: breakdown.total,
-    currency: "jpy",
-    customer: stripeCustomerId,
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      productId,
-      customerId: customer.id,
-      quantity: String(quantity),
-      ...(addonProduct && { addonProductId: addonProduct.id }),
-    },
-  });
+  if (!paymentIntent.client_secret) {
+    console.error("[checkout/payment-intent] PaymentIntent created without client_secret", {
+      paymentIntentId: paymentIntent.id,
+    });
+    return NextResponse.json(
+      { error: "決済の準備に失敗しました(client secret missing)" },
+      { status: 500 },
+    );
+  }
 
   const supabase = createSupabaseAdminClient();
   const { data: order, error } = await supabase

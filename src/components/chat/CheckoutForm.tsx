@@ -499,6 +499,7 @@ export function CheckoutForm({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "決済の準備に失敗しました");
+        if (!data.clientSecret) throw new Error("決済の準備に失敗しました(client secret missing)");
 
         setClientSecret(data.clientSecret);
       } else {
