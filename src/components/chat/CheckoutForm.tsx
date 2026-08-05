@@ -310,6 +310,8 @@ export function CheckoutForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [preparingPayment, setPreparingPayment] = useState(false);
+  const [paymentPrepFailed, setPaymentPrepFailed] = useState(false);
 
   useEffect(() => {
     fetch("/api/widget/checkout-fields")
@@ -427,15 +429,8 @@ export function CheckoutForm({
     setSubscriptionInterval(product.subscription_intervals[0] ?? "monthly");
   }
 
-  async function submitOrder() {
-    if (!agreedTerms || !agreedPrivacy) {
-      setError("特定商取引法に基づく表記・個人情報の取り扱いについてに同意のうえお進みください");
-      return;
-    }
-
-    setError(null);
-    setSubmitting(true);
-
+  /** 注文者情報・お届け情報など、決済方法によらず共通で送る内容をまとめる。 */
+  function buildOrderPayload() {
     const customer = {
       name: values.name,
       email: values.email,
@@ -465,72 +460,126 @@ export function CheckoutForm({
           line1: shippingValues.line1,
         }
       : undefined;
+    const surveyResponsesPayload =
+      surveyResponses && Object.keys(surveyResponses).length > 0 ? surveyResponses : undefined;
+
+    return { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload };
+  }
+
+  /** 規約同意が完了した時点で自動的に呼び出し、カード入力欄の表示に必要なPaymentIntent/Subscriptionを準備する。 */
+  async function prepareStripePayment() {
+    setError(null);
+    setPaymentPrepFailed(false);
+    setPreparingPayment(true);
+
+    const { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload } =
+      buildOrderPayload();
 
     try {
-      if (paymentMethod === "stripe") {
-        const endpoint =
-          orderType === "subscription" ? "/api/checkout/subscription" : "/api/checkout/payment-intent";
-        const surveyResponsesPayload =
-          surveyResponses && Object.keys(surveyResponses).length > 0 ? surveyResponses : undefined;
-        const body =
-          orderType === "subscription"
-            ? {
-                productId: activeProduct.id,
-                subscriptionInterval,
-                customer,
-                ...delivery,
-                ...(addonProductId && { addonProductId }),
-                ...(shippingAddress && { shippingAddress }),
-                ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
-              }
-            : {
-                productId: activeProduct.id,
-                customer,
-                ...delivery,
-                ...(addonProductId && { addonProductId }),
-                ...(shippingAddress && { shippingAddress }),
-                ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
-              };
+      const endpoint =
+        orderType === "subscription" ? "/api/checkout/subscription" : "/api/checkout/payment-intent";
+      const body =
+        orderType === "subscription"
+          ? {
+              productId: activeProduct.id,
+              subscriptionInterval,
+              customer,
+              ...delivery,
+              ...(addonProductId && { addonProductId }),
+              ...(shippingAddress && { shippingAddress }),
+              ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
+            }
+          : {
+              productId: activeProduct.id,
+              customer,
+              ...delivery,
+              ...(addonProductId && { addonProductId }),
+              ...(shippingAddress && { shippingAddress }),
+              ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
+            };
 
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "決済の準備に失敗しました");
-        if (!data.clientSecret) throw new Error("決済の準備に失敗しました(client secret missing)");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "決済の準備に失敗しました");
+      if (!data.clientSecret) throw new Error("決済の準備に失敗しました(client secret missing)");
 
-        setClientSecret(data.clientSecret);
-      } else {
-        const res = await fetch("/api/checkout/deferred", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            productId: activeProduct.id,
-            orderType,
-            subscriptionInterval: orderType === "subscription" ? subscriptionInterval : undefined,
-            paymentMethod,
-            customer,
-            ...delivery,
-            ...(addonProductId && { addonProductId }),
-            ...(shippingAddress && { shippingAddress }),
-            ...(surveyResponses &&
-              Object.keys(surveyResponses).length > 0 && { surveyResponses }),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "注文の受付に失敗しました");
+      setClientSecret(data.clientSecret);
+    } catch (err) {
+      setError((err as Error).message);
+      setPaymentPrepFailed(true);
+    } finally {
+      setPreparingPayment(false);
+    }
+  }
 
-        onComplete({
-          ok: data.accepted,
-          items: data.accepted
-            ? completionItems && completionItems.length > 0
-              ? completionItems
-              : DEFAULT_ACCEPTED_ITEMS
-            : FAILED_ITEMS,
-        });
-      }
+  useEffect(() => {
+    if (
+      !(
+        stage === "agreement" &&
+        paymentMethod === "stripe" &&
+        agreedTerms &&
+        agreedPrivacy &&
+        !clientSecret &&
+        !preparingPayment &&
+        !paymentPrepFailed
+      )
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) prepareStripePayment();
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, paymentMethod, agreedTerms, agreedPrivacy, clientSecret, preparingPayment, paymentPrepFailed]);
+
+  async function submitOrder() {
+    if (!agreedTerms || !agreedPrivacy) {
+      setError("特定商取引法に基づく表記・個人情報の取り扱いについてに同意のうえお進みください");
+      return;
+    }
+
+    setError(null);
+    setSubmitting(true);
+
+    const { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload } =
+      buildOrderPayload();
+
+    try {
+      const res = await fetch("/api/checkout/deferred", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          productId: activeProduct.id,
+          orderType,
+          subscriptionInterval: orderType === "subscription" ? subscriptionInterval : undefined,
+          paymentMethod,
+          customer,
+          ...delivery,
+          ...(addonProductId && { addonProductId }),
+          ...(shippingAddress && { shippingAddress }),
+          ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "注文の受付に失敗しました");
+
+      onComplete({
+        ok: data.accepted,
+        items: data.accepted
+          ? completionItems && completionItems.length > 0
+            ? completionItems
+            : DEFAULT_ACCEPTED_ITEMS
+          : FAILED_ITEMS,
+      });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -589,21 +638,6 @@ export function CheckoutForm({
     setStepIndex(index);
     setStage("wizard");
     setReturningToConfirm(true);
-  }
-
-  if (clientSecret) {
-    return (
-      <StripePaymentForm
-        clientSecret={clientSecret}
-        onSuccess={() =>
-          onComplete({
-            ok: true,
-            items: completionItems && completionItems.length > 0 ? completionItems : DEFAULT_SUCCESS_ITEMS,
-          })
-        }
-        onError={(message) => setError(message)}
-      />
-    );
   }
 
   if (stage === "wizard") {
@@ -1116,14 +1150,44 @@ export function CheckoutForm({
           addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
         />
 
-        <button
-          type="button"
-          onClick={submitOrder}
-          disabled={submitting || !canSubmit}
-          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
-        >
-          {submitting ? "処理中..." : "この内容で注文を確定する"}
-        </button>
+        {paymentMethod === "stripe" ? (
+          !canSubmit ? (
+            <p className="text-center text-xs text-neutral-400">
+              上記に同意いただくと、お支払い情報の入力へ進みます
+            </p>
+          ) : preparingPayment ? (
+            <p className="text-center text-sm text-neutral-500">お支払い情報の入力を準備しています…</p>
+          ) : clientSecret ? (
+            <StripePaymentForm
+              clientSecret={clientSecret}
+              onSuccess={() =>
+                onComplete({
+                  ok: true,
+                  items:
+                    completionItems && completionItems.length > 0 ? completionItems : DEFAULT_SUCCESS_ITEMS,
+                })
+              }
+              onError={(message) => setError(message)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={prepareStripePayment}
+              className="w-full rounded-md border border-neutral-300 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+            >
+              もう一度試す
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={submitOrder}
+            disabled={submitting || !canSubmit}
+            className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
+          >
+            {submitting ? "処理中..." : "この内容で注文を確定する"}
+          </button>
+        )}
       </div>
     );
   }
