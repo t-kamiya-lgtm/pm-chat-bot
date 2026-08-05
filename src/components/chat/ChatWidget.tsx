@@ -83,7 +83,7 @@ const QA_TARGET_PREFIX = "qa:";
 export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
@@ -102,6 +102,16 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     productId: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 個人情報を含む注文完了画面が放置され続けないよう、完了から一定時間後に会話を最初のあいさつへ戻す。 */
+  const RESET_AFTER_COMPLETE_MS = 3 * 60 * 1000;
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const scenarioUrl = previewScenarioId
@@ -352,6 +362,36 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     }
   }
 
+  function resetConversation() {
+    setTimeline([]);
+    setSurveyAnswers({});
+    setDetailContext(null);
+    setLoadError(null);
+    setSessionId(crypto.randomUUID());
+
+    for (const greetingItem of checkoutMessages.greetingItems ?? []) {
+      setTimeline((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          kind: "bot-text",
+          text: greetingItem.type === "text" ? greetingItem.text ?? "" : "",
+          imageUrl: greetingItem.type === "image" ? greetingItem.imageUrl : undefined,
+          linkUrl: greetingItem.type === "image" ? greetingItem.linkUrl : undefined,
+        },
+      ]);
+    }
+    if (checkoutMessages.privacyNotice) {
+      setTimeline((prev) => [
+        ...prev,
+        { id: nextId(), kind: "bot-text", text: checkoutMessages.privacyNotice ?? "" },
+      ]);
+    }
+
+    const entry = Object.values(nodesById).find((n) => n.is_entry) ?? nodesById[orderedNodeIds[0]];
+    if (entry) advance(entry.id);
+  }
+
   function handleChoiceSelect(item: Extract<TimelineItem, { kind: "choice" }>, option: ChoiceOption) {
     setTimeline((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)),
@@ -455,6 +495,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       ...prev.filter((i) => i.id !== item.id),
       { id: nextId(), kind: "checkout-result", ok: result.ok, items: result.items },
     ]);
+
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(resetConversation, RESET_AFTER_COMPLETE_MS);
   }
 
   const detailProduct = detailContext ? productsById[detailContext.productId] : null;
