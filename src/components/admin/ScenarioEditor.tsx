@@ -468,24 +468,27 @@ function OptionsEditor({
   const textSize = compact ? "text-xs" : "text-sm";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <span className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${textSize}`}>
-        選択肢
+        選択肢(それぞれがチャット上に1つのボタンとして表示されます)
       </span>
       {options.map((option, index) => (
-        <div key={index} className="space-y-2 rounded-md border border-neutral-200 p-2">
-          <input
-            className="input"
-            placeholder="表示ラベル(例: Q&Aを見る)"
-            value={option.label}
-            onChange={(e) => update(index, { label: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="内部値(例: qa、他ノードから参照する識別子)"
-            value={option.value}
-            onChange={(e) => update(index, { value: e.target.value })}
-          />
+        <div key={index} className="space-y-2 rounded-md border-2 border-neutral-300 bg-neutral-50 p-3">
+          <div className={`flex items-center justify-between font-semibold text-neutral-600 ${textSize}`}>
+            <span>選択肢 {index + 1}</span>
+            <button type="button" onClick={() => remove(index)} className="font-normal text-red-600 hover:underline">
+              この選択肢を削除
+            </button>
+          </div>
+          <label className={`block ${textSize}`}>
+            <span className="mb-1 block text-neutral-500">表示ラベル(ボタンに表示される文言。例: Q&Aを見る)</span>
+            <input
+              className="input bg-white"
+              placeholder="例: Q&Aを見る"
+              value={option.label}
+              onChange={(e) => update(index, { label: e.target.value, value: e.target.value })}
+            />
+          </label>
           <ProductGroupSelect
             label="Q&Aをその場で表示するアイテム(商品Q&Aはアイテム単位のため品番ではなくアイテムを選択・設定すると下の「次に進むノード」より優先されます)"
             products={products}
@@ -507,13 +510,6 @@ function OptionsEditor({
               compact={compact}
             />
           )}
-          <button
-            type="button"
-            onClick={() => remove(index)}
-            className={`text-red-600 hover:underline ${textSize}`}
-          >
-            この選択肢を削除
-          </button>
         </div>
       ))}
       {options.length === 0 && (
