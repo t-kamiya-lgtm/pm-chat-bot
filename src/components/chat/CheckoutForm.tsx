@@ -285,6 +285,7 @@ export function CheckoutForm({
   const steps = buildWizardSteps(fieldOrder);
   const [stepIndex, setStepIndex] = useState(0);
   const [returningToConfirm, setReturningToConfirm] = useState(false);
+  const [returnToStepIndex, setReturnToStepIndex] = useState<number | null>(null);
   const [values, setValues] = useState<Record<CheckoutFieldKey, string>>({
     paymentMethod: "stripe",
     name: "",
@@ -641,12 +642,25 @@ export function CheckoutForm({
       return;
     }
 
+    if (returnToStepIndex !== null) {
+      const target = returnToStepIndex;
+      setReturnToStepIndex(null);
+      setStepIndex(target);
+      return;
+    }
+
     if (returningToConfirm || stepIndex === steps.length - 1) {
       setReturningToConfirm(false);
       setStage("review");
     } else {
       setStepIndex((i) => i + 1);
     }
+  }
+
+  /** ウィザード内の回答済みの質問にある「修正」リンクから、その場でその質問まで戻る。編集後は元いた質問に戻る。 */
+  function goToWizardStep(index: number) {
+    setReturnToStepIndex((current) => current ?? stepIndex);
+    setStepIndex(index);
   }
 
   function handleBackStep() {
@@ -716,6 +730,15 @@ export function CheckoutForm({
                   ),
                 }}
               />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => goToWizardStep(idx)}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  修正
+                </button>
+              </div>
             </div>
           ))}
           <MessageBubble
