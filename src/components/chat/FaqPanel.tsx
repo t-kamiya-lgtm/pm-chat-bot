@@ -18,13 +18,14 @@ interface FaqCategory {
 export function FaqPanel({
   productId,
   productName,
-  onClose,
   onProceed,
 }: {
   productId: string;
   productName?: string;
-  onClose: () => void;
-  /** 設定されている場合、Q&A表示中も常に「購入へ進む」ボタンを表示する。 */
+  /**
+   * 設定されている場合、「購入へ進む」ボタンを表示する。パネル自体は他のメッセージと同様に
+   * スレッドに残り続け、購入へ進んだ後も操作(カテゴリ・質問の開閉)ができる。
+   */
   onProceed?: () => void;
 }) {
   const [categories, setCategories] = useState<FaqCategory[]>([]);
@@ -41,12 +42,7 @@ export function FaqPanel({
 
   return (
     <div className="max-w-[90%] space-y-3 rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">よくあるご質問</p>
-        <button type="button" onClick={onClose} className="text-xs text-neutral-400 hover:text-neutral-600">
-          閉じる
-        </button>
-      </div>
+      <p className="text-sm font-medium">よくあるご質問</p>
 
       {inquirySent ? (
         <p className="text-sm text-neutral-600">

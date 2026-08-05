@@ -63,7 +63,7 @@ type TimelineItem =
       privacyText?: string;
     }
   | { id: string; kind: "checkout-result"; ok: boolean; items: GreetingItem[] }
-  | { id: string; kind: "faq"; productId: string; nextNodeId?: string };
+  | { id: string; kind: "faq"; productId: string; nextNodeId?: string; proceeded?: boolean };
 
 let seq = 0;
 function nextId() {
@@ -376,9 +376,12 @@ export function ChatWidget() {
     advance(next, nodesById, productsById, item.id);
   }
 
-  /** Q&Aパネルを閉じる(「購入へ進む」ボタンでも同じ動作)。次のノードが設定されていれば自動的に進む。 */
-  function handleFaqClose(item: Extract<TimelineItem, { kind: "faq" }>) {
-    setTimeline((prev) => prev.filter((i) => i.id !== item.id));
+  /**
+   * Q&Aの「購入へ進む」。他のメッセージと同様にスレッドに残したまま、次のノードへ進む
+   * (Q&Aは購入へ進んだ後もスクロールして操作できる)。
+   */
+  function handleFaqProceed(item: Extract<TimelineItem, { kind: "faq" }>) {
+    setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, proceeded: true } : i)));
     if (item.nextNodeId) advance(item.nextNodeId, nodesById, productsById);
   }
 
@@ -553,8 +556,7 @@ export function ChatWidget() {
                   key={item.id}
                   productId={item.productId}
                   productName={productsById[item.productId]?.name}
-                  onClose={() => handleFaqClose(item)}
-                  onProceed={item.nextNodeId ? () => handleFaqClose(item) : undefined}
+                  onProceed={item.nextNodeId && !item.proceeded ? () => handleFaqProceed(item) : undefined}
                 />
               );
             case "checkout-result":
