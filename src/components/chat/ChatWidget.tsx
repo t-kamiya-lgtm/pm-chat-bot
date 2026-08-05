@@ -447,9 +447,12 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     );
   }
 
-  function handleCheckoutComplete(result: { ok: boolean; items: GreetingItem[] }) {
+  function handleCheckoutComplete(
+    item: Extract<TimelineItem, { kind: "checkout" }>,
+    result: { ok: boolean; items: GreetingItem[] },
+  ) {
     setTimeline((prev) => [
-      ...prev,
+      ...prev.filter((i) => i.id !== item.id),
       { id: nextId(), kind: "checkout-result", ok: result.ok, items: result.items },
     ]);
   }
@@ -547,7 +550,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   privacyText={item.privacyText}
                   sessionId={sessionId}
                   surveyResponses={surveyAnswers}
-                  onComplete={handleCheckoutComplete}
+                  onComplete={(result) => handleCheckoutComplete(item, result)}
                   onBack={() => handleCheckoutBack(item)}
                 />
               );
