@@ -68,10 +68,14 @@ function truncateOfferComment(text: string): string {
     : text;
 }
 
+/** UTC変換によるタイムゾーンずれ(早朝の日本時間がUTCでは前日になる)を避けるため、ローカルの日付要素から組み立てる。 */
 function minDeliveryDate(): string {
   const d = new Date();
   d.setDate(d.getDate() + MIN_DELIVERY_LEAD_DAYS);
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 type WizardStep =
@@ -185,6 +189,7 @@ function stepAnswerText(
   step: WizardStep,
   values: Record<CheckoutFieldKey, string>,
   shipping?: ShippingSummary,
+  deliveryDateIsAsap?: boolean,
 ): string {
   if (step.kind === "address") {
     const base = `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`;
@@ -194,7 +199,8 @@ function stepAnswerText(
     return base;
   }
   if (step.kind === "delivery") {
-    return `${values.deliveryDate || "(未指定)"} ${values.deliveryTimeSlot || ""}`.trim();
+    const dateText = deliveryDateIsAsap ? "最短希望" : values.deliveryDate || "(未指定)";
+    return `${dateText} ${values.deliveryTimeSlot || ""}`.trim();
   }
   if (step.key === "paymentMethod") {
     return PAYMENT_METHOD_OPTIONS.find((o) => o.value === values.paymentMethod)?.label ?? "(未選択)";
@@ -281,9 +287,10 @@ export function CheckoutForm({
     prefecture: "",
     city: "",
     line1: "",
-    deliveryDate: "",
-    deliveryTimeSlot: "",
+    deliveryDate: minDeliveryDate(),
+    deliveryTimeSlot: "指定なし",
   });
+  const [deliveryDateIsAsap, setDeliveryDateIsAsap] = useState(true);
   const paymentMethod = values.paymentMethod as PaymentMethod;
   const paymentFee = methodFees[paymentMethod] ?? 0;
   const [touched, setTouched] = useState<Partial<Record<CheckoutFieldKey, boolean>>>({});
@@ -682,7 +689,12 @@ export function CheckoutForm({
                   id: `a-${idx}`,
                   from: "user",
                   kind: "text",
-                  text: stepAnswerText(pastStep, values, { enabled: shipToDifferentAddress, ...shippingValues }),
+                  text: stepAnswerText(
+                    pastStep,
+                    values,
+                    { enabled: shipToDifferentAddress, ...shippingValues },
+                    deliveryDateIsAsap,
+                  ),
                 }}
               />
             </div>
@@ -815,21 +827,42 @@ export function CheckoutForm({
           <div className="space-y-3">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-neutral-700">お届け希望日</span>
-              <input
-                autoFocus
-                type="date"
-                className="input"
-                min={minDeliveryDate()}
-                value={values.deliveryDate}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const corrected = raw && raw < minDeliveryDate() ? minDeliveryDate() : raw;
-                  setValues((prev) => ({ ...prev, deliveryDate: corrected }));
-                  setTouched((prev) => ({ ...prev, deliveryDate: true }));
-                }}
-                onFocus={scrollFieldIntoView}
-                onBlur={() => setTouched((prev) => ({ ...prev, deliveryDate: true }))}
-              />
+              <label className="mb-2 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={deliveryDateIsAsap}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setDeliveryDateIsAsap(checked);
+                    if (checked) {
+                      setValues((prev) => ({ ...prev, deliveryDate: minDeliveryDate() }));
+                      setTouched((prev) => ({ ...prev, deliveryDate: true }));
+                    }
+                  }}
+                />
+                最短希望(お届け日を指定しない)
+              </label>
+              {deliveryDateIsAsap ? (
+                <p className="text-sm text-neutral-500">
+                  最短のお届け予定日({values.deliveryDate})で承ります。
+                </p>
+              ) : (
+                <input
+                  autoFocus
+                  type="date"
+                  className="input"
+                  min={minDeliveryDate()}
+                  value={values.deliveryDate}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const corrected = raw && raw < minDeliveryDate() ? minDeliveryDate() : raw;
+                    setValues((prev) => ({ ...prev, deliveryDate: corrected }));
+                    setTouched((prev) => ({ ...prev, deliveryDate: true }));
+                  }}
+                  onFocus={scrollFieldIntoView}
+                  onBlur={() => setTouched((prev) => ({ ...prev, deliveryDate: true }))}
+                />
+              )}
               {touched.deliveryDate && validateField("deliveryDate", values.deliveryDate) && (
                 <p className="mt-1 text-xs text-red-600">
                   {validateField("deliveryDate", values.deliveryDate)}
@@ -1067,7 +1100,14 @@ export function CheckoutForm({
                     : CHECKOUT_FIELD_LABELS[step.key]}
               </span>
               <div className="flex items-start gap-2 text-right">
-                <span>{stepAnswerText(step, values, { enabled: shipToDifferentAddress, ...shippingValues })}</span>
+                <span>
+                  {stepAnswerText(
+                    step,
+                    values,
+                    { enabled: shipToDifferentAddress, ...shippingValues },
+                    deliveryDateIsAsap,
+                  )}
+                </span>
                 <button
                   type="button"
                   onClick={() => goToStep(idx)}

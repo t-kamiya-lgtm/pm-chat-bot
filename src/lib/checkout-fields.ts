@@ -68,6 +68,7 @@ export const DELIVERY_KEY_SET = new Set<CheckoutFieldKey>(DELIVERY_FIELD_KEYS);
 export const MIN_DELIVERY_LEAD_DAYS = 7;
 
 export const DELIVERY_TIME_SLOTS = [
+  "指定なし",
   "午前中",
   "12〜14時",
   "14〜16時",
