@@ -24,6 +24,16 @@ export interface WidgetScenarioNode {
   display_order: number;
 }
 
+export interface WidgetMenuItem {
+  id: string;
+  scenario_id: string;
+  label: string;
+  action_type: "node" | "url";
+  target_node_id: string | null;
+  url: string | null;
+  display_order: number;
+}
+
 export interface ChatMessage {
   id: string;
   from: "bot" | "user";

@@ -1,13 +1,25 @@
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ScenarioEditor } from "@/components/admin/ScenarioEditor";
-import type { ScenarioNode } from "@/lib/types";
+import type { MenuItemActionType, ScenarioMenuItem, ScenarioNode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 function extractGroupName(value: unknown): string | null {
   const row = Array.isArray(value) ? value[0] : value;
   return (row as { name?: string } | null)?.name ?? null;
+}
+
+function mapMenuItemRow(row: Record<string, unknown>): ScenarioMenuItem {
+  return {
+    id: row.id as string,
+    scenarioId: row.scenario_id as string,
+    label: row.label as string,
+    actionType: row.action_type as MenuItemActionType,
+    targetNodeId: (row.target_node_id as string | null) ?? null,
+    url: (row.url as string | null) ?? null,
+    displayOrder: (row.display_order as number | null) ?? 0,
+  };
 }
 
 function mapNodeRow(row: Record<string, unknown>): ScenarioNode {
@@ -32,14 +44,16 @@ export default async function ScenarioEditorPage({
   const { id } = await params;
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: scenario }, { data: nodes }, { data: products, error: productsError }] = await Promise.all([
-    supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
-    supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
-    supabase
-      .from("products")
-      .select("id, name, price, order_type, product_group_id, product_groups(name)")
-      .order("created_at", { ascending: false }),
-  ]);
+  const [{ data: scenario }, { data: nodes }, { data: products, error: productsError }, { data: menuItems }] =
+    await Promise.all([
+      supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
+      supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
+      supabase
+        .from("products")
+        .select("id, name, price, order_type, product_group_id, product_groups(name)")
+        .order("created_at", { ascending: false }),
+      supabase.from("scenario_menu_items").select("*").eq("scenario_id", id).order("display_order"),
+    ]);
 
   if (!scenario) notFound();
 
@@ -70,6 +84,7 @@ export default async function ScenarioEditorPage({
           productGroupId: p.product_group_id as string | null,
           productGroupName: extractGroupName(p.product_groups),
         }))}
+        menuItems={(menuItems ?? []).map(mapMenuItemRow)}
       />
     </div>
   );

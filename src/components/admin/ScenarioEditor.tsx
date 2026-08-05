@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
+  MenuItemActionType,
   Product,
   Scenario,
+  ScenarioMenuItem,
   ScenarioNode,
   ScenarioNodeType,
   SurveyAnswerType,
@@ -660,9 +662,10 @@ interface Props {
   scenario: Scenario;
   nodes: ScenarioNode[];
   products: PickableProduct[];
+  menuItems: ScenarioMenuItem[];
 }
 
-export function ScenarioEditor({ scenario, nodes, products }: Props) {
+export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMenuItems }: Props) {
   const router = useRouter();
   const [publishing, setPublishing] = useState(false);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
@@ -689,6 +692,13 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [reorderPending, setReorderPending] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [menuItems, setMenuItems] = useState<ScenarioMenuItem[]>(initialMenuItems);
+  const [newMenuLabel, setNewMenuLabel] = useState("");
+  const [newMenuActionType, setNewMenuActionType] = useState<MenuItemActionType>("node");
+  const [newMenuTargetNodeId, setNewMenuTargetNodeId] = useState("");
+  const [newMenuUrl, setNewMenuUrl] = useState("");
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [menuPending, setMenuPending] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
 
   useEffect(() => {
@@ -751,6 +761,97 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
       return;
     }
     router.refresh();
+  }
+
+  async function handleAddMenuItem(event: React.FormEvent) {
+    event.preventDefault();
+    setMenuError(null);
+
+    if (!newMenuLabel.trim()) {
+      setMenuError("ボタンのラベルを入力してください");
+      return;
+    }
+    if (newMenuActionType === "node" && !newMenuTargetNodeId) {
+      setMenuError("ジャンプ先のノードを選択してください");
+      return;
+    }
+    if (newMenuActionType === "url" && !newMenuUrl.trim()) {
+      setMenuError("URLを入力してください");
+      return;
+    }
+
+    const res = await fetch(`/api/scenarios/${scenario.id}/menu-items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        label: newMenuLabel.trim(),
+        actionType: newMenuActionType,
+        ...(newMenuActionType === "node"
+          ? { targetNodeId: newMenuTargetNodeId }
+          : { url: newMenuUrl.trim() }),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setMenuError(`追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    const { menuItem } = await res.json();
+    setMenuItems((prev) => [
+      ...prev,
+      {
+        id: menuItem.id,
+        scenarioId: menuItem.scenario_id,
+        label: menuItem.label,
+        actionType: menuItem.action_type,
+        targetNodeId: menuItem.target_node_id,
+        url: menuItem.url,
+        displayOrder: menuItem.display_order,
+      },
+    ]);
+    setNewMenuLabel("");
+    setNewMenuTargetNodeId("");
+    setNewMenuUrl("");
+  }
+
+  async function handleDeleteMenuItem(item: ScenarioMenuItem) {
+    if (!window.confirm(`「${item.label}」を削除しますか？`)) return;
+
+    setMenuPending(item.id);
+    const res = await fetch(`/api/scenarios/${scenario.id}/menu-items/${item.id}`, { method: "DELETE" });
+    setMenuPending(null);
+
+    if (!res.ok) {
+      window.alert("削除に失敗しました");
+      return;
+    }
+    setMenuItems((prev) => prev.filter((m) => m.id !== item.id));
+  }
+
+  async function moveMenuItem(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= menuItems.length) return;
+
+    const current = menuItems[index];
+    const target = menuItems[targetIndex];
+    const next = [...menuItems];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    setMenuItems(next);
+
+    setMenuPending(current.id);
+    await Promise.all([
+      fetch(`/api/scenarios/${scenario.id}/menu-items/${current.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayOrder: target.displayOrder }),
+      }),
+      fetch(`/api/scenarios/${scenario.id}/menu-items/${target.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayOrder: current.displayOrder }),
+      }),
+    ]);
+    setMenuPending(null);
   }
 
   async function handleDeleteScenario() {
@@ -1036,6 +1137,119 @@ export function ScenarioEditor({ scenario, nodes, products }: Props) {
         <button type="button" onClick={handleEditSlug} className="text-blue-600 hover:underline">
           {scenario.slug ? "URLを編集" : "専用URLを発行する"}
         </button>
+      </div>
+
+      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
+        <h2 className="mb-1 text-sm font-semibold text-neutral-700">固定メニュー(常時表示するボタン)</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          チャット画面下部に常時表示されるボタンです。特定のノードへジャンプさせるか、外部URLを新しいタブで開けます。
+        </p>
+
+        {menuItems.length === 0 ? (
+          <p className="mb-3 text-sm text-neutral-400">まだボタンが登録されていません</p>
+        ) : (
+          <div className="mb-4 space-y-2">
+            {menuItems.map((item, index) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-md border border-neutral-200 p-2 text-sm"
+              >
+                <div className="mr-3 flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    disabled={menuPending !== null || index === 0}
+                    onClick={() => moveMenuItem(index, -1)}
+                    className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    disabled={menuPending !== null || index === menuItems.length - 1}
+                    onClick={() => moveMenuItem(index, 1)}
+                    className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <div className="flex-1">
+                  <span className="font-medium">{item.label}</span>
+                  <span className="ml-2 text-xs text-neutral-500">
+                    {item.actionType === "node"
+                      ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
+                      : `→ ${item.url}`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={menuPending === item.id}
+                  onClick={() => handleDeleteMenuItem(item)}
+                  className="text-red-600 hover:underline disabled:opacity-30"
+                >
+                  削除
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {menuError && <p className="mb-2 text-xs text-red-600">{menuError}</p>}
+
+        <form onSubmit={handleAddMenuItem} className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
+            <input
+              className="input"
+              value={newMenuLabel}
+              onChange={(e) => setNewMenuLabel(e.target.value)}
+              placeholder="例: 会社概要 / 今すぐ買う / 公式Instagram"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">動作</span>
+            <select
+              className="input"
+              value={newMenuActionType}
+              onChange={(e) => setNewMenuActionType(e.target.value as MenuItemActionType)}
+            >
+              <option value="node">ノードへ進む</option>
+              <option value="url">外部URLを開く</option>
+            </select>
+          </label>
+          {newMenuActionType === "node" ? (
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">ジャンプ先ノード</span>
+              <select
+                className="input"
+                value={newMenuTargetNodeId}
+                onChange={(e) => setNewMenuTargetNodeId(e.target.value)}
+              >
+                <option value="">選択してください</option>
+                {nodeOptions.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.summary}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">URL</span>
+              <input
+                className="input"
+                value={newMenuUrl}
+                onChange={(e) => setNewMenuUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+          )}
+          <button
+            type="submit"
+            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+          >
+            追加
+          </button>
+        </form>
       </div>
 
       {products.length === 0 && (

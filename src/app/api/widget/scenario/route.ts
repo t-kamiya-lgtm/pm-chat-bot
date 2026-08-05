@@ -94,5 +94,12 @@ export async function GET(request: Request) {
     products = data ?? [];
   }
 
-  return NextResponse.json({ scenario, nodes, products });
+  const { data: menuItems, error: menuItemsError } = await supabase
+    .from("scenario_menu_items")
+    .select("id, scenario_id, label, action_type, target_node_id, url, display_order")
+    .eq("scenario_id", scenario.id)
+    .order("display_order");
+  if (menuItemsError) return NextResponse.json({ error: menuItemsError.message }, { status: 500 });
+
+  return NextResponse.json({ scenario, nodes, products, menuItems: menuItems ?? [] });
 }

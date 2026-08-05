@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
+import type { WidgetMenuItem, WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
 import type { SurveyQuestion } from "@/lib/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChoiceButtons, type ChoiceOption } from "@/components/chat/ChoiceButtons";
@@ -88,6 +88,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
   const [orderedNodeIds, setOrderedNodeIds] = useState<string[]>([]);
+  const [menuItems, setMenuItems] = useState<WidgetMenuItem[]>([]);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -135,7 +136,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         ),
       fetch(scenarioUrl).then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? "読み込みに失敗しました");
-        return res.json() as Promise<{ nodes: WidgetScenarioNode[]; products: WidgetProduct[] }>;
+        return res.json() as Promise<{
+          nodes: WidgetScenarioNode[];
+          products: WidgetProduct[];
+          menuItems?: WidgetMenuItem[];
+        }>;
       }),
     ])
       .then(([messagesBody, scenarioBody]) => {
@@ -151,6 +156,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setNodesById(nodeMap);
         setProductsById(productMap);
         setOrderedNodeIds(orderedIds);
+        setMenuItems(scenarioBody.menuItems ?? []);
 
         // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
         // 商品選択より前に会話冒頭で1度だけ表示する
@@ -390,6 +396,15 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
 
     const entry = Object.values(nodesById).find((n) => n.is_entry) ?? nodesById[orderedNodeIds[0]];
     if (entry) advance(entry.id);
+  }
+
+  /** 常時表示の固定メニュー(会社概要・今すぐ買う・SNS等)のボタン押下を処理する。 */
+  function handleMenuItemClick(item: WidgetMenuItem) {
+    if (item.action_type === "url") {
+      if (item.url) window.open(item.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (item.target_node_id) advance(item.target_node_id);
   }
 
   function handleChoiceSelect(item: Extract<TimelineItem, { kind: "choice" }>, option: ChoiceOption) {
@@ -642,6 +657,21 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           }
         })}
       </div>
+
+      {menuItems.length > 0 && (
+        <div className="flex shrink-0 divide-x divide-neutral-200 border-t border-neutral-200 bg-white">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleMenuItemClick(item)}
+              className="flex-1 px-2 py-3 text-center text-xs text-neutral-700 hover:bg-neutral-50"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {detailContext && detailProduct && (
         <ProductDetailPanel

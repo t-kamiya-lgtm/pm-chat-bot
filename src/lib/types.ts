@@ -90,6 +90,18 @@ export interface Scenario {
   updatedAt: string;
 }
 
+export type MenuItemActionType = "node" | "url";
+
+export interface ScenarioMenuItem {
+  id: string;
+  scenarioId: string;
+  label: string;
+  actionType: MenuItemActionType;
+  targetNodeId: string | null;
+  url: string | null;
+  displayOrder: number;
+}
+
 export type ScenarioNodeType =
   | "message"
   | "choice"
