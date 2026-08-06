@@ -30,3 +30,16 @@ body {
     @apply w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none;
   }
 }
+
+/* リンク・ボタン(アイコンのみのものも含む)を押した瞬間に反応がわかるよう、一時的に薄くする */
+@layer base {
+  a,
+  button:not(:disabled) {
+    transition: opacity 150ms ease;
+  }
+
+  a:active,
+  button:not(:disabled):active {
+    opacity: 0.6;
+  }
+}
