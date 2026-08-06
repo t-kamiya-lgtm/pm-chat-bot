@@ -21,7 +21,7 @@ export default async function AdminLeadsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">離脱リード</h1>
+          <h1 className="text-2xl font-semibold">アクセスログ</h1>
           <p className="mt-1 text-sm text-neutral-500">
             決済フォームの入力途中で離脱したお客様の情報です。氏名・電話番号・メールアドレスのいずれかが
             入力された時点で記録されます(注文が完了した場合もここには残ります)。

@@ -125,7 +125,7 @@ export function LeadsTable({ leads }: { leads: LeadRow[] }) {
           {!leads.length && (
             <tr>
               <td colSpan={9} className="px-4 py-6 text-center text-neutral-400">
-                離脱リードはまだありません
+                アクセスログはまだありません
               </td>
             </tr>
           )}
