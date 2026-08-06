@@ -6,6 +6,7 @@ import type { WidgetProduct } from "@/components/chat/types";
 import { AmountBreakdown } from "@/components/chat/AmountBreakdown";
 import { StripePaymentForm } from "@/components/chat/StripePaymentForm";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import { ProductCarousel } from "@/components/chat/ProductCarousel";
 import {
   ADDRESS_FIELD_KEYS,
   ADDRESS_KEY_SET,
@@ -259,6 +260,7 @@ interface GreetingItem {
 
 interface Props {
   product: WidgetProduct;
+  alternativeProducts?: WidgetProduct[];
   upsellProduct?: WidgetProduct;
   upsellImageUrl?: string;
   upsellComment?: string;
@@ -275,7 +277,7 @@ interface Props {
   onBack: () => void;
 }
 
-type Stage = "options" | "wizard" | "review" | "agreement";
+type Stage = "options" | "product-select" | "wizard" | "review" | "agreement";
 
 const DEFAULT_SUCCESS_ITEMS: GreetingItem[] = [
   { type: "text", text: "お支払いが完了しました。ありがとうございます。" },
@@ -289,6 +291,7 @@ const FAILED_ITEMS: GreetingItem[] = [
 
 export function CheckoutForm({
   product,
+  alternativeProducts,
   upsellProduct,
   upsellImageUrl,
   upsellComment,
@@ -410,6 +413,20 @@ export function CheckoutForm({
     };
   }, [orderType]);
 
+  // ポスト投函になる注文は配送員が来ないため、代金引換を選択できないようにする
+  useEffect(() => {
+    if (!postDeliveryRestricted) return;
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setValues((prev) => (prev.paymentMethod === "cod" ? { ...prev, paymentMethod: "stripe" } : prev));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [postDeliveryRestricted]);
+
   useEffect(() => {
     const digitsOnly = values.postalCode.replace(/[^0-9]/g, "");
     if (digitsOnly.length !== 7) return;
@@ -502,6 +519,14 @@ export function CheckoutForm({
     setActiveProduct(upsellProduct);
     setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
+  }
+
+  /** 商品編集画面から、同じカルーセルの他の商品に切り替える(住所等の入力済み情報は保持したまま)。 */
+  function handleSwitchProduct(nextProduct: WidgetProduct) {
+    setActiveProduct(nextProduct);
+    setSubscriptionInterval(nextProduct.subscription_intervals[0] ?? "monthly");
+    setQuantity(1);
+    setStage("options");
   }
 
   /** 注文者情報・お届け情報など、決済方法によらず共通で送る内容をまとめる。 */
@@ -1013,7 +1038,14 @@ export function CheckoutForm({
           )
         ) : step.key === "paymentMethod" ? (
           <div className="space-y-2">
-            {PAYMENT_METHOD_OPTIONS.map((option) => (
+            {postDeliveryRestricted && (
+              <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+                この商品はポスト投函になるため、代金引換はご利用いただけません。
+              </p>
+            )}
+            {PAYMENT_METHOD_OPTIONS.filter(
+              (option) => !(postDeliveryRestricted && option.value === "cod"),
+            ).map((option) => (
               <label
                 key={option.value}
                 className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
@@ -1456,6 +1488,30 @@ export function CheckoutForm({
     );
   }
 
+  if (stage === "product-select") {
+    return (
+      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <p className="font-medium">商品を選択してください</p>
+          <button
+            type="button"
+            onClick={() => setStage("options")}
+            className="text-xs text-neutral-400 hover:text-neutral-600"
+          >
+            ← 戻る
+          </button>
+        </div>
+        <ProductCarousel
+          products={alternativeProducts ?? []}
+          onSelect={(productId) => {
+            const next = (alternativeProducts ?? []).find((p) => p.id === productId);
+            if (next) handleSwitchProduct(next);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -1485,6 +1541,16 @@ export function CheckoutForm({
         </div>
 
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+
+        {alternativeProducts && alternativeProducts.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setStage("product-select")}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            他の商品に変更する
+          </button>
+        )}
 
         {orderType === "subscription" && (
           <select

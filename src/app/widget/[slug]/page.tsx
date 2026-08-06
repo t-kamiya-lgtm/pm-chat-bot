@@ -8,7 +8,7 @@ export default async function WidgetScenarioPage({
 }) {
   const { slug } = await params;
   return (
-    <div className="h-[100dvh] w-screen">
+    <div className="fixed inset-0 h-[100dvh] w-screen overflow-hidden">
       <Suspense>
         <ChatWidget scenarioSlug={slug} />
       </Suspense>

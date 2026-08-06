@@ -689,10 +689,18 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             case "checkout": {
               const product = productsById[item.productId];
               if (!product) return null;
+              const sourceItem = item.sourceItemId
+                ? timeline.find((i) => i.id === item.sourceItemId)
+                : undefined;
+              const alternativeProducts =
+                sourceItem && sourceItem.kind === "product"
+                  ? sourceItem.productIds.map((id) => productsById[id]).filter(Boolean)
+                  : undefined;
               return (
                 <CheckoutForm
                   key={item.id}
                   product={product}
+                  alternativeProducts={alternativeProducts}
                   upsellProduct={item.upsellProductId ? productsById[item.upsellProductId] : undefined}
                   upsellImageUrl={item.upsellImageUrl}
                   upsellComment={item.upsellComment}
