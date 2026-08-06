@@ -14,7 +14,7 @@ import {
   DELIVERY_FIELD_KEYS,
   DELIVERY_KEY_SET,
   DELIVERY_TIME_SLOTS,
-  MIN_DELIVERY_LEAD_DAYS,
+  MIN_DELIVERY_LEAD_BUSINESS_DAYS,
   type CheckoutFieldKey,
 } from "@/lib/checkout-fields";
 
@@ -69,10 +69,18 @@ function truncateOfferComment(text: string): string {
     : text;
 }
 
-/** UTC変換によるタイムゾーンずれ(早朝の日本時間がUTCでは前日になる)を避けるため、ローカルの日付要素から組み立てる。 */
+/**
+ * UTC変換によるタイムゾーンずれ(早朝の日本時間がUTCでは前日になる)を避けるため、ローカルの日付要素から組み立てる。
+ * 土日を除いた営業日ベースで、本日からMIN_DELIVERY_LEAD_BUSINESS_DAYS営業日後を返す(祝日は考慮しない)。
+ */
 function minDeliveryDate(): string {
   const d = new Date();
-  d.setDate(d.getDate() + MIN_DELIVERY_LEAD_DAYS);
+  let remaining = MIN_DELIVERY_LEAD_BUSINESS_DAYS;
+  while (remaining > 0) {
+    d.setDate(d.getDate() + 1);
+    const dayOfWeek = d.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) remaining -= 1;
+  }
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -135,7 +143,9 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
       return trimmed ? null : "番地・建物名を入力してください";
     case "deliveryDate":
       if (!trimmed) return "お届け希望日を選択してください";
-      return trimmed >= minDeliveryDate() ? null : `お届け希望日は本日から${MIN_DELIVERY_LEAD_DAYS}日後以降を指定してください`;
+      return trimmed >= minDeliveryDate()
+        ? null
+        : `お届け希望日は本日から${MIN_DELIVERY_LEAD_BUSINESS_DAYS}営業日後以降を指定してください`;
     case "deliveryTimeSlot":
       return (DELIVERY_TIME_SLOTS as readonly string[]).includes(trimmed)
         ? null
@@ -194,9 +204,19 @@ function stepAnswerText(
   postDeliveryRestricted?: boolean,
 ): string {
   if (step.kind === "address") {
-    const base = `〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`;
+    const base = [
+      `お名前: ${values.name || "(未入力)"}`,
+      `電話番号: ${values.phone || "(未入力)"}`,
+      `住所: 〒${values.postalCode} ${values.prefecture}${values.city}${values.line1}`,
+    ].join("\n");
     if (shipping?.enabled) {
-      return `${base}(お届け先: ${shipping.recipientName}(${shipping.recipientPhone}) 〒${shipping.postalCode} ${shipping.prefecture}${shipping.city}${shipping.line1})`;
+      const shippingBlock = [
+        "お届け先",
+        `お名前: ${shipping.recipientName || "(未入力)"}`,
+        `電話番号: ${shipping.recipientPhone || "(未入力)"}`,
+        `住所: 〒${shipping.postalCode} ${shipping.prefecture}${shipping.city}${shipping.line1}`,
+      ].join("\n");
+      return `${base}\n\n${shippingBlock}`;
     }
     return base;
   }
@@ -704,6 +724,18 @@ export function CheckoutForm({
                 text: `${activeProduct.name}${quantity > 1 ? ` × ${quantity}点` : ""}`,
               }}
             />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnToStepIndex((current) => current ?? stepIndex);
+                  setStage("options");
+                }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                修正
+              </button>
+            </div>
           </div>
           {steps.slice(0, stepIndex).map((pastStep, idx) => (
             <div key={idx} className="space-y-1">
@@ -868,6 +900,9 @@ export function CheckoutForm({
             <div className="space-y-3">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-neutral-700">お届け希望日</span>
+                <p className="mb-2 text-xs text-neutral-500">
+                  {MIN_DELIVERY_LEAD_BUSINESS_DAYS}営業日以降で指定ができます。
+                </p>
                 <label className="mb-2 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -883,11 +918,7 @@ export function CheckoutForm({
                   />
                   最短希望(お届け日を指定しない)
                 </label>
-                {deliveryDateIsAsap ? (
-                  <p className="text-sm text-neutral-500">
-                    最短のお届け予定日({values.deliveryDate})で承ります。
-                  </p>
-                ) : (
+                {deliveryDateIsAsap ? null : (
                   <input
                     autoFocus
                     type="date"
@@ -1009,10 +1040,22 @@ export function CheckoutForm({
         <div className="space-y-2 rounded-md border border-neutral-200 p-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-neutral-500">ご注文商品</span>
-            <span className="font-medium">
-              {activeProduct.name}
-              {quantity > 1 && ` × ${quantity}`}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">
+                {activeProduct.name}
+                {quantity > 1 && ` × ${quantity}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReturningToConfirm(true);
+                  setStage("options");
+                }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                編集
+              </button>
+            </div>
           </div>
           {orderType === "subscription" && (
             <div className="flex items-center justify-between">
@@ -1433,7 +1476,12 @@ export function CheckoutForm({
         <button
           type="button"
           onClick={() => {
-            if (returningToConfirm) {
+            if (returnToStepIndex !== null) {
+              const target = returnToStepIndex;
+              setReturnToStepIndex(null);
+              setStepIndex(target);
+              setStage("wizard");
+            } else if (returningToConfirm) {
               setReturningToConfirm(false);
               setStage("review");
             } else {

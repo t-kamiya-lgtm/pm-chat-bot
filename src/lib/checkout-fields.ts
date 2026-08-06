@@ -64,8 +64,8 @@ export const ADDRESS_KEY_SET = new Set<CheckoutFieldKey>(ADDRESS_FIELD_KEYS);
 export const DELIVERY_FIELD_KEYS: CheckoutFieldKey[] = ["deliveryDate", "deliveryTimeSlot"];
 export const DELIVERY_KEY_SET = new Set<CheckoutFieldKey>(DELIVERY_FIELD_KEYS);
 
-/** 最短のお届け希望日: 当日から何日後以降を指定可能にするか。 */
-export const MIN_DELIVERY_LEAD_DAYS = 7;
+/** 最短のお届け希望日: 本日から何営業日後(土日を除く)以降を指定可能にするか。 */
+export const MIN_DELIVERY_LEAD_BUSINESS_DAYS = 5;
 
 export const DELIVERY_TIME_SLOTS = [
   "指定なし",
