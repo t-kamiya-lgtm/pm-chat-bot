@@ -48,12 +48,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <nav className="mx-auto flex max-w-5xl gap-4 px-6 pb-3 text-sm">
           {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className="text-neutral-600 hover:text-neutral-900">
+            <Link key={item.href} href={item.href} className="text-neutral-600 transition-colors hover:text-neutral-900 active:text-blue-600">
               {item.label}
             </Link>
           ))}
           {canManageUsers(user) && (
-            <Link href="/admin/users" className="text-neutral-600 hover:text-neutral-900">
+            <Link href="/admin/users" className="text-neutral-600 transition-colors hover:text-neutral-900 active:text-blue-600">
               ユーザー権限
             </Link>
           )}
