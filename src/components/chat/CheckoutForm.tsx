@@ -17,6 +17,10 @@ import {
   MIN_DELIVERY_LEAD_BUSINESS_DAYS,
   type CheckoutFieldKey,
 } from "@/lib/checkout-fields";
+import { isJapaneseHoliday } from "@/lib/japanese-holidays";
+
+/** 管理画面で登録した臨時休業日(YYYY-MM-DD)。起動時に一度だけ取得し、営業日計算に使う。 */
+let closedDatesCache = new Set<string>();
 
 const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
   biweekly: "2週間ごと",
@@ -69,9 +73,17 @@ function truncateOfferComment(text: string): string {
     : text;
 }
 
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * UTC変換によるタイムゾーンずれ(早朝の日本時間がUTCでは前日になる)を避けるため、ローカルの日付要素から組み立てる。
- * 土日を除いた営業日ベースで、本日からMIN_DELIVERY_LEAD_BUSINESS_DAYS営業日後を返す(祝日は考慮しない)。
+ * 土日・祝日・管理画面で登録した臨時休業日を除いた営業日ベースで、
+ * 本日からMIN_DELIVERY_LEAD_BUSINESS_DAYS営業日後を返す。
  */
 function minDeliveryDate(): string {
   const d = new Date();
@@ -79,12 +91,11 @@ function minDeliveryDate(): string {
   while (remaining > 0) {
     d.setDate(d.getDate() + 1);
     const dayOfWeek = d.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) remaining -= 1;
+    const isBusinessDay =
+      dayOfWeek !== 0 && dayOfWeek !== 6 && !isJapaneseHoliday(d) && !closedDatesCache.has(formatLocalDate(d));
+    if (isBusinessDay) remaining -= 1;
   }
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatLocalDate(d);
 }
 
 type WizardStep =
@@ -141,11 +152,19 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
       return trimmed ? null : "市区町村を入力してください";
     case "line1":
       return trimmed ? null : "番地・建物名を入力してください";
-    case "deliveryDate":
+    case "deliveryDate": {
       if (!trimmed) return "お届け希望日を選択してください";
-      return trimmed >= minDeliveryDate()
-        ? null
-        : `お届け希望日は本日から${MIN_DELIVERY_LEAD_BUSINESS_DAYS}営業日後以降を指定してください`;
+      if (trimmed < minDeliveryDate()) {
+        return `お届け希望日は本日から${MIN_DELIVERY_LEAD_BUSINESS_DAYS}営業日後以降を指定してください`;
+      }
+      const [y, m, d] = trimmed.split("-").map(Number);
+      const picked = new Date(y, m - 1, d);
+      const dayOfWeek = picked.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6 || isJapaneseHoliday(picked) || closedDatesCache.has(trimmed)) {
+        return "土日・祝日・休業日は指定できません。別の日をお選びください";
+      }
+      return null;
+    }
     case "deliveryTimeSlot":
       return (DELIVERY_TIME_SLOTS as readonly string[]).includes(trimmed)
         ? null
@@ -356,6 +375,20 @@ export function CheckoutForm({
         if (body.order) setFieldOrder(body.order);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/widget/business-closed-dates")
+      .then((res) => res.json())
+      .then((body: { closedDates?: string[] }) => {
+        closedDatesCache = new Set(body.closedDates ?? []);
+        // 休業日取得前に仮計算していた最短お届け日がずれている場合、未入力のままなら補正する
+        setValues((prev) =>
+          !touched.deliveryDate && deliveryDateIsAsap ? { ...prev, deliveryDate: minDeliveryDate() } : prev,
+        );
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

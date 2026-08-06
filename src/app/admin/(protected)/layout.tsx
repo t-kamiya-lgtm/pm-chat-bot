@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/admin/orders", label: "注文" },
   { href: "/admin/leads", label: "離脱リード" },
   { href: "/admin/checkout-fields", label: "決済フォーム設定" },
+  { href: "/admin/business-days", label: "営業日設定" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
