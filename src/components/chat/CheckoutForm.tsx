@@ -369,22 +369,31 @@ export function CheckoutForm({
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
 
   // ステージ・ステップが切り替わった際のスクロール位置を揃える
-  // (基本は下部合わせだが、注文確認画面の表示時は上部合わせにする)
+  // (基本は下部合わせだが、注文確認画面と、複数項目が並ぶ住所入力は上部合わせにする)
   useEffect(() => {
-    containerRef.current?.scrollIntoView({ block: stage === "review" ? "start" : "end", behavior: "smooth" });
+    const isAddressStep = stage === "wizard" && steps[stepIndex]?.kind === "address";
+    const alignTop = stage === "review" || isAddressStep;
+    containerRef.current?.scrollIntoView({ block: alignTop ? "start" : "end", behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, stepIndex]);
-
-  // 「同意します」チェック後は決済方法の入力欄が下に表示されるため、下部合わせにする
-  useEffect(() => {
-    if (stage !== "agreement" || !agreedPrivacy) return;
-    containerRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [stage, agreedPrivacy]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [preparingPayment, setPreparingPayment] = useState(false);
   const [paymentPrepFailed, setPaymentPrepFailed] = useState(false);
+
+  // 「同意します」チェック後は決済方法の入力欄が下に表示されるため下部合わせにするが、
+  // Stripeの決済フォーム(PaymentElement)は非同期で読み込まれ高さが変わるため、
+  // clientSecret確定後にも少し遅らせて再度揃える
+  useEffect(() => {
+    if (stage !== "agreement" || !agreedPrivacy) return;
+    containerRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    const timer = setTimeout(() => {
+      containerRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [stage, agreedPrivacy, clientSecret]);
 
   useEffect(() => {
     fetch("/api/widget/checkout-fields")
