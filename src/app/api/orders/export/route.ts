@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   const supabase = createSupabaseAdminClient();
   let query = supabase
     .from("orders")
-    .select("*, customers(name, email), products(name)")
+    .select("*, customers(name, email), products!product_id(name)")
     .order("created_at", { ascending: false });
   query = applyOrderFilters(query, filters);
   if (!filters.showAll) query = query.limit(100);
