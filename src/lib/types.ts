@@ -90,7 +90,7 @@ export interface Scenario {
   updatedAt: string;
 }
 
-export type MenuItemActionType = "node" | "url";
+export type MenuItemActionType = "node" | "url" | "business_calendar" | "shopping_guide";
 
 export interface ScenarioMenuItem {
   id: string;

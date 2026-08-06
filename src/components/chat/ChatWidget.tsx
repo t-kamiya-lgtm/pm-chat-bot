@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { WidgetMenuItem, WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
 import type { SurveyQuestion } from "@/lib/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import { BusinessCalendarView } from "@/components/chat/BusinessCalendarView";
 import { ChoiceButtons, type ChoiceOption } from "@/components/chat/ChoiceButtons";
 import { ProductCarousel } from "@/components/chat/ProductCarousel";
 import { ProductDetailPanel } from "@/components/chat/ProductDetailPanel";
@@ -64,7 +65,8 @@ type TimelineItem =
       privacyText?: string;
     }
   | { id: string; kind: "checkout-result"; ok: boolean; items: GreetingItem[] }
-  | { id: string; kind: "faq"; productId: string; nextNodeId?: string; proceeded?: boolean };
+  | { id: string; kind: "faq"; productId: string; nextNodeId?: string; proceeded?: boolean }
+  | { id: string; kind: "business-calendar" };
 
 let seq = 0;
 function nextId() {
@@ -97,7 +99,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     privacyNotice?: string;
     termsText?: string;
     privacyText?: string;
+    shoppingGuideText?: string;
   }>({});
+  const [closedDates, setClosedDates] = useState<Set<string>>(new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   // 注文完了後は、個人情報を含む過去のやり取り(アンケート等)を編集できないようにする
   const [orderConfirmed, setOrderConfirmed] = useState(false);
@@ -135,6 +139,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
               privacyNotice?: string;
               termsText?: string;
               privacyText?: string;
+              shoppingGuideText?: string;
             },
         ),
       fetch(scenarioUrl).then(async (res) => {
@@ -187,6 +192,13 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       })
       .catch((err) => setLoadError((err as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/widget/business-closed-dates")
+      .then((res) => res.json())
+      .then((body: { closedDates?: string[] }) => setClosedDates(new Set(body.closedDates ?? [])))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -408,6 +420,21 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   function handleMenuItemClick(item: WidgetMenuItem) {
     if (item.action_type === "url") {
       if (item.url) window.open(item.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (item.action_type === "business_calendar") {
+      setTimeline((prev) => [...prev, { id: nextId(), kind: "business-calendar" }]);
+      return;
+    }
+    if (item.action_type === "shopping_guide") {
+      setTimeline((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          kind: "bot-text",
+          text: checkoutMessages.shoppingGuideText || "お買い物ガイドは準備中です。",
+        },
+      ]);
       return;
     }
     if (item.target_node_id) advance(item.target_node_id);
@@ -690,6 +717,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   onProceed={item.nextNodeId && !item.proceeded ? () => handleFaqProceed(item) : undefined}
                 />
               );
+            case "business-calendar":
+              return <BusinessCalendarView key={item.id} closedDates={closedDates} />;
             case "checkout-result":
               return (
                 <div key={item.id} className="max-w-[85%] space-y-2">

@@ -51,6 +51,7 @@ export default async function CheckoutFieldsPage() {
         initialPrivacyNotice={messages?.privacy_notice ?? ""}
         initialTermsText={messages?.terms_text ?? ""}
         initialPrivacyText={messages?.privacy_text ?? ""}
+        initialShoppingGuideText={messages?.shopping_guide_text ?? ""}
       />
     </div>
   );

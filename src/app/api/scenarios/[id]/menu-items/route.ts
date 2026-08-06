@@ -6,13 +6,18 @@ import { requireCatalogRole } from "@/lib/require-role";
 const menuItemSchema = z
   .object({
     label: z.string().min(1),
-    actionType: z.enum(["node", "url"]),
+    actionType: z.enum(["node", "url", "business_calendar", "shopping_guide"]),
     targetNodeId: z.string().uuid().optional(),
     url: z.string().url().optional(),
   })
-  .refine((v) => (v.actionType === "node" ? !!v.targetNodeId : !!v.url), {
-    message: "actionTypeがnodeの場合はtargetNodeId、urlの場合はurlが必要です",
-  });
+  .refine(
+    (v) => {
+      if (v.actionType === "node") return !!v.targetNodeId;
+      if (v.actionType === "url") return !!v.url;
+      return true;
+    },
+    { message: "actionTypeがnodeの場合はtargetNodeId、urlの場合はurlが必要です" },
+  );
 
 type RouteParams = { params: Promise<{ id: string }> };
 

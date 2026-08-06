@@ -25,5 +25,6 @@ export async function GET() {
     privacyNotice: data?.privacy_notice || undefined,
     termsText: data?.terms_text || undefined,
     privacyText: data?.privacy_text || undefined,
+    shoppingGuideText: data?.shopping_guide_text || undefined,
   });
 }

@@ -145,12 +145,14 @@ export function CheckoutMessagesForm({
   initialPrivacyNotice,
   initialTermsText,
   initialPrivacyText,
+  initialShoppingGuideText,
 }: {
   initialGreetingItems: RawGreetingItem[];
   initialCompletionItems: RawGreetingItem[];
   initialPrivacyNotice: string;
   initialTermsText: string;
   initialPrivacyText: string;
+  initialShoppingGuideText: string;
 }) {
   const [greetingItems, setGreetingItems] = useState<GreetingItemDraft[]>(toDraft(initialGreetingItems));
   const [completionItems, setCompletionItems] = useState<GreetingItemDraft[]>(
@@ -159,6 +161,7 @@ export function CheckoutMessagesForm({
   const [privacyNotice, setPrivacyNotice] = useState(initialPrivacyNotice);
   const [termsText, setTermsText] = useState(initialTermsText);
   const [privacyText, setPrivacyText] = useState(initialPrivacyText);
+  const [shoppingGuideText, setShoppingGuideText] = useState(initialShoppingGuideText);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -176,6 +179,7 @@ export function CheckoutMessagesForm({
         privacyNotice,
         termsText,
         privacyText,
+        shoppingGuideText,
       }),
     });
 
@@ -236,6 +240,18 @@ export function CheckoutMessagesForm({
           rows={8}
           value={privacyText}
           onChange={(e) => setPrivacyText(e.target.value)}
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-neutral-700">
+          お買い物ガイド(任意・固定メニューの「お買い物ガイドを表示」ボタンからスレッドに表示)
+        </span>
+        <textarea
+          className="input font-mono"
+          rows={8}
+          value={shoppingGuideText}
+          onChange={(e) => setShoppingGuideText(e.target.value)}
         />
       </label>
 

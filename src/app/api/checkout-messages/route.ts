@@ -16,6 +16,7 @@ const updateSchema = z.object({
   privacyNotice: z.string().optional(),
   termsText: z.string().optional(),
   privacyText: z.string().optional(),
+  shoppingGuideText: z.string().optional(),
 });
 
 /** 管理画面用: 決済フォームのあいさつ文・注文確認メッセージ・特商法/個人情報の本文(全商品共通)。 */
@@ -47,6 +48,7 @@ export async function GET() {
     privacyNotice: data?.privacy_notice ?? "",
     termsText: data?.terms_text ?? "",
     privacyText: data?.privacy_text ?? "",
+    shoppingGuideText: data?.shopping_guide_text ?? "",
   });
 }
 
@@ -70,6 +72,7 @@ export async function PATCH(request: Request) {
       ...(input.privacyNotice !== undefined && { privacy_notice: input.privacyNotice }),
       ...(input.termsText !== undefined && { terms_text: input.termsText }),
       ...(input.privacyText !== undefined && { privacy_text: input.privacyText }),
+      ...(input.shoppingGuideText !== undefined && { shopping_guide_text: input.shoppingGuideText }),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "id" },

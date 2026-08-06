@@ -786,9 +786,8 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
       body: JSON.stringify({
         label: newMenuLabel.trim(),
         actionType: newMenuActionType,
-        ...(newMenuActionType === "node"
-          ? { targetNodeId: newMenuTargetNodeId }
-          : { url: newMenuUrl.trim() }),
+        ...(newMenuActionType === "node" && { targetNodeId: newMenuTargetNodeId }),
+        ...(newMenuActionType === "url" && { url: newMenuUrl.trim() }),
       }),
     });
     if (!res.ok) {
@@ -1177,7 +1176,11 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                   <span className="ml-2 text-xs text-neutral-500">
                     {item.actionType === "node"
                       ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
-                      : `→ ${item.url}`}
+                      : item.actionType === "url"
+                        ? `→ ${item.url}`
+                        : item.actionType === "business_calendar"
+                          ? "→ 営業日カレンダーを表示"
+                          : "→ お買い物ガイドを表示"}
                   </span>
                 </div>
                 <button
@@ -1214,6 +1217,8 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
             >
               <option value="node">ノードへ進む</option>
               <option value="url">外部URLを開く</option>
+              <option value="business_calendar">営業日カレンダーを表示</option>
+              <option value="shopping_guide">お買い物ガイドを表示</option>
             </select>
           </label>
           {newMenuActionType === "node" ? (
@@ -1232,7 +1237,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                 ))}
               </select>
             </label>
-          ) : (
+          ) : newMenuActionType === "url" ? (
             <label className="block">
               <span className="mb-1 block text-xs text-neutral-500">URL</span>
               <input
@@ -1242,7 +1247,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                 placeholder="https://..."
               />
             </label>
-          )}
+          ) : null}
           <button
             type="submit"
             className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"

@@ -29,7 +29,7 @@ export interface WidgetMenuItem {
   id: string;
   scenario_id: string;
   label: string;
-  action_type: "node" | "url";
+  action_type: "node" | "url" | "business_calendar" | "shopping_guide";
   target_node_id: string | null;
   url: string | null;
   display_order: number;

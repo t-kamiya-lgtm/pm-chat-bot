@@ -5,7 +5,7 @@ import { requireCatalogRole } from "@/lib/require-role";
 
 const menuItemUpdateSchema = z.object({
   label: z.string().min(1).optional(),
-  actionType: z.enum(["node", "url"]).optional(),
+  actionType: z.enum(["node", "url", "business_calendar", "shopping_guide"]).optional(),
   targetNodeId: z.string().uuid().nullable().optional(),
   url: z.string().url().nullable().optional(),
   displayOrder: z.number().int().optional(),
