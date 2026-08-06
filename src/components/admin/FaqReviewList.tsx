@@ -63,7 +63,7 @@ export function FaqReviewList({
                 </span>
                 {categories.length > 0 ? (
                   <select
-                    className="input w-auto text-xs"
+                    className="input w-auto"
                     value={faq.categoryId ?? ""}
                     onChange={(e) => updateFaq(faq.id, { categoryId: e.target.value })}
                   >

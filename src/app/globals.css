@@ -26,8 +26,13 @@ body {
 }
 
 @layer components {
+  /*
+   * text-baseで16px以上を確保する。iOS Safariはフォーカスしたinputのフォント
+   * サイズが16px未満だと自動的にズームインし、その後のズームアウトが不完全に
+   * なって背景が左右にズレたように見える不具合が起きるため。
+   */
   .input {
-    @apply w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none;
+    @apply w-full rounded-md border border-neutral-300 px-3 py-2 text-base focus:border-neutral-500 focus:outline-none;
   }
 }
 

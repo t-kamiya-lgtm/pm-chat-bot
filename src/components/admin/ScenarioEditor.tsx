@@ -150,7 +150,7 @@ function ColorSwatchStrip({
             style={{ backgroundColor: effective }}
           />
           <input
-            className="input h-8 w-24 shrink-0 px-2 text-xs"
+            className="input h-8 w-28 shrink-0 px-2"
             value={hexInput}
             onChange={(e) => setHexInput(e.target.value)}
             onBlur={commitHex}
@@ -1925,7 +1925,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                   const value = Number(e.target.value);
                   if (Number.isFinite(value) && value !== index + 1) moveNodeToPosition(index, value);
                 }}
-                className="input w-14 px-1 text-center text-xs"
+                className="input w-16 px-1 text-center"
               />
               <button
                 type="button"
