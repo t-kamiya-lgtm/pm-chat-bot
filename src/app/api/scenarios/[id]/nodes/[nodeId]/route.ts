@@ -31,12 +31,24 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
   const supabase = createSupabaseAdminClient();
 
+  // 「開始ノードにする」は独立したフラグとして持たず、表示順を1番目にすることで表現する。
+  // これにより、以後の並び替えで開始ノードの位置がずれる心配がなくなる。
+  let displayOrder = input.displayOrder;
   if (input.isEntry) {
-    await supabase
+    const { data: others } = await supabase
       .from("scenario_nodes")
-      .update({ is_entry: false })
+      .select("id")
       .eq("scenario_id", scenarioId)
-      .eq("is_entry", true);
+      .neq("id", nodeId)
+      .order("display_order", { ascending: true });
+    if (others && others.length > 0) {
+      await Promise.all(
+        others.map((n, i) =>
+          supabase.from("scenario_nodes").update({ display_order: i + 1 }).eq("id", n.id),
+        ),
+      );
+    }
+    displayOrder = 0;
   }
 
   const { data, error } = await supabase
@@ -45,8 +57,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.type !== undefined && { type: input.type }),
       ...(input.content !== undefined && { content: input.content }),
       ...(input.nextNodeMap !== undefined && { next_node_map: input.nextNodeMap }),
-      ...(input.isEntry !== undefined && { is_entry: input.isEntry }),
-      ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
+      ...(displayOrder !== undefined && { display_order: displayOrder }),
       ...(input.memo !== undefined && { memo: input.memo }),
     })
     .eq("id", nodeId)

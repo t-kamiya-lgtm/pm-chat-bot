@@ -992,6 +992,11 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   const [newMenuUrl, setNewMenuUrl] = useState("");
   const [menuError, setMenuError] = useState<string | null>(null);
   const [menuPending, setMenuPending] = useState<string | null>(null);
+  const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
+  const [editMenuLabel, setEditMenuLabel] = useState("");
+  const [editMenuActionType, setEditMenuActionType] = useState<MenuItemActionType>("node");
+  const [editMenuTargetNodeId, setEditMenuTargetNodeId] = useState("");
+  const [editMenuUrl, setEditMenuUrl] = useState("");
   const [origin, setOrigin] = useState("");
 
   useEffect(() => {
@@ -1218,6 +1223,68 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     setMenuPending(null);
   }
 
+  function startEditingMenuItem(item: ScenarioMenuItem) {
+    setEditingMenuItemId(item.id);
+    setEditMenuLabel(item.label);
+    setEditMenuActionType(item.actionType);
+    setEditMenuTargetNodeId(item.targetNodeId ?? "");
+    setEditMenuUrl(item.url ?? "");
+    setMenuError(null);
+  }
+
+  /** 固定メニュー項目の変更をその場でPATCHし、成功したらローカル状態も更新する(自動保存)。 */
+  async function patchMenuItem(itemId: string, payload: Record<string, unknown>) {
+    const res = await fetch(`/api/scenarios/${scenario.id}/menu-items/${itemId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`固定メニューの更新に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    const { menuItem } = await res.json();
+    setMenuItems((prev) =>
+      prev.map((m) =>
+        m.id === itemId
+          ? {
+              ...m,
+              label: menuItem.label,
+              actionType: menuItem.action_type,
+              targetNodeId: menuItem.target_node_id,
+              url: menuItem.url,
+              displayOrder: menuItem.display_order,
+            }
+          : m,
+      ),
+    );
+  }
+
+  function commitEditMenuLabel(itemId: string) {
+    if (editMenuLabel.trim()) patchMenuItem(itemId, { label: editMenuLabel.trim() });
+  }
+
+  function handleEditMenuActionTypeChange(itemId: string, actionType: MenuItemActionType) {
+    setEditMenuActionType(actionType);
+    if (actionType === "node") {
+      if (editMenuTargetNodeId) patchMenuItem(itemId, { actionType, targetNodeId: editMenuTargetNodeId, url: null });
+    } else if (actionType === "url") {
+      if (editMenuUrl.trim()) patchMenuItem(itemId, { actionType, url: editMenuUrl.trim(), targetNodeId: null });
+    } else {
+      patchMenuItem(itemId, { actionType, targetNodeId: null, url: null });
+    }
+  }
+
+  function commitEditMenuTargetNodeId(itemId: string, targetNodeId: string) {
+    setEditMenuTargetNodeId(targetNodeId);
+    if (targetNodeId) patchMenuItem(itemId, { targetNodeId });
+  }
+
+  function commitEditMenuUrl(itemId: string) {
+    if (editMenuUrl.trim()) patchMenuItem(itemId, { url: editMenuUrl.trim() });
+  }
+
   async function handleDeleteScenario() {
     if (
       !window.confirm(`「${scenario.name}」を削除しますか？中のノードもすべて削除され、取り消せません。`)
@@ -1353,7 +1420,6 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         type: newNodeType,
         content,
         nextNodeMap,
-        isEntry: newNodeIsEntry,
         ...(newNodeMemo.trim() && { memo: newNodeMemo.trim() }),
       }),
     });
@@ -1362,6 +1428,15 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
       const body = await res.json().catch(() => ({}));
       setError(`ノードの追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
+    }
+
+    if (newNodeIsEntry) {
+      const { node: created } = await res.json();
+      await fetch(`/api/scenarios/${scenario.id}/nodes/${created.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isEntry: true }),
+      });
     }
 
     setNewNodeProductIds([]);
@@ -1632,48 +1707,123 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         ) : (
           <div className="mb-4 space-y-2">
             {menuItems.map((item, index) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 p-2 text-sm"
-              >
-                <div className="mr-3 flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    disabled={menuPending !== null || index === 0}
-                    onClick={() => moveMenuItem(index, -1)}
-                    className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    disabled={menuPending !== null || index === menuItems.length - 1}
-                    onClick={() => moveMenuItem(index, 1)}
-                    className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-                  >
-                    ▼
-                  </button>
+              <div key={item.id} className="rounded-md border border-neutral-200 p-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <div className="mr-3 flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      disabled={menuPending !== null || index === 0}
+                      onClick={() => moveMenuItem(index, -1)}
+                      className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      disabled={menuPending !== null || index === menuItems.length - 1}
+                      onClick={() => moveMenuItem(index, 1)}
+                      className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    <span className="font-medium">{item.label}</span>
+                    <span className="ml-2 text-xs text-neutral-500">
+                      {item.actionType === "node"
+                        ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
+                        : item.actionType === "url"
+                          ? `→ ${item.url}`
+                          : item.actionType === "business_calendar"
+                            ? "→ 営業日カレンダーを表示"
+                            : "→ お買い物ガイドを表示"}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 gap-3 text-xs">
+                    {editingMenuItemId === item.id ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingMenuItemId(null)}
+                        className="text-neutral-600 hover:underline"
+                      >
+                        閉じる
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditingMenuItem(item)}
+                        className="text-blue-600 hover:underline"
+                      >
+                        編集
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={menuPending === item.id}
+                      onClick={() => handleDeleteMenuItem(item)}
+                      className="text-red-600 hover:underline disabled:opacity-30"
+                    >
+                      削除
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <span className="font-medium">{item.label}</span>
-                  <span className="ml-2 text-xs text-neutral-500">
-                    {item.actionType === "node"
-                      ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
-                      : item.actionType === "url"
-                        ? `→ ${item.url}`
-                        : item.actionType === "business_calendar"
-                          ? "→ 営業日カレンダーを表示"
-                          : "→ お買い物ガイドを表示"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  disabled={menuPending === item.id}
-                  onClick={() => handleDeleteMenuItem(item)}
-                  className="text-red-600 hover:underline disabled:opacity-30"
-                >
-                  削除
-                </button>
+
+                {editingMenuItemId === item.id && (
+                  <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
+                      <input
+                        className="input"
+                        value={editMenuLabel}
+                        onChange={(e) => setEditMenuLabel(e.target.value)}
+                        onBlur={() => commitEditMenuLabel(item.id)}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">動作</span>
+                      <select
+                        className="input"
+                        value={editMenuActionType}
+                        onChange={(e) =>
+                          handleEditMenuActionTypeChange(item.id, e.target.value as MenuItemActionType)
+                        }
+                      >
+                        <option value="node">ノードへ進む</option>
+                        <option value="url">外部URLを開く</option>
+                        <option value="business_calendar">営業日カレンダーを表示</option>
+                        <option value="shopping_guide">お買い物ガイドを表示</option>
+                      </select>
+                    </label>
+                    {editMenuActionType === "node" ? (
+                      <label className="block">
+                        <span className="mb-1 block text-xs text-neutral-500">ジャンプ先ノード</span>
+                        <select
+                          className="input"
+                          value={editMenuTargetNodeId}
+                          onChange={(e) => commitEditMenuTargetNodeId(item.id, e.target.value)}
+                        >
+                          <option value="">選択してください</option>
+                          {nodeOptions.map((n) => (
+                            <option key={n.id} value={n.id}>
+                              {n.summary}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : editMenuActionType === "url" ? (
+                      <label className="block">
+                        <span className="mb-1 block text-xs text-neutral-500">URL</span>
+                        <input
+                          className="input"
+                          value={editMenuUrl}
+                          onChange={(e) => setEditMenuUrl(e.target.value)}
+                          onBlur={() => commitEditMenuUrl(item.id)}
+                          placeholder="https://..."
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1798,6 +1948,8 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               <NodeCard
                 scenarioId={scenario.id}
                 node={node}
+                isFirst={index === 0}
+                onMakeEntry={() => moveNodeToPosition(index, 1)}
                 products={products}
                 nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
                 onDelete={() => handleDeleteNode(node.id)}
@@ -2084,12 +2236,16 @@ function NodeCard({
   node,
   products,
   nodeOptions,
+  isFirst,
+  onMakeEntry,
   onDelete,
 }: {
   scenarioId: string;
   node: ScenarioNode;
   products: PickableProduct[];
   nodeOptions: { id: string; summary: string }[];
+  isFirst: boolean;
+  onMakeEntry: () => void;
   onDelete: () => void;
 }) {
   const router = useRouter();
@@ -2153,7 +2309,6 @@ function NodeCard({
     })),
   );
   const [defaultNext, setDefaultNext] = useState(node.nextNodeMap.default ?? "");
-  const [isEntry, setIsEntry] = useState(node.isEntry);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -2191,7 +2346,6 @@ function NodeCard({
       })),
     );
     setDefaultNext(node.nextNodeMap.default ?? "");
-    setIsEntry(node.isEntry);
     setError(null);
     setEditing(true);
   }
@@ -2307,7 +2461,7 @@ function NodeCard({
     const res = await fetch(`/api/scenarios/${scenarioId}/nodes/${node.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content, nextNodeMap, isEntry, memo: memo.trim() }),
+      body: JSON.stringify({ content, nextNodeMap, memo: memo.trim() }),
     });
     setSaving(false);
 
@@ -2325,7 +2479,7 @@ function NodeCard({
       <div className="mb-2 flex items-center justify-between">
         <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs">
           {NODE_TYPE_LABELS[node.type]}
-          {node.isEntry && " ・開始ノード"}
+          {isFirst && " ・開始ノード"}
         </span>
         <div className="flex gap-3 text-xs">
           {!editing && (
@@ -2574,8 +2728,15 @@ function NodeCard({
           />
 
           <label className="flex items-center gap-2 text-xs">
-            <input type="checkbox" checked={isEntry} onChange={(e) => setIsEntry(e.target.checked)} />
-            このノードを開始ノードにする
+            <input
+              type="checkbox"
+              checked={isFirst}
+              disabled={isFirst}
+              onChange={(e) => {
+                if (e.target.checked) onMakeEntry();
+              }}
+            />
+            このノードを開始ノードにする(表示順が1番目になります)
           </label>
           <div className="flex gap-2">
             <button

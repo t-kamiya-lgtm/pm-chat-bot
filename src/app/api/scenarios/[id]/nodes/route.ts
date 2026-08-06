@@ -8,7 +8,6 @@ const nodeSchema = z.object({
   type: z.enum(["message", "choice", "product", "checkout", "product_qa", "image", "survey", "video"]),
   content: z.record(z.string(), z.unknown()).default({}),
   nextNodeMap: z.record(z.string(), z.string()).default({}),
-  isEntry: z.boolean().default(false),
   memo: z.string().optional(),
 });
 
@@ -28,15 +27,6 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   const supabase = createSupabaseAdminClient();
 
-  if (input.isEntry) {
-    // シナリオごとにエントリーノードは1つのみにする
-    await supabase
-      .from("scenario_nodes")
-      .update({ is_entry: false })
-      .eq("scenario_id", scenarioId)
-      .eq("is_entry", true);
-  }
-
   const { data: lastNode } = await supabase
     .from("scenario_nodes")
     .select("display_order")
@@ -53,7 +43,6 @@ export async function POST(request: Request, { params }: RouteParams) {
       type: input.type,
       content: input.content,
       next_node_map: input.nextNodeMap,
-      is_entry: input.isEntry,
       display_order: displayOrder,
       memo: input.memo ?? null,
     })

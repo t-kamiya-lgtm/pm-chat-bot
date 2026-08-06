@@ -299,7 +299,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           ]);
         }
 
-        const entry = scenarioBody.nodes.find((n) => n.is_entry) ?? scenarioBody.nodes[0];
+        const entry = scenarioBody.nodes[0];
         if (entry) advance(entry.id, nodeMap, productMap, undefined, orderedIds);
       })
       .catch((err) => setLoadError((err as Error).message));
@@ -543,7 +543,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       ]);
     }
 
-    const entry = Object.values(nodesById).find((n) => n.is_entry) ?? nodesById[orderedNodeIds[0]];
+    const entry = nodesById[orderedNodeIds[0]];
     if (entry) advance(entry.id);
   }
 
