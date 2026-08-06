@@ -28,6 +28,8 @@ const IMPORT_STATUS_LABELS: Record<string, string> = {
   imported: "取込み済み",
   on_hold: "保留",
   not_imported: "未取込み",
+  import_error: "取込みエラー",
+  excluded: "対象外",
 };
 
 /** 注文一覧(絞り込み結果)のCSVダウンロード。 */

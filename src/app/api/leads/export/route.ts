@@ -22,28 +22,35 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data: completedOrders } = await supabase
-    .from("orders")
-    .select("customers(email)")
-    .in("status", ["paid", "accepted"]);
-  const completedEmails = new Set(
-    (completedOrders ?? [])
-      .map((o) => {
-        const customer = Array.isArray(o.customers) ? o.customers[0] : o.customers;
-        return (customer as { email: string } | undefined)?.email;
-      })
-      .filter((email): email is string => Boolean(email)),
-  );
-
-  const header = ["更新日時", "お名前", "電話番号", "メールアドレス", "選択商品", "注文状況"];
-  const rows = (leads ?? []).map((lead) => [
-    new Date(lead.updated_at as string).toLocaleString("ja-JP"),
-    (lead.name as string | null) ?? "",
-    (lead.phone as string | null) ?? "",
-    (lead.email as string | null) ?? "",
-    (lead.products as { name: string } | null)?.name ?? "",
-    lead.email && completedEmails.has(lead.email as string) ? "注文完了あり" : "離脱のみ",
-  ]);
+  const header = [
+    "更新日時",
+    "お名前",
+    "電話番号",
+    "メールアドレス",
+    "選択商品",
+    "注文状況",
+    "電話対応",
+    "メール対応",
+    "SMS対応",
+    "対応状況",
+  ];
+  const rows = (leads ?? []).map((lead) => {
+    const contactedPhone = Boolean(lead.contacted_phone);
+    const contactedEmail = Boolean(lead.contacted_email);
+    const contactedSms = Boolean(lead.contacted_sms);
+    return [
+      new Date(lead.updated_at as string).toLocaleString("ja-JP"),
+      (lead.name as string | null) ?? "",
+      (lead.phone as string | null) ?? "",
+      (lead.email as string | null) ?? "",
+      (lead.products as { name: string } | null)?.name ?? "",
+      lead.order_status === "ordered" ? "注文完了あり" : "離脱のみ",
+      contactedPhone ? "済" : "-",
+      contactedEmail ? "済" : "-",
+      contactedSms ? "済" : "-",
+      contactedPhone || contactedEmail || contactedSms ? "対応済み" : "未対応",
+    ];
+  });
 
   const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
   const bom = "﻿";

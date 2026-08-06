@@ -5,7 +5,7 @@ import { requireCatalogRole } from "@/lib/require-role";
 
 const bulkUpdateSchema = z.object({
   orderIds: z.array(z.string().uuid()).min(1),
-  importStatus: z.enum(["imported", "on_hold", "not_imported"]),
+  importStatus: z.enum(["imported", "on_hold", "not_imported", "import_error", "excluded"]),
 });
 
 /** 選択した複数注文の取り込みステータスを一括で変更する。 */

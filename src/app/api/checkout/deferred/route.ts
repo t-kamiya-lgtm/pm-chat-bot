@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     shippingAddress,
     surveyResponses,
     scenarioId,
+    sessionId,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
       product_id: productId,
       scenario_id: scenarioId ?? null,
       order_number: orderNumber,
+      session_id: sessionId ?? null,
       type: orderType,
       payment_method: paymentMethod,
       amount,
@@ -133,6 +135,11 @@ export async function POST(request: Request) {
 
   if (accepted) {
     await fulfillOrder(order.id);
+  }
+
+  // このセッションの離脱リードが実際には注文につながったことを記録する(以後、別注文で上書きしない)。
+  if (sessionId) {
+    await supabase.from("leads").update({ order_status: "ordered" }).eq("session_id", sessionId);
   }
 
   return NextResponse.json({ orderId: order.id, accepted, breakdown });

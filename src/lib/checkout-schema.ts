@@ -37,6 +37,7 @@ export const checkoutBaseSchema = z.object({
   shippingAddress: shippingAddressSchema.optional(),
   surveyResponses: z.record(z.string(), z.string()).optional(),
   scenarioId: z.string().uuid().optional(),
+  sessionId: z.string().min(1).optional(),
 });
 
 export const deferredCheckoutSchema = checkoutBaseSchema.extend({

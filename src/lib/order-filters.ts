@@ -1,4 +1,12 @@
-export type ImportStatus = "imported" | "on_hold" | "not_imported";
+export type ImportStatus = "imported" | "on_hold" | "not_imported" | "import_error" | "excluded";
+
+const IMPORT_STATUSES: ImportStatus[] = [
+  "imported",
+  "on_hold",
+  "not_imported",
+  "import_error",
+  "excluded",
+];
 
 export interface OrderFilterParams {
   dateFrom?: string;
@@ -17,10 +25,9 @@ export function readOrderFilters(getParam: (key: string) => string | null | unde
   const orderType = orderTypeRaw === "one_time" || orderTypeRaw === "subscription" ? orderTypeRaw : undefined;
 
   const importStatusRaw = getParam("importStatus");
-  const importStatus: ImportStatus | undefined =
-    importStatusRaw === "imported" || importStatusRaw === "on_hold" || importStatusRaw === "not_imported"
-      ? importStatusRaw
-      : undefined;
+  const importStatus: ImportStatus | undefined = IMPORT_STATUSES.includes(importStatusRaw as ImportStatus)
+    ? (importStatusRaw as ImportStatus)
+    : undefined;
 
   const showAll = getParam("showAll") === "1";
 

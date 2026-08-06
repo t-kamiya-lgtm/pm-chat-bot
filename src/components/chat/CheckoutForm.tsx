@@ -565,6 +565,7 @@ export function CheckoutForm({
               ...(shippingAddress && { shippingAddress }),
               ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
               ...(scenarioId && { scenarioId }),
+              sessionId,
             }
           : {
               productId: activeProduct.id,
@@ -575,6 +576,7 @@ export function CheckoutForm({
               ...(shippingAddress && { shippingAddress }),
               ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
               ...(scenarioId && { scenarioId }),
+              sessionId,
             };
 
       const res = await fetch(endpoint, {
@@ -648,6 +650,7 @@ export function CheckoutForm({
           ...(shippingAddress && { shippingAddress }),
           ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
           ...(scenarioId && { scenarioId }),
+          sessionId,
         }),
       });
       const data = await res.json();

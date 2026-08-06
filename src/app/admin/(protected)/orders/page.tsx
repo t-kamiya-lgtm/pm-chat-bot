@@ -77,6 +77,8 @@ export default async function AdminOrdersPage({
             <option value="imported">取り込み済み</option>
             <option value="on_hold">保留</option>
             <option value="not_imported">未取り込み</option>
+            <option value="import_error">取込みエラー</option>
+            <option value="excluded">対象外</option>
           </select>
         </label>
         <button

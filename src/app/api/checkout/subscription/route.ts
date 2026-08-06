@@ -26,6 +26,7 @@ const requestSchema = z.object({
   shippingAddress: shippingAddressSchema.optional(),
   surveyResponses: z.record(z.string(), z.string()).optional(),
   scenarioId: z.string().uuid().optional(),
+  sessionId: z.string().min(1).optional(),
 });
 
 const INTERVAL_MAP: Record<
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
     shippingAddress,
     surveyResponses,
     scenarioId,
+    sessionId,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -160,6 +162,7 @@ export async function POST(request: Request) {
       product_id: productId,
       scenario_id: scenarioId ?? null,
       order_number: orderNumber,
+      session_id: sessionId ?? null,
       type: "subscription",
       payment_method: "stripe",
       amount,
@@ -188,6 +191,11 @@ export async function POST(request: Request) {
     interval: subscriptionInterval,
     status: "active",
   });
+
+  // このセッションの離脱リードが実際には注文につながったことを記録する(以後、別注文で上書きしない)。
+  if (sessionId) {
+    await supabase.from("leads").update({ order_status: "ordered" }).eq("session_id", sessionId);
+  }
 
   return NextResponse.json({ orderId: order.id, clientSecret, breakdown });
 }
