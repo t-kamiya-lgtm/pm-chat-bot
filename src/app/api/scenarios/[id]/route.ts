@@ -27,6 +27,19 @@ const updateSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
     .nullable()
     .optional(),
+  messageBackgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
+    .nullable()
+    .optional(),
+  headerMode: z.enum(["image", "title"]).nullable().optional(),
+  headerImageUrl: z.string().nullable().optional(),
+  headerTitle: z.string().nullable().optional(),
+  headerBackgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
+    .nullable()
+    .optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -73,6 +86,15 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.orderCode !== undefined && { order_code: input.orderCode }),
       ...(input.chatBackgroundColor !== undefined && { chat_background_color: input.chatBackgroundColor }),
       ...(input.menuBackgroundColor !== undefined && { menu_background_color: input.menuBackgroundColor }),
+      ...(input.messageBackgroundColor !== undefined && {
+        message_background_color: input.messageBackgroundColor,
+      }),
+      ...(input.headerMode !== undefined && { header_mode: input.headerMode }),
+      ...(input.headerImageUrl !== undefined && { header_image_url: input.headerImageUrl }),
+      ...(input.headerTitle !== undefined && { header_title: input.headerTitle }),
+      ...(input.headerBackgroundColor !== undefined && {
+        header_background_color: input.headerBackgroundColor,
+      }),
     })
     .eq("id", id)
     .select("*")

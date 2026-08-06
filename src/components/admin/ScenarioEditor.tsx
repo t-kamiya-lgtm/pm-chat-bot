@@ -40,19 +40,34 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
 
 const BACKGROUND_COLOR_PALETTE = [
   "#FFFFFF",
-  "#FEFCE8",
-  "#FFF1F2",
-  "#EFF6FF",
-  "#ECFDF5",
-  "#FDF4FF",
-  "#FFF7ED",
-  "#F0FDFA",
   "#F5F5F4",
+  "#E7E5E4",
   "#1F2937",
+  "#111827",
+  "#FEFCE8",
+  "#FEF3C7",
+  "#FFF1F2",
+  "#FFE4E6",
+  "#FDF2F8",
+  "#EFF6FF",
+  "#DBEAFE",
+  "#ECFDF5",
+  "#D1FAE5",
+  "#FDF4FF",
+  "#F3E8FF",
+  "#FFF7ED",
+  "#FFEDD5",
+  "#F0FDFA",
+  "#CCFBF1",
 ];
 
-/** カラーパレットから背景色を選択し、選んだ色をその場でプレビューできる行。 */
-function ColorPaletteRow({
+const DEFAULT_BACKGROUND_COLOR = "#FFFFFF";
+
+/**
+ * 横スクロール1列に、現在の色・#カラーコード直接入力・パレット一覧を並べた色選択UI。
+ * 未設定(null)の場合もデフォルト色(白)が選択済みであることが分かるようにする。
+ */
+function ColorSwatchStrip({
   label,
   value,
   onChange,
@@ -61,6 +76,28 @@ function ColorPaletteRow({
   value: string | null;
   onChange: (color: string | null) => void;
 }) {
+  const effective = value ?? DEFAULT_BACKGROUND_COLOR;
+  const [hexInput, setHexInput] = useState(effective);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) setHexInput(value ?? DEFAULT_BACKGROUND_COLOR);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [value]);
+
+  function commitHex() {
+    const v = hexInput.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      onChange(v);
+    } else {
+      setHexInput(effective);
+    }
+  }
+
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
@@ -71,27 +108,104 @@ function ColorPaletteRow({
           </button>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <span
+          aria-label="現在の色"
+          className="h-8 w-8 shrink-0 rounded-full border-2 border-neutral-300"
+          style={{ backgroundColor: effective }}
+        />
+        <input
+          className="input h-8 w-24 shrink-0 px-2 text-xs"
+          value={hexInput}
+          onChange={(e) => setHexInput(e.target.value)}
+          onBlur={commitHex}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitHex();
+          }}
+        />
         {BACKGROUND_COLOR_PALETTE.map((color) => (
           <button
             key={color}
             type="button"
             aria-label={color}
             onClick={() => onChange(color)}
-            className={`h-8 w-8 rounded-full border-2 ${
-              value === color ? "border-blue-600" : "border-neutral-200"
+            className={`h-8 w-8 shrink-0 rounded-full border-2 ${
+              effective.toLowerCase() === color.toLowerCase() ? "border-blue-600" : "border-neutral-200"
             }`}
             style={{ backgroundColor: color }}
           />
         ))}
       </div>
-      <div
-        className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-neutral-200 text-xs text-neutral-500"
-        style={{ backgroundColor: value ?? undefined }}
-      >
-        プレビュー
-      </div>
     </div>
+  );
+}
+
+interface DisplaySettings {
+  chatBackgroundColor: string | null;
+  menuBackgroundColor: string | null;
+  messageBackgroundColor: string | null;
+  headerMode: "image" | "title" | null;
+  headerImageUrl: string;
+  headerTitle: string;
+  headerBackgroundColor: string | null;
+}
+
+/** 9:16の携帯風プレビュー。クリックすると実際のチャット画面を新しいタブで開く。 */
+function DisplayPreview({
+  scenarioId,
+  slug,
+  display,
+}: {
+  scenarioId: string;
+  slug: string | null;
+  display: DisplaySettings;
+}) {
+  function openWidget() {
+    const url = slug ? `/widget/${slug}` : `/widget?scenarioId=${scenarioId}&preview=1`;
+    window.open(url, "_blank");
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={openWidget}
+      title="クリックして実際のチャット画面を確認"
+      className="block h-[280px] w-[158px] shrink-0 overflow-hidden rounded-xl border border-neutral-300 shadow-sm"
+    >
+      <div
+        className="flex h-full flex-col text-left"
+        style={{ backgroundColor: display.chatBackgroundColor ?? DEFAULT_BACKGROUND_COLOR }}
+      >
+        {display.headerMode === "image" && display.headerImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={display.headerImageUrl} alt="" className="h-8 w-full shrink-0 object-cover" />
+        ) : display.headerMode === "title" ? (
+          <div
+            className="shrink-0 truncate px-2 py-1.5 text-[10px] font-medium"
+            style={{ backgroundColor: display.headerBackgroundColor ?? DEFAULT_BACKGROUND_COLOR }}
+          >
+            {display.headerTitle || "ヘッダー"}
+          </div>
+        ) : null}
+        <div className="flex-1 space-y-1.5 p-2">
+          <div
+            className="max-w-[75%] rounded-lg px-2 py-1 text-[9px]"
+            style={{ backgroundColor: display.messageBackgroundColor ?? "#F5F5F4" }}
+          >
+            こんにちは
+          </div>
+          <div className="ml-auto max-w-[75%] rounded-lg bg-neutral-900 px-2 py-1 text-[9px] text-white">
+            こんにちは
+          </div>
+        </div>
+        <div
+          className="shrink-0 border-t border-neutral-200 p-1.5 text-center text-[9px]"
+          style={{ backgroundColor: display.menuBackgroundColor ?? DEFAULT_BACKGROUND_COLOR }}
+        >
+          固定メニュー
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -729,6 +843,15 @@ interface Props {
 export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMenuItems }: Props) {
   const router = useRouter();
   const [publishing, setPublishing] = useState(false);
+  const [display, setDisplay] = useState<DisplaySettings>({
+    chatBackgroundColor: scenario.chatBackgroundColor,
+    menuBackgroundColor: scenario.menuBackgroundColor,
+    messageBackgroundColor: scenario.messageBackgroundColor,
+    headerMode: scenario.headerMode,
+    headerImageUrl: scenario.headerImageUrl ?? "",
+    headerTitle: scenario.headerTitle ?? "",
+    headerBackgroundColor: scenario.headerBackgroundColor,
+  });
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
@@ -851,18 +974,41 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     router.refresh();
   }
 
-  async function handleSetColor(field: "chatBackgroundColor" | "menuBackgroundColor", value: string | null) {
+  /**
+   * 表示設定(色・ヘッダー)はその場で見た目に反映してから裏でPATCHする(router.refreshを待たない)。
+   * 保存に失敗した場合のみ、失敗したことをアラートで知らせる(元の値には戻さない=次の操作で再送すれば直る)。
+   */
+  async function patchDisplaySettings(payload: Record<string, unknown>) {
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ [field]: value }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`背景色の設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
-      return;
+      window.alert(`表示設定の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
     }
-    router.refresh();
+  }
+
+  function setColorField(
+    field: "chatBackgroundColor" | "menuBackgroundColor" | "messageBackgroundColor" | "headerBackgroundColor",
+    value: string | null,
+  ) {
+    setDisplay((prev) => ({ ...prev, [field]: value }));
+    patchDisplaySettings({ [field]: value });
+  }
+
+  function setHeaderMode(mode: "image" | "title" | null) {
+    setDisplay((prev) => ({ ...prev, headerMode: mode }));
+    patchDisplaySettings({ headerMode: mode });
+  }
+
+  function commitHeaderImageUrl() {
+    patchDisplaySettings({ headerImageUrl: display.headerImageUrl.trim() || null });
+  }
+
+  function commitHeaderTitle() {
+    patchDisplaySettings({ headerTitle: display.headerTitle.trim() || null });
   }
 
   async function handleAddMenuItem(event: React.FormEvent) {
@@ -1265,18 +1411,82 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
       </div>
 
       <div className="mb-8 rounded-lg border border-neutral-200 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-neutral-700">背景色</h2>
-        <div className="space-y-5">
-          <ColorPaletteRow
-            label="チャット画面全体の背景色"
-            value={scenario.chatBackgroundColor}
-            onChange={(color) => handleSetColor("chatBackgroundColor", color)}
-          />
-          <ColorPaletteRow
-            label="リッチメニューの背景色"
-            value={scenario.menuBackgroundColor}
-            onChange={(color) => handleSetColor("menuBackgroundColor", color)}
-          />
+        <h2 className="mb-3 text-sm font-semibold text-neutral-700">表示設定</h2>
+        <div className="flex flex-wrap gap-6">
+          <div className="min-w-[260px] flex-1 space-y-5">
+            <div>
+              <span className="mb-2 block text-sm text-neutral-600">ヘッダー</span>
+              <div className="mb-2 flex gap-4 text-sm">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={display.headerMode === null}
+                    onChange={() => setHeaderMode(null)}
+                  />
+                  未設定
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={display.headerMode === "image"}
+                    onChange={() => setHeaderMode("image")}
+                  />
+                  画像
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={display.headerMode === "title"}
+                    onChange={() => setHeaderMode("title")}
+                  />
+                  タイトル
+                </label>
+              </div>
+              {display.headerMode === "image" && (
+                <input
+                  className="input"
+                  placeholder="https://..."
+                  value={display.headerImageUrl}
+                  onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
+                  onBlur={commitHeaderImageUrl}
+                />
+              )}
+              {display.headerMode === "title" && (
+                <div className="space-y-3">
+                  <input
+                    className="input"
+                    placeholder="ヘッダーに表示するタイトル"
+                    value={display.headerTitle}
+                    onChange={(e) => setDisplay((prev) => ({ ...prev, headerTitle: e.target.value }))}
+                    onBlur={commitHeaderTitle}
+                  />
+                  <ColorSwatchStrip
+                    label="ヘッダーの背景色"
+                    value={display.headerBackgroundColor}
+                    onChange={(color) => setColorField("headerBackgroundColor", color)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <ColorSwatchStrip
+              label="チャット画面全体の背景色"
+              value={display.chatBackgroundColor}
+              onChange={(color) => setColorField("chatBackgroundColor", color)}
+            />
+            <ColorSwatchStrip
+              label="メッセージの背景色"
+              value={display.messageBackgroundColor}
+              onChange={(color) => setColorField("messageBackgroundColor", color)}
+            />
+            <ColorSwatchStrip
+              label="固定メニューの背景色"
+              value={display.menuBackgroundColor}
+              onChange={(color) => setColorField("menuBackgroundColor", color)}
+            />
+          </div>
+
+          <DisplayPreview scenarioId={scenario.id} slug={scenario.slug} display={display} />
         </div>
       </div>
 

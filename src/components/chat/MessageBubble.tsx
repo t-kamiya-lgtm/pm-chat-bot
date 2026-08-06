@@ -11,8 +11,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[80%] overflow-hidden rounded-2xl text-sm ${
-          isUser ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-900"
+          isUser ? "bg-neutral-900 text-white" : "text-neutral-900"
         }`}
+        style={isUser ? undefined : { backgroundColor: "var(--message-bg, #f5f5f4)" }}
       >
         {image &&
           (message.linkUrl ? (

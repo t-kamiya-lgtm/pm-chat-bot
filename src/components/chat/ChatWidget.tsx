@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
 import type { WidgetMenuItem, WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
@@ -98,6 +98,13 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [scenarioId, setScenarioId] = useState<string | undefined>(undefined);
   const [chatBackgroundColor, setChatBackgroundColor] = useState<string | null>(null);
   const [menuBackgroundColor, setMenuBackgroundColor] = useState<string | null>(null);
+  const [messageBackgroundColor, setMessageBackgroundColor] = useState<string | null>(null);
+  const [headerSettings, setHeaderSettings] = useState<{
+    mode: "image" | "title" | null;
+    imageUrl: string | null;
+    title: string | null;
+    backgroundColor: string | null;
+  }>({ mode: null, imageUrl: null, title: null, backgroundColor: null });
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -183,6 +190,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             id: string;
             chat_background_color?: string | null;
             menu_background_color?: string | null;
+            message_background_color?: string | null;
+            header_mode?: "image" | "title" | null;
+            header_image_url?: string | null;
+            header_title?: string | null;
+            header_background_color?: string | null;
           };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
@@ -207,6 +219,13 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setScenarioId(scenarioBody.scenario?.id);
         setChatBackgroundColor(scenarioBody.scenario?.chat_background_color ?? null);
         setMenuBackgroundColor(scenarioBody.scenario?.menu_background_color ?? null);
+        setMessageBackgroundColor(scenarioBody.scenario?.message_background_color ?? null);
+        setHeaderSettings({
+          mode: scenarioBody.scenario?.header_mode ?? null,
+          imageUrl: scenarioBody.scenario?.header_image_url ?? null,
+          title: scenarioBody.scenario?.header_title ?? null,
+          backgroundColor: scenarioBody.scenario?.header_background_color ?? null,
+        });
 
         // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
         // 商品選択より前に会話冒頭で1度だけ表示する
@@ -677,8 +696,25 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   return (
     <div
       className={`relative flex h-full flex-col ${chatBackgroundColor ? "" : "bg-yellow-50"}`}
-      style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : undefined}
+      style={{
+        ...(chatBackgroundColor && { backgroundColor: chatBackgroundColor }),
+        ...(messageBackgroundColor && { "--message-bg": messageBackgroundColor }),
+      } as CSSProperties}
     >
+      {headerSettings.mode === "image" && headerSettings.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={headerSettings.imageUrl} alt="" className="w-full shrink-0 object-cover" />
+      )}
+      {headerSettings.mode === "title" && (
+        <div
+          className={`shrink-0 p-3 text-center text-sm font-medium ${
+            headerSettings.backgroundColor ? "" : "bg-white"
+          }`}
+          style={headerSettings.backgroundColor ? { backgroundColor: headerSettings.backgroundColor } : undefined}
+        >
+          {headerSettings.title}
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {loadError && (
           <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
