@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PaymentMethod, SubscriptionInterval } from "@/lib/types";
 import type { WidgetProduct } from "@/components/chat/types";
 import { AmountBreakdown } from "@/components/chat/AmountBreakdown";
@@ -307,6 +307,7 @@ export function CheckoutForm({
   onComplete,
   onBack,
 }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [activeProduct, setActiveProduct] = useState<WidgetProduct>(product);
   const [addonSelected, setAddonSelected] = useState(false);
   const [quantity, setQuantity] = useState(1);
@@ -366,6 +367,18 @@ export function CheckoutForm({
 
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+
+  // ステージ・ステップが切り替わった際のスクロール位置を揃える
+  // (基本は下部合わせだが、注文確認画面の表示時は上部合わせにする)
+  useEffect(() => {
+    containerRef.current?.scrollIntoView({ block: stage === "review" ? "start" : "end", behavior: "smooth" });
+  }, [stage, stepIndex]);
+
+  // 「同意します」チェック後は決済方法の入力欄が下に表示されるため、下部合わせにする
+  useEffect(() => {
+    if (stage !== "agreement" || !agreedPrivacy) return;
+    containerRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [stage, agreedPrivacy]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -772,7 +785,7 @@ export function CheckoutForm({
     const isLastStep = stepIndex === steps.length - 1;
 
     return (
-      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between text-xs text-neutral-400">
           <button type="button" onClick={handleBackStep} className="hover:text-neutral-600">
             ← 戻る
@@ -1362,7 +1375,7 @@ export function CheckoutForm({
 
   if (stage === "review") {
     return (
-      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="font-medium">ご注文内容の確認</p>
           <button
@@ -1393,7 +1406,7 @@ export function CheckoutForm({
     const canSubmit = agreedTerms && agreedPrivacy;
 
     return (
-      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="font-medium">ご注文の確定</p>
           <button
@@ -1490,7 +1503,7 @@ export function CheckoutForm({
 
   if (stage === "product-select") {
     return (
-      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="font-medium">商品を選択してください</p>
           <button
@@ -1514,7 +1527,7 @@ export function CheckoutForm({
 
   return (
     <div className="space-y-3">
-      <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="font-medium">{activeProduct.name} のご注文</p>
           <button
