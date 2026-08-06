@@ -369,9 +369,15 @@ export function CheckoutForm({
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
 
   // ステージ・ステップが切り替わった際のスクロール位置を揃える
-  // (基本は下部合わせだが、注文確認画面と、複数項目が並ぶ住所入力は上部合わせにする)
+  // (基本は下部合わせだが、注文確認画面と、複数項目が並ぶ住所入力は上部合わせにする)。
+  // 単一テキスト入力(名前・メール・電話番号)はautoFocus+scrollFieldIntoViewが
+  // 別途スクロールするため、二重にスクロールしてカーソル位置がずれるのを避けて何もしない。
   useEffect(() => {
-    const isAddressStep = stage === "wizard" && steps[stepIndex]?.kind === "address";
+    const currentStep = stage === "wizard" ? steps[stepIndex] : undefined;
+    const isAutoFocusedTextField =
+      currentStep?.kind === "field" && currentStep.key !== "paymentMethod";
+    if (isAutoFocusedTextField) return;
+    const isAddressStep = currentStep?.kind === "address";
     const alignTop = stage === "review" || isAddressStep;
     containerRef.current?.scrollIntoView({ block: alignTop ? "start" : "end", behavior: "smooth" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1013,7 +1019,6 @@ export function CheckoutForm({
                 </label>
                 {deliveryDateIsAsap ? null : (
                   <input
-                    autoFocus
                     type="date"
                     className="input"
                     min={minDeliveryDate()}

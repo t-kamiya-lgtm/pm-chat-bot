@@ -111,6 +111,41 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     backgroundColor: string | null;
     textColor: "white" | "black" | null;
   }>({ mode: null, imageUrl: null, title: null, backgroundColor: null, textColor: null });
+  // 入力欄フォーカス中(キーボード表示中)は固定メニューを隠し、スペースを確保する
+  const [keyboardActive, setKeyboardActive] = useState(false);
+  useEffect(() => {
+    function isFormField(el: EventTarget | null): boolean {
+      const tag = (el as HTMLElement | null)?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    }
+    function handleFocusIn(e: FocusEvent) {
+      if (isFormField(e.target)) setKeyboardActive(true);
+    }
+    function handleFocusOut(e: FocusEvent) {
+      if (isFormField(e.target)) setKeyboardActive(false);
+    }
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+    };
+  }, []);
+
+  // iOSでキーボード表示後に画面のフィットがずれることがあるため、実際の表示領域(visualViewport)に
+  // 合わせて高さを追従させ、ずれたページスクロールも都度リセットする
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function handleViewportChange() {
+      setViewportHeight(vv!.height);
+      window.scrollTo(0, 0);
+    }
+    handleViewportChange();
+    vv.addEventListener("resize", handleViewportChange);
+    return () => vv.removeEventListener("resize", handleViewportChange);
+  }, []);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -713,6 +748,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     <div
       className={`relative flex h-full flex-col ${chatBackgroundColor ? "" : "bg-yellow-50"}`}
       style={{
+        ...(viewportHeight && { height: viewportHeight }),
         ...(chatBackgroundColor && { backgroundColor: chatBackgroundColor }),
         ...(messageBackgroundColor && { "--message-bg": messageBackgroundColor }),
         ...(userMessageBackgroundColor && { "--user-message-bg": userMessageBackgroundColor }),
@@ -922,7 +958,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         })}
       </div>
 
-      {menuItems.length > 0 && (
+      {menuItems.length > 0 && !keyboardActive && (
         <div
           className={`flex shrink-0 divide-x divide-neutral-200 border-t border-neutral-200 ${
             menuBackgroundColor ? "" : "bg-white"

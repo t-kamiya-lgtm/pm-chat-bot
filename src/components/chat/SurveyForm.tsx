@@ -123,7 +123,7 @@ function SurveyStepInput({
   }
 
   if (type === "date") {
-    return <input autoFocus type="date" className="input" value={value} onChange={(e) => onChange(e.target.value)} />;
+    return <input type="date" className="input" value={value} onChange={(e) => onChange(e.target.value)} />;
   }
 
   if (type === "text_long") {
