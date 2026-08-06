@@ -20,6 +20,12 @@ export function BusinessDaysCalendar({
     Object.fromEntries(initialClosedDates.map((d) => [d.date, d.reason])),
   );
   const [pending, setPending] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  function showToast(message: string) {
+    setToast(message);
+    setTimeout(() => setToast(null), 2000);
+  }
 
   const weeks = useMemo(() => {
     const { year, month } = cursor;
@@ -43,6 +49,9 @@ export function BusinessDaysCalendar({
           delete next[dateKey];
           return next;
         });
+        showToast("自動保存しました");
+      } else {
+        showToast("保存に失敗しました");
       }
     } else {
       const res = await fetch("/api/business-closed-dates", {
@@ -52,6 +61,9 @@ export function BusinessDaysCalendar({
       });
       if (res.ok) {
         setClosedDates((prev) => ({ ...prev, [dateKey]: null }));
+        showToast("自動保存しました");
+      } else {
+        showToast("保存に失敗しました");
       }
     }
     setPending(null);
@@ -65,7 +77,12 @@ export function BusinessDaysCalendar({
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="relative max-w-2xl">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 rounded-md bg-neutral-900 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
