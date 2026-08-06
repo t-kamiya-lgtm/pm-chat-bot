@@ -1,10 +1,14 @@
 export const DEFAULT_VIDEO_ASPECT_RATIO = "16:9";
 
-export function aspectRatioToCss(aspectRatio: string | undefined): string {
+/**
+ * 埋め込み枠の高さを、親要素の幅に対するpadding-bottomの%で表す(古いブラウザでもaspect-ratio CSSに
+ * 依存せず高さが0になることを防ぐため)。
+ */
+export function aspectRatioToPaddingPercent(aspectRatio: string | undefined): number {
   const [w, h] = (aspectRatio ?? DEFAULT_VIDEO_ASPECT_RATIO).split(":");
   const width = Number(w);
   const height = Number(h);
-  return width > 0 && height > 0 ? `${width} / ${height}` : "16 / 9";
+  return width > 0 && height > 0 ? (height / width) * 100 : (9 / 16) * 100;
 }
 
 export type VideoEmbedInfo = { kind: "iframe"; src: string } | { kind: "file"; src: string };
