@@ -70,6 +70,7 @@ export default async function ScenarioEditorPage({
           name: scenario.name,
           status: scenario.status,
           slug: scenario.slug,
+          orderCode: scenario.order_code,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,

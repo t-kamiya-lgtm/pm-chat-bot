@@ -6,6 +6,7 @@ import { customerInputSchema, shippingAddressSchema } from "@/lib/checkout-schem
 import { getProductById } from "@/lib/products";
 import { upsertCustomer, setCustomerStripeId } from "@/lib/customers";
 import { calculateTotal } from "@/lib/fees";
+import { generateOrderNumber } from "@/lib/order-number";
 
 const requestSchema = z.object({
   productId: z.string().uuid(),
@@ -18,6 +19,7 @@ const requestSchema = z.object({
   addonProductId: z.string().uuid().optional(),
   shippingAddress: shippingAddressSchema.optional(),
   surveyResponses: z.record(z.string(), z.string()).optional(),
+  scenarioId: z.string().uuid().optional(),
 });
 
 /**
@@ -40,6 +42,7 @@ export async function POST(request: Request) {
     addonProductId,
     shippingAddress,
     surveyResponses,
+    scenarioId,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -100,11 +103,14 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient();
+  const orderNumber = await generateOrderNumber(supabase, scenarioId);
   const { data: order, error } = await supabase
     .from("orders")
     .insert({
       customer_id: customer.id,
       product_id: productId,
+      scenario_id: scenarioId ?? null,
+      order_number: orderNumber,
       type: "one_time",
       payment_method: "stripe",
       amount,

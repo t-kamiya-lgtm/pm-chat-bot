@@ -763,6 +763,28 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     router.refresh();
   }
 
+  async function handleEditOrderCode() {
+    const input = window.prompt(
+      "注文番号に使う識別コードを入力してください(半角英数字のみ。空欄で解除するとデフォルトの「XX」が使われます)",
+      scenario.orderCode ?? "",
+    );
+    if (input === null) return;
+    const orderCode = input.trim() ? input.trim() : null;
+    if (orderCode === scenario.orderCode) return;
+
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ orderCode }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`識別コードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
+  }
+
   async function handleAddMenuItem(event: React.FormEvent) {
     event.preventDefault();
     setMenuError(null);
@@ -1135,6 +1157,16 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         )}
         <button type="button" onClick={handleEditSlug} className="text-blue-600 hover:underline">
           {scenario.slug ? "URLを編集" : "専用URLを発行する"}
+        </button>
+      </div>
+
+      <div className="mb-6 flex items-center gap-2 text-sm text-neutral-500">
+        <span>
+          注文番号の識別コード:{" "}
+          <span className="font-mono text-neutral-700">{scenario.orderCode || "(未設定・XXを使用)"}</span>
+        </span>
+        <button type="button" onClick={handleEditOrderCode} className="text-blue-600 hover:underline">
+          編集
         </button>
       </div>
 

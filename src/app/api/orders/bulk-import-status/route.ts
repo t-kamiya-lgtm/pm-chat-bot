@@ -3,32 +3,31 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 
-const updateSchema = z.object({ importStatus: z.enum(["imported", "on_hold", "not_imported"]) });
+const bulkUpdateSchema = z.object({
+  orderIds: z.array(z.string().uuid()).min(1),
+  importStatus: z.enum(["imported", "on_hold", "not_imported"]),
+});
 
-type RouteParams = { params: Promise<{ id: string }> };
-
-export async function PATCH(request: Request, { params }: RouteParams) {
+/** 選択した複数注文の取り込みステータスを一括で変更する。 */
+export async function POST(request: Request) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
-  const { id } = await params;
 
   const body = await request.json();
-  const parsed = updateSchema.safeParse(body);
+  const parsed = bulkUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("orders")
     .update({
       import_status: parsed.data.importStatus,
       import_status_updated_at: new Date().toISOString(),
     })
-    .eq("id", id)
-    .select("*")
-    .single();
+    .in("id", parsed.data.orderIds);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ order: data });
+  return NextResponse.json({ ok: true, updated: parsed.data.orderIds.length });
 }

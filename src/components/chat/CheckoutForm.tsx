@@ -269,6 +269,7 @@ interface Props {
   termsText?: string;
   privacyText?: string;
   sessionId: string;
+  scenarioId?: string;
   surveyResponses?: Record<string, string>;
   onComplete: (result: { ok: boolean; items: GreetingItem[] }) => void;
   onBack: () => void;
@@ -298,6 +299,7 @@ export function CheckoutForm({
   termsText,
   privacyText,
   sessionId,
+  scenarioId,
   surveyResponses,
   onComplete,
   onBack,
@@ -562,6 +564,7 @@ export function CheckoutForm({
               ...(addonProductId && { addonProductId }),
               ...(shippingAddress && { shippingAddress }),
               ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
+              ...(scenarioId && { scenarioId }),
             }
           : {
               productId: activeProduct.id,
@@ -571,6 +574,7 @@ export function CheckoutForm({
               ...(addonProductId && { addonProductId }),
               ...(shippingAddress && { shippingAddress }),
               ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
+              ...(scenarioId && { scenarioId }),
             };
 
       const res = await fetch(endpoint, {
@@ -643,6 +647,7 @@ export function CheckoutForm({
           ...(addonProductId && { addonProductId }),
           ...(shippingAddress && { shippingAddress }),
           ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
+          ...(scenarioId && { scenarioId }),
         }),
       });
       const data = await res.json();

@@ -14,6 +14,21 @@ export default async function AdminLeadsPage() {
     .order("updated_at", { ascending: false })
     .limit(500);
 
+  // メールアドレスが一致する顧客が「完了済み」の注文を持っているかどうかで、
+  // このリードが実際にはご購入いただいたお客様かどうかを判定する(離脱ではなく完了)。
+  const { data: completedOrders } = await supabase
+    .from("orders")
+    .select("customers(email)")
+    .in("status", ["paid", "accepted"]);
+  const completedEmails = new Set(
+    (completedOrders ?? [])
+      .map((o) => {
+        const customer = Array.isArray(o.customers) ? o.customers[0] : o.customers;
+        return (customer as { email: string } | undefined)?.email;
+      })
+      .filter((email): email is string => Boolean(email)),
+  );
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -42,6 +57,7 @@ export default async function AdminLeadsPage() {
               <th className="px-4 py-2">メールアドレス</th>
               <th className="px-4 py-2">選択商品</th>
               <th className="px-4 py-2">アンケート</th>
+              <th className="px-4 py-2">注文状況</th>
             </tr>
           </thead>
           <tbody>
@@ -57,6 +73,7 @@ export default async function AdminLeadsPage() {
               }) => {
                 const surveyEntries = Object.entries(lead.survey_responses ?? {});
                 const surveyText = surveyEntries.map(([q, a]) => `${q}: ${a}`).join("\n");
+                const hasCompletedOrder = lead.email ? completedEmails.has(lead.email) : false;
                 return (
                   <tr key={lead.id} className="border-t border-neutral-100">
                     <td className="px-4 py-2 whitespace-nowrap">
@@ -75,13 +92,22 @@ export default async function AdminLeadsPage() {
                         "-"
                       )}
                     </td>
+                    <td className="px-4 py-2">
+                      {hasCompletedOrder ? (
+                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                          注文完了あり
+                        </span>
+                      ) : (
+                        <span className="text-neutral-400">離脱のみ</span>
+                      )}
+                    </td>
                   </tr>
                 );
               },
             )}
             {!leads?.length && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={7} className="px-4 py-6 text-center text-neutral-400">
                   離脱リードはまだありません
                 </td>
               </tr>

@@ -50,7 +50,11 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (order && order.type === "one_time" && order.status !== "paid") {
-        await supabase.from("orders").update({ status: "paid" }).eq("id", order.id);
+        // Stripe側で自動的に決済・記録が完結するため、取り込みステータスも自動で完了扱いにする
+        await supabase
+          .from("orders")
+          .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
+          .eq("id", order.id);
         await fulfillOrder(order.id);
       }
       break;
@@ -77,7 +81,10 @@ export async function POST(request: Request) {
       }
 
       if (order.status !== "paid") {
-        await supabase.from("orders").update({ status: "paid" }).eq("id", order.id);
+        await supabase
+          .from("orders")
+          .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
+          .eq("id", order.id);
         await fulfillOrder(order.id);
       }
       break;

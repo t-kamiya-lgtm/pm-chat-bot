@@ -92,6 +92,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
   const [orderedNodeIds, setOrderedNodeIds] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<WidgetMenuItem[]>([]);
+  const [scenarioId, setScenarioId] = useState<string | undefined>(undefined);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -145,6 +146,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       fetch(scenarioUrl).then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? "読み込みに失敗しました");
         return res.json() as Promise<{
+          scenario?: { id: string };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
           menuItems?: WidgetMenuItem[];
@@ -165,6 +167,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setProductsById(productMap);
         setOrderedNodeIds(orderedIds);
         setMenuItems(scenarioBody.menuItems ?? []);
+        setScenarioId(scenarioBody.scenario?.id);
 
         // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
         // 商品選択より前に会話冒頭で1度だけ表示する
@@ -702,6 +705,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   termsText={item.termsText}
                   privacyText={item.privacyText}
                   sessionId={sessionId}
+                  scenarioId={scenarioId}
                   surveyResponses={surveyAnswers}
                   onComplete={(result) => handleCheckoutComplete(item, result)}
                   onBack={() => handleCheckoutBack(item)}

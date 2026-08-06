@@ -6,6 +6,7 @@ import { getPaymentFee, calculateTotal } from "@/lib/fees";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { fulfillOrder } from "@/lib/order-fulfillment";
+import { generateOrderNumber } from "@/lib/order-number";
 
 /**
  * 後払い(スコアあと払い)・代金引換の注文受付。
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     addonProductId,
     shippingAddress,
     surveyResponses,
+    scenarioId,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -66,11 +68,14 @@ export async function POST(request: Request) {
   const customer = await upsertCustomer(customerInput);
 
   const supabase = createSupabaseAdminClient();
+  const orderNumber = await generateOrderNumber(supabase, scenarioId);
   const { data: order, error } = await supabase
     .from("orders")
     .insert({
       customer_id: customer.id,
       product_id: productId,
+      scenario_id: scenarioId ?? null,
+      order_number: orderNumber,
       type: orderType,
       payment_method: paymentMethod,
       amount,

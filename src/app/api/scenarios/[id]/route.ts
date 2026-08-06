@@ -12,6 +12,11 @@ const updateSchema = z.object({
     .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "半角英小文字・数字・ハイフンのみ使用できます")
     .nullable()
     .optional(),
+  orderCode: z
+    .string()
+    .regex(/^[A-Za-z0-9]+$/, "半角英数字のみ使用できます")
+    .nullable()
+    .optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -55,6 +60,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.status !== undefined && { status: input.status }),
       ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
       ...(input.slug !== undefined && { slug: input.slug }),
+      ...(input.orderCode !== undefined && { order_code: input.orderCode }),
     })
     .eq("id", id)
     .select("*")

@@ -1,8 +1,10 @@
+export type ImportStatus = "imported" | "on_hold" | "not_imported";
+
 export interface OrderFilterParams {
   dateFrom?: string;
   dateTo?: string;
   orderType?: "one_time" | "subscription";
-  importStatus?: "imported" | "not_imported";
+  importStatus?: ImportStatus;
   showAll: boolean;
 }
 
@@ -15,8 +17,10 @@ export function readOrderFilters(getParam: (key: string) => string | null | unde
   const orderType = orderTypeRaw === "one_time" || orderTypeRaw === "subscription" ? orderTypeRaw : undefined;
 
   const importStatusRaw = getParam("importStatus");
-  const importStatus =
-    importStatusRaw === "imported" || importStatusRaw === "not_imported" ? importStatusRaw : undefined;
+  const importStatus: ImportStatus | undefined =
+    importStatusRaw === "imported" || importStatusRaw === "on_hold" || importStatusRaw === "not_imported"
+      ? importStatusRaw
+      : undefined;
 
   const showAll = getParam("showAll") === "1";
 
@@ -33,7 +37,6 @@ export function applyOrderFilters<T extends { gte: any; lte: any; eq: any }>(
   if (filters.dateFrom) q = q.gte("created_at", `${filters.dateFrom}T00:00:00`);
   if (filters.dateTo) q = q.lte("created_at", `${filters.dateTo}T23:59:59`);
   if (filters.orderType) q = q.eq("type", filters.orderType);
-  if (filters.importStatus === "imported") q = q.eq("imported", true);
-  if (filters.importStatus === "not_imported") q = q.eq("imported", false);
+  if (filters.importStatus) q = q.eq("import_status", filters.importStatus);
   return q;
 }

@@ -24,6 +24,12 @@ const STATUS_LABELS: Record<string, string> = {
   canceled: "キャンセル",
 };
 
+const IMPORT_STATUS_LABELS: Record<string, string> = {
+  imported: "取込み済み",
+  on_hold: "保留",
+  not_imported: "未取込み",
+};
+
 /** 注文一覧(絞り込み結果)のCSVダウンロード。 */
 export async function GET(request: Request) {
   const roleCheck = await requireCatalogRole();
@@ -44,6 +50,7 @@ export async function GET(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const header = [
+    "注文番号",
     "日時",
     "顧客",
     "メールアドレス",
@@ -58,6 +65,7 @@ export async function GET(request: Request) {
     "取り込み",
   ];
   const rows = (orders ?? []).map((order) => [
+    (order.order_number as string | null) ?? "",
     new Date(order.created_at as string).toLocaleString("ja-JP"),
     (order.customers as { name: string } | null)?.name ?? "",
     (order.customers as { email: string } | null)?.email ?? "",
@@ -69,7 +77,7 @@ export async function GET(request: Request) {
     STATUS_LABELS[order.status as string] ?? (order.status as string),
     (order.delivery_date as string | null) ?? "",
     (order.delivery_time_slot as string | null) ?? "",
-    order.imported ? "済み" : "未",
+    IMPORT_STATUS_LABELS[order.import_status as string] ?? (order.import_status as string),
   ]);
 
   const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
