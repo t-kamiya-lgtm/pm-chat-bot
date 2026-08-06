@@ -1461,7 +1461,25 @@ export function CheckoutForm({
       <div className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="font-medium">{activeProduct.name} のご注文</p>
-          <button type="button" onClick={onBack} className="text-xs text-neutral-400 hover:text-neutral-600">
+          <button
+            type="button"
+            onClick={() => {
+              // 確認画面・ウィザードからの「修正」経由でこの画面に来た場合は、
+              // 入力済みの情報を残したまま元の画面へ戻る(商品選択画面まで抜けて情報を消さない)
+              if (returnToStepIndex !== null) {
+                const target = returnToStepIndex;
+                setReturnToStepIndex(null);
+                setStepIndex(target);
+                setStage("wizard");
+              } else if (returningToConfirm) {
+                setReturningToConfirm(false);
+                setStage("review");
+              } else {
+                onBack();
+              }
+            }}
+            className="text-xs text-neutral-400 hover:text-neutral-600"
+          >
             ← 戻る
           </button>
         </div>
