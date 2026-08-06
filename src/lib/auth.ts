@@ -20,7 +20,8 @@ function toAppUser(row: {
 
 /**
  * ログイン中のGoogleアカウントに対応する管理画面ユーザーを取得する。
- * 初回ログイン時は role="unassigned" で自動作成する(要件定義書 4.6)。
+ * 許可ドメイン(ADMIN_ALLOWED_GOOGLE_DOMAIN)によるログイン制御のみで権限を管理するため、
+ * 初回ログイン時からroleは"admin"として自動作成し、即座にフルアクセスできるようにする。
  */
 export async function getCurrentAppUser(): Promise<AppUser | null> {
   const supabase = await createSupabaseServerClient();
@@ -46,7 +47,7 @@ export async function getCurrentAppUser(): Promise<AppUser | null> {
 
   const { data: created, error } = await admin
     .from("users")
-    .insert({ auth_user_id: authUser.id, email: authUser.email, role: "unassigned" })
+    .insert({ auth_user_id: authUser.id, email: authUser.email, role: "admin" })
     .select("*")
     .single();
 
@@ -63,12 +64,4 @@ export async function getCurrentAppUser(): Promise<AppUser | null> {
   }
 
   return toAppUser(created);
-}
-
-export function canManageCatalog(user: AppUser | null): boolean {
-  return user?.role === "admin" || user?.role === "staff";
-}
-
-export function canManageUsers(user: AppUser | null): boolean {
-  return user?.role === "admin";
 }
