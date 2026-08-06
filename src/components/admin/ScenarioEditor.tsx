@@ -36,6 +36,63 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   subscription: "定期",
 };
 
+const BACKGROUND_COLOR_PALETTE = [
+  "#FFFFFF",
+  "#FEFCE8",
+  "#FFF1F2",
+  "#EFF6FF",
+  "#ECFDF5",
+  "#FDF4FF",
+  "#FFF7ED",
+  "#F0FDFA",
+  "#F5F5F4",
+  "#1F2937",
+];
+
+/** カラーパレットから背景色を選択し、選んだ色をその場でプレビューできる行。 */
+function ColorPaletteRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (color: string | null) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm text-neutral-600">{label}</span>
+        {value && (
+          <button type="button" onClick={() => onChange(null)} className="text-xs text-blue-600 hover:underline">
+            デフォルトに戻す
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {BACKGROUND_COLOR_PALETTE.map((color) => (
+          <button
+            key={color}
+            type="button"
+            aria-label={color}
+            onClick={() => onChange(color)}
+            className={`h-8 w-8 rounded-full border-2 ${
+              value === color ? "border-blue-600" : "border-neutral-200"
+            }`}
+            style={{ backgroundColor: color }}
+          />
+        ))}
+      </div>
+      <div
+        className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-neutral-200 text-xs text-neutral-500"
+        style={{ backgroundColor: value ?? undefined }}
+      >
+        プレビュー
+      </div>
+    </div>
+  );
+}
+
 type PickableProduct = Pick<Product, "id" | "name" | "price" | "orderType"> & {
   productGroupId: string | null;
   productGroupName: string | null;
@@ -785,6 +842,20 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     router.refresh();
   }
 
+  async function handleSetColor(field: "chatBackgroundColor" | "menuBackgroundColor", value: string | null) {
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`背景色の設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
+  }
+
   async function handleAddMenuItem(event: React.FormEvent) {
     event.preventDefault();
     setMenuError(null);
@@ -1168,6 +1239,22 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         <button type="button" onClick={handleEditOrderCode} className="text-blue-600 hover:underline">
           編集
         </button>
+      </div>
+
+      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
+        <h2 className="mb-3 text-sm font-semibold text-neutral-700">背景色</h2>
+        <div className="space-y-5">
+          <ColorPaletteRow
+            label="チャット画面全体の背景色"
+            value={scenario.chatBackgroundColor}
+            onChange={(color) => handleSetColor("chatBackgroundColor", color)}
+          />
+          <ColorPaletteRow
+            label="リッチメニューの背景色"
+            value={scenario.menuBackgroundColor}
+            onChange={(color) => handleSetColor("menuBackgroundColor", color)}
+          />
+        </div>
       </div>
 
       <div className="mb-8 rounded-lg border border-neutral-200 p-4">

@@ -85,6 +85,8 @@ export interface Scenario {
   status: ScenarioStatus;
   slug: string | null;
   orderCode: string | null;
+  chatBackgroundColor: string | null;
+  menuBackgroundColor: string | null;
   version: number;
   createdBy: string | null;
   createdAt: string;

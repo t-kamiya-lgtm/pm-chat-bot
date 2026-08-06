@@ -17,6 +17,16 @@ const updateSchema = z.object({
     .regex(/^[A-Za-z0-9]+$/, "半角英数字のみ使用できます")
     .nullable()
     .optional(),
+  chatBackgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
+    .nullable()
+    .optional(),
+  menuBackgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
+    .nullable()
+    .optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -61,6 +71,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
       ...(input.slug !== undefined && { slug: input.slug }),
       ...(input.orderCode !== undefined && { order_code: input.orderCode }),
+      ...(input.chatBackgroundColor !== undefined && { chat_background_color: input.chatBackgroundColor }),
+      ...(input.menuBackgroundColor !== undefined && { menu_background_color: input.menuBackgroundColor }),
     })
     .eq("id", id)
     .select("*")

@@ -94,6 +94,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [orderedNodeIds, setOrderedNodeIds] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<WidgetMenuItem[]>([]);
   const [scenarioId, setScenarioId] = useState<string | undefined>(undefined);
+  const [chatBackgroundColor, setChatBackgroundColor] = useState<string | null>(null);
+  const [menuBackgroundColor, setMenuBackgroundColor] = useState<string | null>(null);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -175,7 +177,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       fetch(scenarioUrl).then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? "読み込みに失敗しました");
         return res.json() as Promise<{
-          scenario?: { id: string };
+          scenario?: {
+            id: string;
+            chat_background_color?: string | null;
+            menu_background_color?: string | null;
+          };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
           menuItems?: WidgetMenuItem[];
@@ -197,6 +203,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setOrderedNodeIds(orderedIds);
         setMenuItems(scenarioBody.menuItems ?? []);
         setScenarioId(scenarioBody.scenario?.id);
+        setChatBackgroundColor(scenarioBody.scenario?.chat_background_color ?? null);
+        setMenuBackgroundColor(scenarioBody.scenario?.menu_background_color ?? null);
 
         // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
         // 商品選択より前に会話冒頭で1度だけ表示する
@@ -646,7 +654,10 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-yellow-50">
+    <div
+      className={`relative flex h-full flex-col ${chatBackgroundColor ? "" : "bg-yellow-50"}`}
+      style={chatBackgroundColor ? { backgroundColor: chatBackgroundColor } : undefined}
+    >
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {loadError && (
           <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
@@ -829,7 +840,12 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       </div>
 
       {menuItems.length > 0 && (
-        <div className="flex shrink-0 divide-x divide-neutral-200 border-t border-neutral-200 bg-white">
+        <div
+          className={`flex shrink-0 divide-x divide-neutral-200 border-t border-neutral-200 ${
+            menuBackgroundColor ? "" : "bg-white"
+          }`}
+          style={menuBackgroundColor ? { backgroundColor: menuBackgroundColor } : undefined}
+        >
           {menuItems.map((item) => (
             <button
               key={item.id}

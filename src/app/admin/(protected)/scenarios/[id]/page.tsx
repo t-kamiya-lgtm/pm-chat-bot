@@ -71,6 +71,8 @@ export default async function ScenarioEditorPage({
           status: scenario.status,
           slug: scenario.slug,
           orderCode: scenario.order_code,
+          chatBackgroundColor: scenario.chat_background_color,
+          menuBackgroundColor: scenario.menu_background_color,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,
