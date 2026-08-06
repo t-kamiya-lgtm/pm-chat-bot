@@ -65,7 +65,7 @@ export async function GET(request: Request) {
             // 選択肢分岐ノードの「その場でQ&Aを表示する」設定(next_node_mapのsentinel値)から商品IDを拾う
             return Object.values(n.next_node_map as Record<string, string>)
               .filter((v) => v.startsWith(QA_TARGET_PREFIX))
-              .map((v) => v.slice(QA_TARGET_PREFIX.length));
+              .map((v) => v.slice(QA_TARGET_PREFIX.length).split("|")[0]);
           }
           if (n.type !== "product" && n.type !== "checkout" && n.type !== "product_qa") return [];
           const content = n.content as {
