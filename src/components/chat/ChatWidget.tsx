@@ -99,6 +99,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [chatBackgroundColor, setChatBackgroundColor] = useState<string | null>(null);
   const [menuBackgroundColor, setMenuBackgroundColor] = useState<string | null>(null);
   const [messageBackgroundColor, setMessageBackgroundColor] = useState<string | null>(null);
+  const [userMessageBackgroundColor, setUserMessageBackgroundColor] = useState<string | null>(null);
   const [headerSettings, setHeaderSettings] = useState<{
     mode: "image" | "title" | null;
     imageUrl: string | null;
@@ -191,6 +192,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             chat_background_color?: string | null;
             menu_background_color?: string | null;
             message_background_color?: string | null;
+            user_message_background_color?: string | null;
             header_mode?: "image" | "title" | null;
             header_image_url?: string | null;
             header_title?: string | null;
@@ -220,6 +222,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setChatBackgroundColor(scenarioBody.scenario?.chat_background_color ?? null);
         setMenuBackgroundColor(scenarioBody.scenario?.menu_background_color ?? null);
         setMessageBackgroundColor(scenarioBody.scenario?.message_background_color ?? null);
+        setUserMessageBackgroundColor(scenarioBody.scenario?.user_message_background_color ?? null);
         setHeaderSettings({
           mode: scenarioBody.scenario?.header_mode ?? null,
           imageUrl: scenarioBody.scenario?.header_image_url ?? null,
@@ -699,6 +702,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       style={{
         ...(chatBackgroundColor && { backgroundColor: chatBackgroundColor }),
         ...(messageBackgroundColor && { "--message-bg": messageBackgroundColor }),
+        ...(userMessageBackgroundColor && { "--user-message-bg": userMessageBackgroundColor }),
       } as CSSProperties}
     >
       {headerSettings.mode === "image" && headerSettings.imageUrl && (

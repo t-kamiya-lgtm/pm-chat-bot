@@ -12,7 +12,7 @@ import type {
   SurveyAnswerType,
   SurveyQuestion,
 } from "@/lib/types";
-import { VIDEO_ASPECT_RATIOS, DEFAULT_VIDEO_ASPECT_RATIO, type VideoAspectRatio } from "@/lib/video-embed";
+import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio } from "@/lib/video-embed";
 
 const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   checkbox: "チェックボックス(複数選択)",
@@ -39,26 +39,53 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
 };
 
 const BACKGROUND_COLOR_PALETTE = [
+  // ニュートラル
   "#FFFFFF",
+  "#FAFAF9",
   "#F5F5F4",
   "#E7E5E4",
-  "#1F2937",
+  "#D4D4D4",
+  "#A3A3A3",
+  "#525252",
+  "#262626",
   "#111827",
-  "#FEFCE8",
-  "#FEF3C7",
+  "#000000",
+  // 赤・ピンク
   "#FFF1F2",
   "#FFE4E6",
-  "#FDF2F8",
-  "#EFF6FF",
-  "#DBEAFE",
-  "#ECFDF5",
-  "#D1FAE5",
-  "#FDF4FF",
-  "#F3E8FF",
+  "#FECDD3",
+  "#FB7185",
+  "#E11D48",
+  // オレンジ
   "#FFF7ED",
   "#FFEDD5",
+  "#FDBA74",
+  "#F97316",
+  // 黄
+  "#FEFCE8",
+  "#FEF3C7",
+  "#FDE68A",
+  "#EAB308",
+  // 緑
+  "#ECFDF5",
+  "#D1FAE5",
+  "#6EE7B7",
+  "#10B981",
+  // 青緑・水色
   "#F0FDFA",
   "#CCFBF1",
+  "#5EEAD4",
+  "#0D9488",
+  // 青
+  "#EFF6FF",
+  "#DBEAFE",
+  "#93C5FD",
+  "#2563EB",
+  // 紫
+  "#FDF4FF",
+  "#F3E8FF",
+  "#D8B4FE",
+  "#9333EA",
 ];
 
 const DEFAULT_BACKGROUND_COLOR = "#FFFFFF";
@@ -109,20 +136,22 @@ function ColorSwatchStrip({
         )}
       </div>
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <span
-          aria-label="現在の色"
-          className="h-8 w-8 shrink-0 rounded-full border-2 border-neutral-300"
-          style={{ backgroundColor: effective }}
-        />
-        <input
-          className="input h-8 w-24 shrink-0 px-2 text-xs"
-          value={hexInput}
-          onChange={(e) => setHexInput(e.target.value)}
-          onBlur={commitHex}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitHex();
-          }}
-        />
+        <div className="sticky left-0 z-10 flex shrink-0 items-center gap-2 bg-white pr-2">
+          <span
+            aria-label="現在の色"
+            className="h-8 w-8 shrink-0 rounded-full border-2 border-neutral-300"
+            style={{ backgroundColor: effective }}
+          />
+          <input
+            className="input h-8 w-24 shrink-0 px-2 text-xs"
+            value={hexInput}
+            onChange={(e) => setHexInput(e.target.value)}
+            onBlur={commitHex}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitHex();
+            }}
+          />
+        </div>
         {BACKGROUND_COLOR_PALETTE.map((color) => (
           <button
             key={color}
@@ -144,6 +173,7 @@ interface DisplaySettings {
   chatBackgroundColor: string | null;
   menuBackgroundColor: string | null;
   messageBackgroundColor: string | null;
+  userMessageBackgroundColor: string | null;
   headerMode: "image" | "title" | null;
   headerImageUrl: string;
   headerTitle: string;
@@ -194,7 +224,10 @@ function DisplayPreview({
           >
             こんにちは
           </div>
-          <div className="ml-auto max-w-[75%] rounded-lg bg-neutral-900 px-2 py-1 text-[9px] text-white">
+          <div
+            className="ml-auto max-w-[75%] rounded-lg px-2 py-1 text-[9px] text-white"
+            style={{ backgroundColor: display.userMessageBackgroundColor ?? "#171717" }}
+          >
             こんにちは
           </div>
         </div>
@@ -847,6 +880,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     chatBackgroundColor: scenario.chatBackgroundColor,
     menuBackgroundColor: scenario.menuBackgroundColor,
     messageBackgroundColor: scenario.messageBackgroundColor,
+    userMessageBackgroundColor: scenario.userMessageBackgroundColor,
     headerMode: scenario.headerMode,
     headerImageUrl: scenario.headerImageUrl ?? "",
     headerTitle: scenario.headerTitle ?? "",
@@ -867,10 +901,21 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   const [newNodeImageLinkUrl, setNewNodeImageLinkUrl] = useState("");
   const [newNodeImageCaption, setNewNodeImageCaption] = useState("");
   const [newNodeVideoUrl, setNewNodeVideoUrl] = useState("");
-  const [newNodeVideoAspectRatio, setNewNodeVideoAspectRatio] = useState<VideoAspectRatio>(
-    DEFAULT_VIDEO_ASPECT_RATIO,
-  );
+  const [newNodeVideoAspectRatio, setNewNodeVideoAspectRatio] = useState(DEFAULT_VIDEO_ASPECT_RATIO);
+  const [newNodeVideoDetecting, setNewNodeVideoDetecting] = useState(false);
   const [newNodeVideoCaption, setNewNodeVideoCaption] = useState("");
+
+  async function handleDetectNewNodeAspectRatio() {
+    if (!newNodeVideoUrl.trim()) return;
+    setNewNodeVideoDetecting(true);
+    try {
+      setNewNodeVideoAspectRatio(await detectAspectRatio(newNodeVideoUrl.trim()));
+    } catch {
+      setNewNodeVideoAspectRatio(DEFAULT_VIDEO_ASPECT_RATIO);
+    } finally {
+      setNewNodeVideoDetecting(false);
+    }
+  }
   const [newNodeSurveyIntro, setNewNodeSurveyIntro] = useState("");
   const [newNodeSurveyQuestions, setNewNodeSurveyQuestions] = useState<SurveyQuestion[]>([]);
   const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
@@ -991,7 +1036,12 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   }
 
   function setColorField(
-    field: "chatBackgroundColor" | "menuBackgroundColor" | "messageBackgroundColor" | "headerBackgroundColor",
+    field:
+      | "chatBackgroundColor"
+      | "menuBackgroundColor"
+      | "messageBackgroundColor"
+      | "userMessageBackgroundColor"
+      | "headerBackgroundColor",
     value: string | null,
   ) {
     setDisplay((prev) => ({ ...prev, [field]: value }));
@@ -1242,7 +1292,8 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     });
 
     if (!res.ok) {
-      setError("ノードの追加に失敗しました");
+      const body = await res.json().catch(() => ({}));
+      setError(`ノードの追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
 
@@ -1475,9 +1526,14 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               onChange={(color) => setColorField("chatBackgroundColor", color)}
             />
             <ColorSwatchStrip
-              label="メッセージの背景色"
+              label="メッセージの背景色(Bot側)"
               value={display.messageBackgroundColor}
               onChange={(color) => setColorField("messageBackgroundColor", color)}
+            />
+            <ColorSwatchStrip
+              label="メッセージの背景色(ユーザー側)"
+              value={display.userMessageBackgroundColor}
+              onChange={(color) => setColorField("userMessageBackgroundColor", color)}
             />
             <ColorSwatchStrip
               label="固定メニューの背景色"
@@ -1865,23 +1921,21 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                 placeholder="https://..."
                 value={newNodeVideoUrl}
                 onChange={(e) => setNewNodeVideoUrl(e.target.value)}
+                onBlur={handleDetectNewNodeAspectRatio}
               />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">
-                縦横比(YouTube/Vimeo埋め込み時の表示枠に使用)
-              </span>
-              <select
-                className="input"
-                value={newNodeVideoAspectRatio}
-                onChange={(e) => setNewNodeVideoAspectRatio(e.target.value as VideoAspectRatio)}
-              >
-                {VIDEO_ASPECT_RATIOS.map((ratio) => (
-                  <option key={ratio} value={ratio}>
-                    {ratio}
-                  </option>
-                ))}
-              </select>
+              <p className="mt-1 text-xs text-neutral-500">
+                縦横比:{" "}
+                {newNodeVideoDetecting ? "検出中..." : newNodeVideoAspectRatio}
+                {!newNodeVideoDetecting && newNodeVideoUrl.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleDetectNewNodeAspectRatio}
+                    className="ml-2 text-blue-600 hover:underline"
+                  >
+                    再検出
+                  </button>
+                )}
+              </p>
             </label>
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-neutral-700">キャプション(任意)</span>
@@ -1994,10 +2048,23 @@ function NodeCard({
   const [imageLinkUrl, setImageLinkUrl] = useState((node.content.linkUrl as string) ?? "");
   const [imageCaption, setImageCaption] = useState((node.content.caption as string) ?? "");
   const [videoUrl, setVideoUrl] = useState((node.content.videoUrl as string) ?? "");
-  const [videoAspectRatio, setVideoAspectRatio] = useState<VideoAspectRatio>(
-    (node.content.aspectRatio as VideoAspectRatio) ?? DEFAULT_VIDEO_ASPECT_RATIO,
+  const [videoAspectRatio, setVideoAspectRatio] = useState(
+    (node.content.aspectRatio as string) ?? DEFAULT_VIDEO_ASPECT_RATIO,
   );
+  const [videoDetecting, setVideoDetecting] = useState(false);
   const [videoCaption, setVideoCaption] = useState((node.content.caption as string) ?? "");
+
+  async function handleDetectVideoAspectRatio() {
+    if (!videoUrl.trim()) return;
+    setVideoDetecting(true);
+    try {
+      setVideoAspectRatio(await detectAspectRatio(videoUrl.trim()));
+    } catch {
+      setVideoAspectRatio(DEFAULT_VIDEO_ASPECT_RATIO);
+    } finally {
+      setVideoDetecting(false);
+    }
+  }
   const [surveyIntro, setSurveyIntro] = useState((node.content.introText as string) ?? "");
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>(
     (node.content.questions as SurveyQuestion[] | undefined) ?? [],
@@ -2036,7 +2103,7 @@ function NodeCard({
     setImageLinkUrl((node.content.linkUrl as string) ?? "");
     setImageCaption((node.content.caption as string) ?? "");
     setVideoUrl((node.content.videoUrl as string) ?? "");
-    setVideoAspectRatio((node.content.aspectRatio as VideoAspectRatio) ?? DEFAULT_VIDEO_ASPECT_RATIO);
+    setVideoAspectRatio((node.content.aspectRatio as string) ?? DEFAULT_VIDEO_ASPECT_RATIO);
     setVideoCaption((node.content.caption as string) ?? "");
     setSurveyIntro((node.content.introText as string) ?? "");
     setSurveyQuestions((node.content.questions as SurveyQuestion[] | undefined) ?? []);
@@ -2170,7 +2237,8 @@ function NodeCard({
     setSaving(false);
 
     if (!res.ok) {
-      setError("更新に失敗しました");
+      const body = await res.json().catch(() => ({}));
+      setError(`更新に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
     setEditing(false);
@@ -2375,23 +2443,24 @@ function NodeCard({
                 <span className="mb-1 block text-neutral-500">
                   動画URL(直接URL(mp4等)、またはYouTube/Vimeoの動画URL)
                 </span>
-                <input className="input" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
-              </label>
-              <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">
-                  縦横比(YouTube/Vimeo埋め込み時の表示枠に使用)
-                </span>
-                <select
+                <input
                   className="input"
-                  value={videoAspectRatio}
-                  onChange={(e) => setVideoAspectRatio(e.target.value as VideoAspectRatio)}
-                >
-                  {VIDEO_ASPECT_RATIOS.map((ratio) => (
-                    <option key={ratio} value={ratio}>
-                      {ratio}
-                    </option>
-                  ))}
-                </select>
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  onBlur={handleDetectVideoAspectRatio}
+                />
+                <p className="mt-1 text-neutral-500">
+                  縦横比: {videoDetecting ? "検出中..." : videoAspectRatio}
+                  {!videoDetecting && videoUrl.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleDetectVideoAspectRatio}
+                      className="ml-2 text-blue-600 hover:underline"
+                    >
+                      再検出
+                    </button>
+                  )}
+                </p>
               </label>
               <label className="block text-xs">
                 <span className="mb-1 block text-neutral-500">キャプション(任意)</span>

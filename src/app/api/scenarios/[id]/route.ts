@@ -32,6 +32,11 @@ const updateSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
     .nullable()
     .optional(),
+  userMessageBackgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
+    .nullable()
+    .optional(),
   headerMode: z.enum(["image", "title"]).nullable().optional(),
   headerImageUrl: z.string().nullable().optional(),
   headerTitle: z.string().nullable().optional(),
@@ -88,6 +93,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.menuBackgroundColor !== undefined && { menu_background_color: input.menuBackgroundColor }),
       ...(input.messageBackgroundColor !== undefined && {
         message_background_color: input.messageBackgroundColor,
+      }),
+      ...(input.userMessageBackgroundColor !== undefined && {
+        user_message_background_color: input.userMessageBackgroundColor,
       }),
       ...(input.headerMode !== undefined && { header_mode: input.headerMode }),
       ...(input.headerImageUrl !== undefined && { header_image_url: input.headerImageUrl }),

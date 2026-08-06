@@ -1,6 +1,4 @@
-export const VIDEO_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3"] as const;
-export type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
-export const DEFAULT_VIDEO_ASPECT_RATIO: VideoAspectRatio = "16:9";
+export const DEFAULT_VIDEO_ASPECT_RATIO = "16:9";
 
 export function aspectRatioToCss(aspectRatio: string | undefined): string {
   const [w, h] = (aspectRatio ?? DEFAULT_VIDEO_ASPECT_RATIO).split(":");
@@ -10,6 +8,55 @@ export function aspectRatioToCss(aspectRatio: string | undefined): string {
 }
 
 export type VideoEmbedInfo = { kind: "iframe"; src: string } | { kind: "file"; src: string };
+
+function simplifyRatio(width: number, height: number): string {
+  function gcd(a: number, b: number): number {
+    return b === 0 ? a : gcd(b, a % b);
+  }
+  const divisor = gcd(Math.round(width), Math.round(height)) || 1;
+  return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`;
+}
+
+function detectFileAspectRatio(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      if (video.videoWidth && video.videoHeight) {
+        resolve(simplifyRatio(video.videoWidth, video.videoHeight));
+      } else {
+        reject(new Error("動画の縦横比を取得できませんでした"));
+      }
+    };
+    video.onerror = () => reject(new Error("動画を読み込めませんでした"));
+    video.src = url;
+  });
+}
+
+/**
+ * 動画URLから縦横比を自動検知する。
+ * 直接ファイルURLは<video>要素で実測し、YouTube/VimeoはoEmbed APIから取得する
+ * (YouTube ShortsはoEmbedのURLパスからも判定する)。取得できない場合は16:9とする。
+ */
+export async function detectAspectRatio(url: string): Promise<string> {
+  const info = getVideoEmbedInfo(url);
+  if (info.kind === "file") {
+    return detectFileAspectRatio(url);
+  }
+
+  if (/\/shorts\//.test(url)) return "9:16";
+
+  const isVimeo = /vimeo\.com/.test(info.src);
+  const oembedUrl = isVimeo
+    ? `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`
+    : `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+
+  const res = await fetch(oembedUrl);
+  if (!res.ok) throw new Error("動画情報の取得に失敗しました");
+  const data = (await res.json()) as { width?: number; height?: number };
+  if (!data.width || !data.height) throw new Error("動画の縦横比を取得できませんでした");
+  return simplifyRatio(data.width, data.height);
+}
 
 /**
  * YouTube/Vimeoの各種URL形式を埋め込み再生用URLに変換する。

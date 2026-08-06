@@ -74,6 +74,7 @@ export default async function ScenarioEditorPage({
           chatBackgroundColor: scenario.chat_background_color,
           menuBackgroundColor: scenario.menu_background_color,
           messageBackgroundColor: scenario.message_background_color,
+          userMessageBackgroundColor: scenario.user_message_background_color,
           headerMode: scenario.header_mode,
           headerImageUrl: scenario.header_image_url,
           headerTitle: scenario.header_title,
