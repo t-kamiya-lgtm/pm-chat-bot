@@ -689,6 +689,11 @@ export function CheckoutForm({
       return;
     }
 
+    // blurイベントに頼らず、次へ進む操作(Enterキー/ボタン押下どちらでも)確実に見込み客情報を保存する
+    if (step.kind === "field" && (step.key === "name" || step.key === "email" || step.key === "phone")) {
+      captureLead();
+    }
+
     if (returnToStepIndex !== null) {
       const target = returnToStepIndex;
       setReturnToStepIndex(null);
