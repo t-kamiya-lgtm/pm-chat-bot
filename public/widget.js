@@ -48,6 +48,7 @@
 
   var iframe = document.createElement("iframe");
   iframe.src = origin + (scenarioSlug ? "/widget/" + encodeURIComponent(scenarioSlug) : "/widget");
+  iframe.setAttribute("allow", "payment");
   Object.assign(iframe.style, { width: "100%", height: "100%", border: "none" });
   container.appendChild(iframe);
 

@@ -45,6 +45,10 @@ function StripePaymentFormInner({
     const { error } = await stripe.confirmPayment({
       elements,
       redirect: "if_required",
+      // PayPay等、決済確定にリダイレクトが必須な手段のために指定(カード等は同一画面に留まる)
+      confirmParams: {
+        return_url: window.location.href,
+      },
     });
 
     setSubmitting(false);

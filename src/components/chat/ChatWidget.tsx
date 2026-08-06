@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { loadStripe } from "@stripe/stripe-js";
 import type { WidgetMenuItem, WidgetProduct, WidgetScenarioNode } from "@/components/chat/types";
 import type { SurveyQuestion } from "@/lib/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
@@ -112,6 +113,34 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // PayPay等、決済確定にリダイレクトが必要な手段からの復帰を検知するための状態
+  const [redirectStatus, setRedirectStatus] = useState<
+    "checking" | "succeeded" | "processing" | "failed" | null
+  >(() => (searchParams.get("payment_intent_client_secret") ? "checking" : null));
+
+  useEffect(() => {
+    const clientSecret = searchParams.get("payment_intent_client_secret");
+    if (!clientSecret) return;
+    let cancelled = false;
+    loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "").then((stripe) => {
+      if (!stripe) return;
+      stripe.retrievePaymentIntent(clientSecret).then(({ paymentIntent }) => {
+        if (cancelled) return;
+        const status = paymentIntent?.status;
+        setRedirectStatus(status === "succeeded" ? "succeeded" : status === "processing" ? "processing" : "failed");
+        // 再読み込みしても再度判定されないよう、決済関連のクエリパラメータをURLから除去する
+        const url = new URL(window.location.href);
+        url.searchParams.delete("payment_intent");
+        url.searchParams.delete("payment_intent_client_secret");
+        url.searchParams.delete("redirect_status");
+        window.history.replaceState({}, "", url.toString());
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** 個人情報を含む注文完了画面が放置され続けないよう、完了から一定時間後に会話を最初のあいさつへ戻す。 */
   const RESET_AFTER_COMPLETE_MS = 3 * 60 * 1000;
@@ -583,6 +612,38 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   }
 
   const detailProduct = detailContext ? productsById[detailContext.productId] : null;
+
+  if (redirectStatus === "checking") {
+    return (
+      <div className="relative flex h-full flex-col items-center justify-center bg-yellow-50 p-6 text-center text-sm text-neutral-500">
+        決済結果を確認しています…
+      </div>
+    );
+  }
+
+  if (redirectStatus) {
+    const messages: Record<Exclude<typeof redirectStatus, "checking">, { text: string; className: string }> = {
+      succeeded: { text: "お支払いが完了しました。ありがとうございます。", className: "text-green-700" },
+      processing: { text: "お支払いを処理しています。しばらくお待ちください。", className: "text-neutral-600" },
+      failed: {
+        text: "お支払いを完了できませんでした。恐れ入りますが再度お試しください。",
+        className: "text-red-700",
+      },
+    };
+    const { text, className } = messages[redirectStatus];
+    return (
+      <div className="relative flex h-full flex-col items-center justify-center gap-4 bg-yellow-50 p-6 text-center">
+        <p className={`text-sm ${className}`}>{text}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+        >
+          閉じる
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-full flex-col bg-yellow-50">
