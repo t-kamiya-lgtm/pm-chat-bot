@@ -13,6 +13,7 @@ import type {
   SurveyQuestion,
 } from "@/lib/types";
 import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio } from "@/lib/video-embed";
+import { contrastTextColor, effectiveTextColor, type TextColorOverride } from "@/lib/color";
 
 const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   checkbox: "チェックボックス(複数選択)",
@@ -98,12 +99,18 @@ function ColorSwatchStrip({
   label,
   value,
   onChange,
+  textColor,
+  onTextColorChange,
 }: {
   label: string;
   value: string | null;
   onChange: (color: string | null) => void;
+  /** 指定すると、現在の色の下に「自動/白/黒」のテキスト色切り替えを表示する。 */
+  textColor?: TextColorOverride;
+  onTextColorChange?: (color: TextColorOverride) => void;
 }) {
   const effective = value ?? DEFAULT_BACKGROUND_COLOR;
+  const autoTextColor = contrastTextColor(effective);
   const [hexInput, setHexInput] = useState(effective);
 
   useEffect(() => {
@@ -165,6 +172,35 @@ function ColorSwatchStrip({
           />
         ))}
       </div>
+      {onTextColorChange && (
+        <div className="mt-2 flex items-center gap-3 text-xs text-neutral-600">
+          <span>テキスト色:</span>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={!textColor}
+              onChange={() => onTextColorChange(null)}
+            />
+            自動({autoTextColor === "white" ? "白" : "黒"})
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={textColor === "white"}
+              onChange={() => onTextColorChange("white")}
+            />
+            白
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={textColor === "black"}
+              onChange={() => onTextColorChange("black")}
+            />
+            黒
+          </label>
+        </div>
+      )}
     </div>
   );
 }
@@ -172,12 +208,16 @@ function ColorSwatchStrip({
 interface DisplaySettings {
   chatBackgroundColor: string | null;
   menuBackgroundColor: string | null;
+  menuTextColor: TextColorOverride;
   messageBackgroundColor: string | null;
+  messageTextColor: TextColorOverride;
   userMessageBackgroundColor: string | null;
+  userMessageTextColor: TextColorOverride;
   headerMode: "image" | "title" | null;
   headerImageUrl: string;
   headerTitle: string;
   headerBackgroundColor: string | null;
+  headerTextColor: TextColorOverride;
 }
 
 /** 9:16の携帯風プレビュー。クリックすると実際のチャット画面を新しいタブで開く。 */
@@ -212,7 +252,10 @@ function DisplayPreview({
         ) : display.headerMode === "title" ? (
           <div
             className="shrink-0 truncate px-2 py-1.5 text-[10px] font-medium"
-            style={{ backgroundColor: display.headerBackgroundColor ?? DEFAULT_BACKGROUND_COLOR }}
+            style={{
+              backgroundColor: display.headerBackgroundColor ?? DEFAULT_BACKGROUND_COLOR,
+              color: effectiveTextColor(display.headerBackgroundColor, display.headerTextColor),
+            }}
           >
             {display.headerTitle || "ヘッダー"}
           </div>
@@ -220,20 +263,32 @@ function DisplayPreview({
         <div className="flex-1 space-y-1.5 p-2">
           <div
             className="max-w-[75%] rounded-lg px-2 py-1 text-[9px]"
-            style={{ backgroundColor: display.messageBackgroundColor ?? "#F5F5F4" }}
+            style={{
+              backgroundColor: display.messageBackgroundColor ?? "#F5F5F4",
+              color: effectiveTextColor(display.messageBackgroundColor ?? "#F5F5F4", display.messageTextColor),
+            }}
           >
             こんにちは
           </div>
           <div
-            className="ml-auto max-w-[75%] rounded-lg px-2 py-1 text-[9px] text-white"
-            style={{ backgroundColor: display.userMessageBackgroundColor ?? "#171717" }}
+            className="ml-auto max-w-[75%] rounded-lg px-2 py-1 text-[9px]"
+            style={{
+              backgroundColor: display.userMessageBackgroundColor ?? "#171717",
+              color: effectiveTextColor(
+                display.userMessageBackgroundColor ?? "#171717",
+                display.userMessageTextColor,
+              ),
+            }}
           >
             こんにちは
           </div>
         </div>
         <div
           className="shrink-0 border-t border-neutral-200 p-1.5 text-center text-[9px]"
-          style={{ backgroundColor: display.menuBackgroundColor ?? DEFAULT_BACKGROUND_COLOR }}
+          style={{
+            backgroundColor: display.menuBackgroundColor ?? DEFAULT_BACKGROUND_COLOR,
+            color: effectiveTextColor(display.menuBackgroundColor, display.menuTextColor),
+          }}
         >
           固定メニュー
         </div>
@@ -879,12 +934,16 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   const [display, setDisplay] = useState<DisplaySettings>({
     chatBackgroundColor: scenario.chatBackgroundColor,
     menuBackgroundColor: scenario.menuBackgroundColor,
+    menuTextColor: scenario.menuTextColor,
     messageBackgroundColor: scenario.messageBackgroundColor,
+    messageTextColor: scenario.messageTextColor,
     userMessageBackgroundColor: scenario.userMessageBackgroundColor,
+    userMessageTextColor: scenario.userMessageTextColor,
     headerMode: scenario.headerMode,
     headerImageUrl: scenario.headerImageUrl ?? "",
     headerTitle: scenario.headerTitle ?? "",
     headerBackgroundColor: scenario.headerBackgroundColor,
+    headerTextColor: scenario.headerTextColor,
   });
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
@@ -1043,6 +1102,14 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
       | "userMessageBackgroundColor"
       | "headerBackgroundColor",
     value: string | null,
+  ) {
+    setDisplay((prev) => ({ ...prev, [field]: value }));
+    patchDisplaySettings({ [field]: value });
+  }
+
+  function setTextColorField(
+    field: "headerTextColor" | "messageTextColor" | "userMessageTextColor" | "menuTextColor",
+    value: TextColorOverride,
   ) {
     setDisplay((prev) => ({ ...prev, [field]: value }));
     patchDisplaySettings({ [field]: value });
@@ -1515,6 +1582,8 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                     label="ヘッダーの背景色"
                     value={display.headerBackgroundColor}
                     onChange={(color) => setColorField("headerBackgroundColor", color)}
+                    textColor={display.headerTextColor}
+                    onTextColorChange={(color) => setTextColorField("headerTextColor", color)}
                   />
                 </div>
               )}
@@ -1529,16 +1598,22 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               label="メッセージの背景色(Bot側)"
               value={display.messageBackgroundColor}
               onChange={(color) => setColorField("messageBackgroundColor", color)}
+              textColor={display.messageTextColor}
+              onTextColorChange={(color) => setTextColorField("messageTextColor", color)}
             />
             <ColorSwatchStrip
               label="メッセージの背景色(ユーザー側)"
               value={display.userMessageBackgroundColor}
               onChange={(color) => setColorField("userMessageBackgroundColor", color)}
+              textColor={display.userMessageTextColor}
+              onTextColorChange={(color) => setTextColorField("userMessageTextColor", color)}
             />
             <ColorSwatchStrip
               label="固定メニューの背景色"
               value={display.menuBackgroundColor}
               onChange={(color) => setColorField("menuBackgroundColor", color)}
+              textColor={display.menuTextColor}
+              onTextColorChange={(color) => setTextColorField("menuTextColor", color)}
             />
           </div>
 

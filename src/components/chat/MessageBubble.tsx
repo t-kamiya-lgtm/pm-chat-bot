@@ -10,11 +10,10 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] overflow-hidden rounded-2xl text-sm ${
-          isUser ? "text-white" : "text-neutral-900"
-        }`}
+        className="max-w-[80%] overflow-hidden rounded-2xl text-sm"
         style={{
           backgroundColor: isUser ? "var(--user-message-bg, #171717)" : "var(--message-bg, #f5f5f4)",
+          color: isUser ? "var(--user-message-fg, white)" : "var(--message-fg, black)",
         }}
       >
         {image &&

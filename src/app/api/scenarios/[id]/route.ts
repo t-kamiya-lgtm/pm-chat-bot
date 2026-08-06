@@ -45,6 +45,10 @@ const updateSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB形式で指定してください")
     .nullable()
     .optional(),
+  headerTextColor: z.enum(["white", "black"]).nullable().optional(),
+  messageTextColor: z.enum(["white", "black"]).nullable().optional(),
+  userMessageTextColor: z.enum(["white", "black"]).nullable().optional(),
+  menuTextColor: z.enum(["white", "black"]).nullable().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -103,6 +107,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.headerBackgroundColor !== undefined && {
         header_background_color: input.headerBackgroundColor,
       }),
+      ...(input.headerTextColor !== undefined && { header_text_color: input.headerTextColor }),
+      ...(input.messageTextColor !== undefined && { message_text_color: input.messageTextColor }),
+      ...(input.userMessageTextColor !== undefined && {
+        user_message_text_color: input.userMessageTextColor,
+      }),
+      ...(input.menuTextColor !== undefined && { menu_text_color: input.menuTextColor }),
     })
     .eq("id", id)
     .select("*")

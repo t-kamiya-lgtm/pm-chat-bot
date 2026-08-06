@@ -87,12 +87,16 @@ export interface Scenario {
   orderCode: string | null;
   chatBackgroundColor: string | null;
   menuBackgroundColor: string | null;
+  menuTextColor: "white" | "black" | null;
   messageBackgroundColor: string | null;
+  messageTextColor: "white" | "black" | null;
   userMessageBackgroundColor: string | null;
+  userMessageTextColor: "white" | "black" | null;
   headerMode: "image" | "title" | null;
   headerImageUrl: string | null;
   headerTitle: string | null;
   headerBackgroundColor: string | null;
+  headerTextColor: "white" | "black" | null;
   version: number;
   createdBy: string | null;
   createdAt: string;

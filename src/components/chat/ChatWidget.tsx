@@ -13,6 +13,7 @@ import { ProductDetailPanel } from "@/components/chat/ProductDetailPanel";
 import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 import { SurveyForm } from "@/components/chat/SurveyForm";
+import { effectiveTextColor } from "@/lib/color";
 import { ImageCarousel } from "@/components/chat/ImageCarousel";
 import { VideoPlayer } from "@/components/chat/VideoPlayer";
 
@@ -98,14 +99,18 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [scenarioId, setScenarioId] = useState<string | undefined>(undefined);
   const [chatBackgroundColor, setChatBackgroundColor] = useState<string | null>(null);
   const [menuBackgroundColor, setMenuBackgroundColor] = useState<string | null>(null);
+  const [menuTextColor, setMenuTextColor] = useState<"white" | "black" | null>(null);
   const [messageBackgroundColor, setMessageBackgroundColor] = useState<string | null>(null);
+  const [messageTextColor, setMessageTextColor] = useState<"white" | "black" | null>(null);
   const [userMessageBackgroundColor, setUserMessageBackgroundColor] = useState<string | null>(null);
+  const [userMessageTextColor, setUserMessageTextColor] = useState<"white" | "black" | null>(null);
   const [headerSettings, setHeaderSettings] = useState<{
     mode: "image" | "title" | null;
     imageUrl: string | null;
     title: string | null;
     backgroundColor: string | null;
-  }>({ mode: null, imageUrl: null, title: null, backgroundColor: null });
+    textColor: "white" | "black" | null;
+  }>({ mode: null, imageUrl: null, title: null, backgroundColor: null, textColor: null });
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -191,12 +196,16 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             id: string;
             chat_background_color?: string | null;
             menu_background_color?: string | null;
+            menu_text_color?: "white" | "black" | null;
             message_background_color?: string | null;
+            message_text_color?: "white" | "black" | null;
             user_message_background_color?: string | null;
+            user_message_text_color?: "white" | "black" | null;
             header_mode?: "image" | "title" | null;
             header_image_url?: string | null;
             header_title?: string | null;
             header_background_color?: string | null;
+            header_text_color?: "white" | "black" | null;
           };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
@@ -221,13 +230,17 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setScenarioId(scenarioBody.scenario?.id);
         setChatBackgroundColor(scenarioBody.scenario?.chat_background_color ?? null);
         setMenuBackgroundColor(scenarioBody.scenario?.menu_background_color ?? null);
+        setMenuTextColor(scenarioBody.scenario?.menu_text_color ?? null);
         setMessageBackgroundColor(scenarioBody.scenario?.message_background_color ?? null);
+        setMessageTextColor(scenarioBody.scenario?.message_text_color ?? null);
         setUserMessageBackgroundColor(scenarioBody.scenario?.user_message_background_color ?? null);
+        setUserMessageTextColor(scenarioBody.scenario?.user_message_text_color ?? null);
         setHeaderSettings({
           mode: scenarioBody.scenario?.header_mode ?? null,
           imageUrl: scenarioBody.scenario?.header_image_url ?? null,
           title: scenarioBody.scenario?.header_title ?? null,
           backgroundColor: scenarioBody.scenario?.header_background_color ?? null,
+          textColor: scenarioBody.scenario?.header_text_color ?? null,
         });
 
         // 決済フォーム設定の「あいさつ文」(最大5項目)と、その直後の個人情報利用に関する注意文を、
@@ -703,6 +716,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         ...(chatBackgroundColor && { backgroundColor: chatBackgroundColor }),
         ...(messageBackgroundColor && { "--message-bg": messageBackgroundColor }),
         ...(userMessageBackgroundColor && { "--user-message-bg": userMessageBackgroundColor }),
+        "--message-fg": effectiveTextColor(messageBackgroundColor ?? "#F5F5F4", messageTextColor),
+        "--user-message-fg": effectiveTextColor(userMessageBackgroundColor ?? "#171717", userMessageTextColor),
       } as CSSProperties}
     >
       {headerSettings.mode === "image" && headerSettings.imageUrl && (
@@ -714,7 +729,10 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           className={`shrink-0 p-3 text-center text-sm font-medium ${
             headerSettings.backgroundColor ? "" : "bg-white"
           }`}
-          style={headerSettings.backgroundColor ? { backgroundColor: headerSettings.backgroundColor } : undefined}
+          style={{
+            ...(headerSettings.backgroundColor && { backgroundColor: headerSettings.backgroundColor }),
+            color: effectiveTextColor(headerSettings.backgroundColor, headerSettings.textColor),
+          }}
         >
           {headerSettings.title}
         </div>
@@ -909,14 +927,17 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           className={`flex shrink-0 divide-x divide-neutral-200 border-t border-neutral-200 ${
             menuBackgroundColor ? "" : "bg-white"
           }`}
-          style={menuBackgroundColor ? { backgroundColor: menuBackgroundColor } : undefined}
+          style={{
+            ...(menuBackgroundColor && { backgroundColor: menuBackgroundColor }),
+            color: effectiveTextColor(menuBackgroundColor, menuTextColor),
+          }}
         >
           {menuItems.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => handleMenuItemClick(item)}
-              className="flex-1 px-2 py-3 text-center text-xs text-neutral-700 hover:bg-neutral-50"
+              className="flex-1 px-2 py-3 text-center text-xs hover:bg-black/5"
             >
               {item.label}
             </button>
