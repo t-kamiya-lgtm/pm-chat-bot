@@ -1389,12 +1389,19 @@ export function CheckoutForm({
 
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
 
+        {postDeliveryRestricted && paymentMethod === "cod" && (
+          <p className="rounded bg-red-50 p-2 text-xs text-red-700">
+            この商品はポスト投函のため、代金引換はご利用いただけません。お支払い方法を変更してください。
+          </p>
+        )}
+
         {renderOrderSummary()}
 
         <button
           type="button"
           onClick={() => setStage("agreement")}
-          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
+          disabled={postDeliveryRestricted && paymentMethod === "cod"}
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
         >
           次へ
         </button>
@@ -1403,7 +1410,8 @@ export function CheckoutForm({
   }
 
   if (stage === "agreement") {
-    const canSubmit = agreedTerms && agreedPrivacy;
+    const paymentMethodInvalid = postDeliveryRestricted && paymentMethod === "cod";
+    const canSubmit = agreedTerms && agreedPrivacy && !paymentMethodInvalid;
 
     return (
       <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -1419,6 +1427,12 @@ export function CheckoutForm({
         </div>
 
         {error && <p className="rounded bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+
+        {paymentMethodInvalid && (
+          <p className="rounded bg-red-50 p-2 text-xs text-red-700">
+            この商品はポスト投函のため、代金引換はご利用いただけません。お支払い方法を変更してください。
+          </p>
+        )}
 
         {renderOrderSummary()}
 
