@@ -14,6 +14,7 @@ import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 import { SurveyForm } from "@/components/chat/SurveyForm";
 import { ImageCarousel } from "@/components/chat/ImageCarousel";
+import { VideoPlayer } from "@/components/chat/VideoPlayer";
 
 interface GreetingItem {
   type: "image" | "text";
@@ -25,6 +26,7 @@ interface GreetingItem {
 type TimelineItem =
   | { id: string; kind: "bot-text"; text: string; imageUrl?: string; linkUrl?: string }
   | { id: string; kind: "image-carousel"; imageUrls: string[]; linkUrl?: string; caption?: string }
+  | { id: string; kind: "video"; url: string; aspectRatio?: string; caption?: string }
   | { id: string; kind: "user-text"; text: string }
   | {
       id: string;
@@ -259,6 +261,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       text?: string;
       imageUrl?: string;
       imageUrls?: string[];
+      videoUrl?: string;
+      aspectRatio?: string;
       linkUrl?: string;
       caption?: string;
       productId?: string;
@@ -306,6 +310,23 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
               text: content.caption ?? "",
               imageUrl: urls[0],
               linkUrl: content.linkUrl,
+            },
+          ]);
+        }
+        const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
+        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
+        break;
+      }
+      case "video": {
+        if (content.videoUrl) {
+          setTimeline((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              kind: "video",
+              url: content.videoUrl!,
+              aspectRatio: content.aspectRatio,
+              caption: content.caption,
             },
           ]);
         }
@@ -686,6 +707,10 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   linkUrl={item.linkUrl}
                   caption={item.caption}
                 />
+              );
+            case "video":
+              return (
+                <VideoPlayer key={item.id} url={item.url} aspectRatio={item.aspectRatio} caption={item.caption} />
               );
             case "user-text":
               return <MessageBubble key={item.id} message={{ id: item.id, from: "user", kind: "text", text: item.text }} />;

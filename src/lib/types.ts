@@ -112,7 +112,8 @@ export type ScenarioNodeType =
   | "checkout"
   | "product_qa"
   | "image"
-  | "survey";
+  | "survey"
+  | "video";
 
 export type SurveyAnswerType = "checkbox" | "radio" | "date" | "text_short" | "text_long";
 

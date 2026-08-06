@@ -12,6 +12,7 @@ import type {
   SurveyAnswerType,
   SurveyQuestion,
 } from "@/lib/types";
+import { VIDEO_ASPECT_RATIOS, DEFAULT_VIDEO_ASPECT_RATIO, type VideoAspectRatio } from "@/lib/video-embed";
 
 const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   checkbox: "チェックボックス(複数選択)",
@@ -28,6 +29,7 @@ const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   checkout: "決済導線",
   product_qa: "商品QA",
   image: "画像表示",
+  video: "動画表示",
   survey: "アンケート",
 };
 
@@ -198,6 +200,8 @@ function nodeSummary(node: ScenarioNode, products: PickableProduct[]): string {
         (node.content.imageUrl ? [node.content.imageUrl as string] : []);
       return `画像表示: ${truncate((node.content.caption as string) || urls[0] || "")}${urls.length > 1 ? `他${urls.length}枚` : ""}`;
     }
+    case "video":
+      return `動画表示: ${truncate((node.content.caption as string) || (node.content.videoUrl as string) || "")}`;
     case "survey":
       return `アンケート: ${((node.content.questions as SurveyQuestion[] | undefined) ?? []).length}件の質問`;
     default:
@@ -739,6 +743,11 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   const [newNodeImageUrls, setNewNodeImageUrls] = useState<string[]>([""]);
   const [newNodeImageLinkUrl, setNewNodeImageLinkUrl] = useState("");
   const [newNodeImageCaption, setNewNodeImageCaption] = useState("");
+  const [newNodeVideoUrl, setNewNodeVideoUrl] = useState("");
+  const [newNodeVideoAspectRatio, setNewNodeVideoAspectRatio] = useState<VideoAspectRatio>(
+    DEFAULT_VIDEO_ASPECT_RATIO,
+  );
+  const [newNodeVideoCaption, setNewNodeVideoCaption] = useState("");
   const [newNodeSurveyIntro, setNewNodeSurveyIntro] = useState("");
   const [newNodeSurveyQuestions, setNewNodeSurveyQuestions] = useState<SurveyQuestion[]>([]);
   const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
@@ -1037,6 +1046,17 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         ...(newNodeImageCaption.trim() && { caption: newNodeImageCaption.trim() }),
       };
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
+    } else if (newNodeType === "video") {
+      if (!newNodeVideoUrl.trim()) {
+        setError("動画URLを入力してください");
+        return;
+      }
+      content = {
+        videoUrl: newNodeVideoUrl.trim(),
+        aspectRatio: newNodeVideoAspectRatio,
+        ...(newNodeVideoCaption.trim() && { caption: newNodeVideoCaption.trim() }),
+      };
+      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     } else {
       if (newNodeSurveyQuestions.length === 0) {
         setError("質問を1つ以上追加してください");
@@ -1093,6 +1113,9 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     setNewNodeImageUrls([""]);
     setNewNodeImageLinkUrl("");
     setNewNodeImageCaption("");
+    setNewNodeVideoUrl("");
+    setNewNodeVideoAspectRatio(DEFAULT_VIDEO_ASPECT_RATIO);
+    setNewNodeVideoCaption("");
     setNewNodeSurveyIntro("");
     setNewNodeSurveyQuestions([]);
     setNewNodeChoiceText("");
@@ -1621,6 +1644,46 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
           </>
         )}
 
+        {newNodeType === "video" && (
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                動画URL(直接URL(mp4等)、またはYouTube/Vimeoの動画URL)
+              </span>
+              <input
+                className="input"
+                placeholder="https://..."
+                value={newNodeVideoUrl}
+                onChange={(e) => setNewNodeVideoUrl(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">
+                縦横比(YouTube/Vimeo埋め込み時の表示枠に使用)
+              </span>
+              <select
+                className="input"
+                value={newNodeVideoAspectRatio}
+                onChange={(e) => setNewNodeVideoAspectRatio(e.target.value as VideoAspectRatio)}
+              >
+                {VIDEO_ASPECT_RATIOS.map((ratio) => (
+                  <option key={ratio} value={ratio}>
+                    {ratio}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-neutral-700">キャプション(任意)</span>
+              <input
+                className="input"
+                value={newNodeVideoCaption}
+                onChange={(e) => setNewNodeVideoCaption(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+
         {newNodeType === "survey" && (
           <>
             <label className="block text-sm">
@@ -1720,6 +1783,11 @@ function NodeCard({
   );
   const [imageLinkUrl, setImageLinkUrl] = useState((node.content.linkUrl as string) ?? "");
   const [imageCaption, setImageCaption] = useState((node.content.caption as string) ?? "");
+  const [videoUrl, setVideoUrl] = useState((node.content.videoUrl as string) ?? "");
+  const [videoAspectRatio, setVideoAspectRatio] = useState<VideoAspectRatio>(
+    (node.content.aspectRatio as VideoAspectRatio) ?? DEFAULT_VIDEO_ASPECT_RATIO,
+  );
+  const [videoCaption, setVideoCaption] = useState((node.content.caption as string) ?? "");
   const [surveyIntro, setSurveyIntro] = useState((node.content.introText as string) ?? "");
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>(
     (node.content.questions as SurveyQuestion[] | undefined) ?? [],
@@ -1757,6 +1825,9 @@ function NodeCard({
     );
     setImageLinkUrl((node.content.linkUrl as string) ?? "");
     setImageCaption((node.content.caption as string) ?? "");
+    setVideoUrl((node.content.videoUrl as string) ?? "");
+    setVideoAspectRatio((node.content.aspectRatio as VideoAspectRatio) ?? DEFAULT_VIDEO_ASPECT_RATIO);
+    setVideoCaption((node.content.caption as string) ?? "");
     setSurveyIntro((node.content.introText as string) ?? "");
     setSurveyQuestions((node.content.questions as SurveyQuestion[] | undefined) ?? []);
     setMemo(node.memo ?? "");
@@ -1841,6 +1912,17 @@ function NodeCard({
         imageUrls: urls,
         ...(imageLinkUrl.trim() && { linkUrl: imageLinkUrl.trim() }),
         ...(imageCaption.trim() && { caption: imageCaption.trim() }),
+      };
+      if (defaultNext) nextNodeMap = { default: defaultNext };
+    } else if (node.type === "video") {
+      if (!videoUrl.trim()) {
+        setError("動画URLを入力してください");
+        return;
+      }
+      content = {
+        videoUrl: videoUrl.trim(),
+        aspectRatio: videoAspectRatio,
+        ...(videoCaption.trim() && { caption: videoCaption.trim() }),
       };
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else {
@@ -2077,6 +2159,41 @@ function NodeCard({
             </>
           )}
 
+          {node.type === "video" && (
+            <>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">
+                  動画URL(直接URL(mp4等)、またはYouTube/Vimeoの動画URL)
+                </span>
+                <input className="input" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">
+                  縦横比(YouTube/Vimeo埋め込み時の表示枠に使用)
+                </span>
+                <select
+                  className="input"
+                  value={videoAspectRatio}
+                  onChange={(e) => setVideoAspectRatio(e.target.value as VideoAspectRatio)}
+                >
+                  {VIDEO_ASPECT_RATIOS.map((ratio) => (
+                    <option key={ratio} value={ratio}>
+                      {ratio}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-neutral-500">キャプション(任意)</span>
+                <input
+                  className="input"
+                  value={videoCaption}
+                  onChange={(e) => setVideoCaption(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+
           {node.type === "survey" && (
             <>
               <label className="block text-xs">
@@ -2180,6 +2297,17 @@ function NodeCard({
               )}
               {imageLinkUrl && <p className="mt-1 text-neutral-400">リンク: {imageLinkUrl}</p>}
               {imageCaption && <p className="mt-1 text-neutral-500">{imageCaption}</p>}
+            </div>
+          ) : node.type === "video" ? (
+            <div className="rounded bg-neutral-50 p-2 text-xs">
+              {videoUrl ? (
+                <p className="break-all text-neutral-600">
+                  {videoUrl} ({videoAspectRatio})
+                </p>
+              ) : (
+                "(未設定)"
+              )}
+              {videoCaption && <p className="mt-1 text-neutral-500">{videoCaption}</p>}
             </div>
           ) : node.type === "survey" ? (
             <div className="rounded bg-neutral-50 p-2 text-xs">
