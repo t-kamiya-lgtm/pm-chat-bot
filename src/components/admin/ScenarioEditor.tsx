@@ -921,6 +921,42 @@ function SurveyQuestionsEditor({
   );
 }
 
+function Accordion({
+  title,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  return (
+    <div className="mb-4 rounded-lg border border-neutral-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+      >
+        <h2 className="text-base font-semibold text-neutral-800">{title}</h2>
+        <span className={`text-neutral-400 transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+      {open && (
+        <div className="space-y-6 border-t border-neutral-200 p-4">
+          {children}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmbedSnippet({ label, code }: { label: string; code: string }) {
   return (
     <div>
@@ -1667,410 +1703,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         </button>
       </div>
 
-      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
-        <h2 className="mb-1 text-sm font-semibold text-neutral-700">埋め込みタグ</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          このシナリオを外部サイトに設置するためのコードです。専用URLの発行が必要です。
-        </p>
-        {scenario.slug ? (
-          <div className="space-y-4">
-            <EmbedSnippet
-              label="ポップアップ表示(サイトの隅にボタンを追加)"
-              code={`<script src="${origin}/widget.js" data-widget-origin="${origin}" data-scenario="${scenario.slug}"></script>`}
-            />
-            <EmbedSnippet
-              label="直接埋め込み(ページ全体・LPに設置)"
-              code={`<iframe id="pmchat-${scenario.slug}" src="${origin}/widget/${scenario.slug}" style="width:100%;height:100%;border:none" allow="payment"></iframe>
-<script>
-(function () {
-  var params = new URLSearchParams(window.location.search);
-  var utm = new URLSearchParams();
-  var hasUtm = false;
-  ["utm_source", "utm_medium", "utm_campaign"].forEach(function (key) {
-    var value = params.get(key);
-    if (value) {
-      utm.set(key, value);
-      hasUtm = true;
-    }
-  });
-  if (!hasUtm) return;
-  var iframe = document.getElementById("pmchat-${scenario.slug}");
-  iframe.src += (iframe.src.indexOf("?") > -1 ? "&" : "?") + utm.toString();
-})();
-</script>`}
-            />
-            <p className="text-xs text-neutral-500">
-              広告(Google広告・Meta広告等)のリンク先URLにutm_source・utm_medium・utm_campaignを付与しておくと、
-              上記のタグが自動でチャットボット側に引き継ぎ、実績ダッシュボードで広告別に集計できます。
-              LPを複数持つ場合は、LPごとにutm_campaign(またはutm_content)を分けて発行してください。
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-neutral-500">
-            埋め込みタグを発行するには、先に上の「専用URLを発行する」からこのシナリオの公開URLを設定してください。
-          </p>
-        )}
-      </div>
-
-      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
-        <h2 className="mb-1 text-sm font-semibold text-neutral-700">ポップアップ設定</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          上記「ポップアップ表示」タグで表示されるボタンの見た目です。アイコン画像を設定すると、
-          デフォルトのテキストボタンの代わりに丸いアイコンボタンで表示されます。
-        </p>
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-xs text-neutral-500">アイコン画像URL(未設定でテキストボタン)</span>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={popupIconUrlDraft}
-              onChange={(e) => setPopupIconUrlDraft(e.target.value)}
-              placeholder="https://..."
-              className="input flex-1"
-            />
-            <button
-              type="button"
-              onClick={handleSavePopupIconUrl}
-              disabled={popupIconUrlSaving}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {popupIconUrlSaving ? "保存中..." : "保存"}
-            </button>
-          </div>
-        </label>
-        <div>
-          <span className="mb-2 block text-sm text-neutral-600">表示位置</span>
-          <div className="flex gap-4 text-sm">
-            <label className="flex items-center gap-1">
-              <input
-                type="radio"
-                checked={popupPosition === "bottom-right"}
-                onChange={() => setPopupPosition("bottom-right")}
-              />
-              右下
-            </label>
-            <label className="flex items-center gap-1">
-              <input
-                type="radio"
-                checked={popupPosition === "bottom-left"}
-                onChange={() => setPopupPosition("bottom-left")}
-              />
-              左下
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
-        <h2 className="mb-1 text-sm font-semibold text-neutral-700">広告計測タグ</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          GA4・Google広告・Metaピクセル等、このシナリオのチャット画面に埋め込みたいHTML/JSタグを貼り付けてください。
-          ウィジェットはiframeで表示されるため、タグはそのiframe内で実行されます。
-        </p>
-        <textarea
-          value={adTagDraft}
-          onChange={(e) => setAdTagDraft(e.target.value)}
-          rows={6}
-          placeholder="<script>...</script>"
-          className="mb-2 w-full rounded-md border border-neutral-300 p-2 font-mono text-xs"
-        />
-        <button
-          type="button"
-          onClick={handleSaveAdTag}
-          disabled={adTagSaving}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {adTagSaving ? "保存中..." : "保存"}
-        </button>
-      </div>
-
-      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-neutral-700">表示設定</h2>
-        <div className="flex flex-wrap gap-6">
-          <div className="min-w-[260px] flex-1 space-y-5">
-            <div>
-              <span className="mb-2 block text-sm text-neutral-600">ヘッダー</span>
-              <div className="mb-2 flex gap-4 text-sm">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={display.headerMode === null}
-                    onChange={() => setHeaderMode(null)}
-                  />
-                  未設定
-                </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={display.headerMode === "image"}
-                    onChange={() => setHeaderMode("image")}
-                  />
-                  画像
-                </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={display.headerMode === "title"}
-                    onChange={() => setHeaderMode("title")}
-                  />
-                  タイトル
-                </label>
-              </div>
-              {display.headerMode === "image" && (
-                <input
-                  className="input"
-                  placeholder="https://..."
-                  value={display.headerImageUrl}
-                  onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
-                  onBlur={commitHeaderImageUrl}
-                />
-              )}
-              {display.headerMode === "title" && (
-                <div className="space-y-3">
-                  <input
-                    className="input"
-                    placeholder="ヘッダーに表示するタイトル"
-                    value={display.headerTitle}
-                    onChange={(e) => setDisplay((prev) => ({ ...prev, headerTitle: e.target.value }))}
-                    onBlur={commitHeaderTitle}
-                  />
-                  <ColorSwatchStrip
-                    label="ヘッダーの背景色"
-                    value={display.headerBackgroundColor}
-                    onChange={(color) => setColorField("headerBackgroundColor", color)}
-                    textColor={display.headerTextColor}
-                    onTextColorChange={(color) => setTextColorField("headerTextColor", color)}
-                  />
-                </div>
-              )}
-            </div>
-
-            <ColorSwatchStrip
-              label="チャット画面全体の背景色"
-              value={display.chatBackgroundColor}
-              onChange={(color) => setColorField("chatBackgroundColor", color)}
-            />
-            <ColorSwatchStrip
-              label="メッセージの背景色(Bot側)"
-              value={display.messageBackgroundColor}
-              onChange={(color) => setColorField("messageBackgroundColor", color)}
-              textColor={display.messageTextColor}
-              onTextColorChange={(color) => setTextColorField("messageTextColor", color)}
-            />
-            <ColorSwatchStrip
-              label="メッセージの背景色(ユーザー側)"
-              value={display.userMessageBackgroundColor}
-              onChange={(color) => setColorField("userMessageBackgroundColor", color)}
-              textColor={display.userMessageTextColor}
-              onTextColorChange={(color) => setTextColorField("userMessageTextColor", color)}
-            />
-            <ColorSwatchStrip
-              label="固定メニューの背景色"
-              value={display.menuBackgroundColor}
-              onChange={(color) => setColorField("menuBackgroundColor", color)}
-              textColor={display.menuTextColor}
-              onTextColorChange={(color) => setTextColorField("menuTextColor", color)}
-            />
-          </div>
-
-          <DisplayPreview scenarioId={scenario.id} slug={scenario.slug} display={display} />
-        </div>
-      </div>
-
-      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
-        <h2 className="mb-1 text-sm font-semibold text-neutral-700">固定メニュー(常時表示するボタン)</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          チャット画面下部に常時表示されるボタンです。特定のノードへジャンプさせるか、外部URLを新しいタブで開けます。
-        </p>
-
-        {menuItems.length === 0 ? (
-          <p className="mb-3 text-sm text-neutral-400">まだボタンが登録されていません</p>
-        ) : (
-          <div className="mb-4 space-y-2">
-            {menuItems.map((item, index) => (
-              <div key={item.id} className="rounded-md border border-neutral-200 p-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <div className="mr-3 flex shrink-0 gap-1">
-                    <button
-                      type="button"
-                      disabled={menuPending !== null || index === 0}
-                      onClick={() => moveMenuItem(index, -1)}
-                      className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      disabled={menuPending !== null || index === menuItems.length - 1}
-                      onClick={() => moveMenuItem(index, 1)}
-                      className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-                    >
-                      ▼
-                    </button>
-                  </div>
-                  <div className="flex-1">
-                    <span className="font-medium">{item.label}</span>
-                    <span className="ml-2 text-xs text-neutral-500">
-                      {item.actionType === "node"
-                        ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
-                        : item.actionType === "url"
-                          ? `→ ${item.url}`
-                          : item.actionType === "business_calendar"
-                            ? "→ 営業日カレンダーを表示"
-                            : "→ お買い物ガイドを表示"}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 gap-3 text-xs">
-                    {editingMenuItemId === item.id ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditingMenuItemId(null)}
-                        className="text-neutral-600 hover:underline"
-                      >
-                        閉じる
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => startEditingMenuItem(item)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        編集
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={menuPending === item.id}
-                      onClick={() => handleDeleteMenuItem(item)}
-                      className="text-red-600 hover:underline disabled:opacity-30"
-                    >
-                      削除
-                    </button>
-                  </div>
-                </div>
-
-                {editingMenuItemId === item.id && (
-                  <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3">
-                    <label className="block">
-                      <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
-                      <input
-                        className="input"
-                        value={editMenuLabel}
-                        onChange={(e) => setEditMenuLabel(e.target.value)}
-                        onBlur={() => commitEditMenuLabel(item.id)}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs text-neutral-500">動作</span>
-                      <select
-                        className="input"
-                        value={editMenuActionType}
-                        onChange={(e) =>
-                          handleEditMenuActionTypeChange(item.id, e.target.value as MenuItemActionType)
-                        }
-                      >
-                        <option value="node">ノードへ進む</option>
-                        <option value="url">外部URLを開く</option>
-                        <option value="business_calendar">営業日カレンダーを表示</option>
-                        <option value="shopping_guide">お買い物ガイドを表示</option>
-                      </select>
-                    </label>
-                    {editMenuActionType === "node" ? (
-                      <label className="block">
-                        <span className="mb-1 block text-xs text-neutral-500">ジャンプ先ノード</span>
-                        <select
-                          className="input"
-                          value={editMenuTargetNodeId}
-                          onChange={(e) => commitEditMenuTargetNodeId(item.id, e.target.value)}
-                        >
-                          <option value="">選択してください</option>
-                          {nodeOptions.map((n) => (
-                            <option key={n.id} value={n.id}>
-                              {n.summary}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : editMenuActionType === "url" ? (
-                      <label className="block">
-                        <span className="mb-1 block text-xs text-neutral-500">URL</span>
-                        <input
-                          className="input"
-                          value={editMenuUrl}
-                          onChange={(e) => setEditMenuUrl(e.target.value)}
-                          onBlur={() => commitEditMenuUrl(item.id)}
-                          placeholder="https://..."
-                        />
-                      </label>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {menuError && <p className="mb-2 text-xs text-red-600">{menuError}</p>}
-
-        <form onSubmit={handleAddMenuItem} className="flex flex-wrap items-end gap-2">
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
-            <input
-              className="input"
-              value={newMenuLabel}
-              onChange={(e) => setNewMenuLabel(e.target.value)}
-              placeholder="例: 会社概要 / 今すぐ買う / 公式Instagram"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">動作</span>
-            <select
-              className="input"
-              value={newMenuActionType}
-              onChange={(e) => setNewMenuActionType(e.target.value as MenuItemActionType)}
-            >
-              <option value="node">ノードへ進む</option>
-              <option value="url">外部URLを開く</option>
-              <option value="business_calendar">営業日カレンダーを表示</option>
-              <option value="shopping_guide">お買い物ガイドを表示</option>
-            </select>
-          </label>
-          {newMenuActionType === "node" ? (
-            <label className="block">
-              <span className="mb-1 block text-xs text-neutral-500">ジャンプ先ノード</span>
-              <select
-                className="input"
-                value={newMenuTargetNodeId}
-                onChange={(e) => setNewMenuTargetNodeId(e.target.value)}
-              >
-                <option value="">選択してください</option>
-                {nodeOptions.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.summary}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : newMenuActionType === "url" ? (
-            <label className="block">
-              <span className="mb-1 block text-xs text-neutral-500">URL</span>
-              <input
-                className="input"
-                value={newMenuUrl}
-                onChange={(e) => setNewMenuUrl(e.target.value)}
-                placeholder="https://..."
-              />
-            </label>
-          ) : null}
-          <button
-            type="submit"
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
-          >
-            追加
-          </button>
-        </form>
-      </div>
-
+      <Accordion title="シナリオ設定" defaultOpen>
       {products.length === 0 && (
         <p className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
           商品が登録されていません。「商品提示」「決済導線」「商品QA」ノードで参照する場合は先に商品を登録してください。
@@ -2408,6 +2041,410 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
           ノードを追加
         </button>
       </form>
+      </Accordion>
+
+      <Accordion title="表示設定">
+        <div className="flex flex-wrap gap-6">
+          <div className="min-w-[260px] flex-1 space-y-5">
+            <div>
+              <span className="mb-2 block text-sm text-neutral-600">ヘッダー</span>
+              <div className="mb-2 flex gap-4 text-sm">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={display.headerMode === null}
+                    onChange={() => setHeaderMode(null)}
+                  />
+                  未設定
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={display.headerMode === "image"}
+                    onChange={() => setHeaderMode("image")}
+                  />
+                  画像
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={display.headerMode === "title"}
+                    onChange={() => setHeaderMode("title")}
+                  />
+                  タイトル
+                </label>
+              </div>
+              {display.headerMode === "image" && (
+                <input
+                  className="input"
+                  placeholder="https://..."
+                  value={display.headerImageUrl}
+                  onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
+                  onBlur={commitHeaderImageUrl}
+                />
+              )}
+              {display.headerMode === "title" && (
+                <div className="space-y-3">
+                  <input
+                    className="input"
+                    placeholder="ヘッダーに表示するタイトル"
+                    value={display.headerTitle}
+                    onChange={(e) => setDisplay((prev) => ({ ...prev, headerTitle: e.target.value }))}
+                    onBlur={commitHeaderTitle}
+                  />
+                  <ColorSwatchStrip
+                    label="ヘッダーの背景色"
+                    value={display.headerBackgroundColor}
+                    onChange={(color) => setColorField("headerBackgroundColor", color)}
+                    textColor={display.headerTextColor}
+                    onTextColorChange={(color) => setTextColorField("headerTextColor", color)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <ColorSwatchStrip
+              label="チャット画面全体の背景色"
+              value={display.chatBackgroundColor}
+              onChange={(color) => setColorField("chatBackgroundColor", color)}
+            />
+            <ColorSwatchStrip
+              label="メッセージの背景色(Bot側)"
+              value={display.messageBackgroundColor}
+              onChange={(color) => setColorField("messageBackgroundColor", color)}
+              textColor={display.messageTextColor}
+              onTextColorChange={(color) => setTextColorField("messageTextColor", color)}
+            />
+            <ColorSwatchStrip
+              label="メッセージの背景色(ユーザー側)"
+              value={display.userMessageBackgroundColor}
+              onChange={(color) => setColorField("userMessageBackgroundColor", color)}
+              textColor={display.userMessageTextColor}
+              onTextColorChange={(color) => setTextColorField("userMessageTextColor", color)}
+            />
+            <ColorSwatchStrip
+              label="固定メニューの背景色"
+              value={display.menuBackgroundColor}
+              onChange={(color) => setColorField("menuBackgroundColor", color)}
+              textColor={display.menuTextColor}
+              onTextColorChange={(color) => setTextColorField("menuTextColor", color)}
+            />
+          </div>
+
+          <DisplayPreview scenarioId={scenario.id} slug={scenario.slug} display={display} />
+        </div>
+      </Accordion>
+
+      <Accordion title="固定メニュー設定">
+        <p className="text-xs text-neutral-500">
+          チャット画面下部に常時表示されるボタンです。特定のノードへジャンプさせるか、外部URLを新しいタブで開けます。
+        </p>
+
+        {menuItems.length === 0 ? (
+          <p className="text-sm text-neutral-400">まだボタンが登録されていません</p>
+        ) : (
+          <div className="space-y-2">
+            {menuItems.map((item, index) => (
+              <div key={item.id} className="rounded-md border border-neutral-200 p-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <div className="mr-3 flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      disabled={menuPending !== null || index === 0}
+                      onClick={() => moveMenuItem(index, -1)}
+                      className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      disabled={menuPending !== null || index === menuItems.length - 1}
+                      onClick={() => moveMenuItem(index, 1)}
+                      className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    <span className="font-medium">{item.label}</span>
+                    <span className="ml-2 text-xs text-neutral-500">
+                      {item.actionType === "node"
+                        ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
+                        : item.actionType === "url"
+                          ? `→ ${item.url}`
+                          : item.actionType === "business_calendar"
+                            ? "→ 営業日カレンダーを表示"
+                            : "→ お買い物ガイドを表示"}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 gap-3 text-xs">
+                    {editingMenuItemId === item.id ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingMenuItemId(null)}
+                        className="text-neutral-600 hover:underline"
+                      >
+                        閉じる
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditingMenuItem(item)}
+                        className="text-blue-600 hover:underline"
+                      >
+                        編集
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={menuPending === item.id}
+                      onClick={() => handleDeleteMenuItem(item)}
+                      className="text-red-600 hover:underline disabled:opacity-30"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+
+                {editingMenuItemId === item.id && (
+                  <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
+                      <input
+                        className="input"
+                        value={editMenuLabel}
+                        onChange={(e) => setEditMenuLabel(e.target.value)}
+                        onBlur={() => commitEditMenuLabel(item.id)}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">動作</span>
+                      <select
+                        className="input"
+                        value={editMenuActionType}
+                        onChange={(e) =>
+                          handleEditMenuActionTypeChange(item.id, e.target.value as MenuItemActionType)
+                        }
+                      >
+                        <option value="node">ノードへ進む</option>
+                        <option value="url">外部URLを開く</option>
+                        <option value="business_calendar">営業日カレンダーを表示</option>
+                        <option value="shopping_guide">お買い物ガイドを表示</option>
+                      </select>
+                    </label>
+                    {editMenuActionType === "node" ? (
+                      <label className="block">
+                        <span className="mb-1 block text-xs text-neutral-500">ジャンプ先ノード</span>
+                        <select
+                          className="input"
+                          value={editMenuTargetNodeId}
+                          onChange={(e) => commitEditMenuTargetNodeId(item.id, e.target.value)}
+                        >
+                          <option value="">選択してください</option>
+                          {nodeOptions.map((n) => (
+                            <option key={n.id} value={n.id}>
+                              {n.summary}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : editMenuActionType === "url" ? (
+                      <label className="block">
+                        <span className="mb-1 block text-xs text-neutral-500">URL</span>
+                        <input
+                          className="input"
+                          value={editMenuUrl}
+                          onChange={(e) => setEditMenuUrl(e.target.value)}
+                          onBlur={() => commitEditMenuUrl(item.id)}
+                          placeholder="https://..."
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {menuError && <p className="text-xs text-red-600">{menuError}</p>}
+
+        <form onSubmit={handleAddMenuItem} className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
+            <input
+              className="input"
+              value={newMenuLabel}
+              onChange={(e) => setNewMenuLabel(e.target.value)}
+              placeholder="例: 会社概要 / 今すぐ買う / 公式Instagram"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">動作</span>
+            <select
+              className="input"
+              value={newMenuActionType}
+              onChange={(e) => setNewMenuActionType(e.target.value as MenuItemActionType)}
+            >
+              <option value="node">ノードへ進む</option>
+              <option value="url">外部URLを開く</option>
+              <option value="business_calendar">営業日カレンダーを表示</option>
+              <option value="shopping_guide">お買い物ガイドを表示</option>
+            </select>
+          </label>
+          {newMenuActionType === "node" ? (
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">ジャンプ先ノード</span>
+              <select
+                className="input"
+                value={newMenuTargetNodeId}
+                onChange={(e) => setNewMenuTargetNodeId(e.target.value)}
+              >
+                <option value="">選択してください</option>
+                {nodeOptions.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.summary}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : newMenuActionType === "url" ? (
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">URL</span>
+              <input
+                className="input"
+                value={newMenuUrl}
+                onChange={(e) => setNewMenuUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+          ) : null}
+          <button
+            type="submit"
+            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+          >
+            追加
+          </button>
+        </form>
+      </Accordion>
+
+      <Accordion title="ポップアップ設定">
+        <p className="text-xs text-neutral-500">
+          埋め込みタグの「ポップアップ表示」で表示されるボタンの見た目です。アイコン画像を設定すると、
+          デフォルトのテキストボタンの代わりに丸いアイコンボタンで表示されます。
+        </p>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-neutral-500">アイコン画像URL(未設定でテキストボタン)</span>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={popupIconUrlDraft}
+              onChange={(e) => setPopupIconUrlDraft(e.target.value)}
+              placeholder="https://..."
+              className="input flex-1"
+            />
+            <button
+              type="button"
+              onClick={handleSavePopupIconUrl}
+              disabled={popupIconUrlSaving}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {popupIconUrlSaving ? "保存中..." : "保存"}
+            </button>
+          </div>
+        </label>
+        <div>
+          <span className="mb-2 block text-sm text-neutral-600">表示位置</span>
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={popupPosition === "bottom-right"}
+                onChange={() => setPopupPosition("bottom-right")}
+              />
+              右下
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={popupPosition === "bottom-left"}
+                onChange={() => setPopupPosition("bottom-left")}
+              />
+              左下
+            </label>
+          </div>
+        </div>
+      </Accordion>
+
+      <Accordion title="タグ設定">
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">埋め込みタグ</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            このシナリオを外部サイトに設置するためのコードです。専用URLの発行が必要です。
+          </p>
+          {scenario.slug ? (
+            <div className="space-y-4">
+              <EmbedSnippet
+                label="ポップアップ表示(サイトの隅にボタンを追加)"
+                code={`<script src="${origin}/widget.js" data-widget-origin="${origin}" data-scenario="${scenario.slug}"></script>`}
+              />
+              <EmbedSnippet
+                label="直接埋め込み(ページ全体・LPに設置)"
+                code={`<iframe id="pmchat-${scenario.slug}" src="${origin}/widget/${scenario.slug}" style="width:100%;height:100%;border:none" allow="payment"></iframe>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var utm = new URLSearchParams();
+  var hasUtm = false;
+  ["utm_source", "utm_medium", "utm_campaign"].forEach(function (key) {
+    var value = params.get(key);
+    if (value) {
+      utm.set(key, value);
+      hasUtm = true;
+    }
+  });
+  if (!hasUtm) return;
+  var iframe = document.getElementById("pmchat-${scenario.slug}");
+  iframe.src += (iframe.src.indexOf("?") > -1 ? "&" : "?") + utm.toString();
+})();
+</script>`}
+              />
+              <p className="text-xs text-neutral-500">
+                広告(Google広告・Meta広告等)のリンク先URLにutm_source・utm_medium・utm_campaignを付与しておくと、
+                上記のタグが自動でチャットボット側に引き継ぎ、実績ダッシュボードで広告別に集計できます。
+                LPを複数持つ場合は、LPごとにutm_campaign(またはutm_content)を分けて発行してください。
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-neutral-500">
+              埋め込みタグを発行するには、上の「専用URLを発行する」からこのシナリオの公開URLを設定してください。
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">広告計測タグ</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            GA4・Google広告・Metaピクセル等、このシナリオのチャット画面に埋め込みたいHTML/JSタグを貼り付けてください。
+            ウィジェットはiframeで表示されるため、タグはそのiframe内で実行されます。
+          </p>
+          <textarea
+            value={adTagDraft}
+            onChange={(e) => setAdTagDraft(e.target.value)}
+            rows={6}
+            placeholder="<script>...</script>"
+            className="mb-2 w-full rounded-md border border-neutral-300 p-2 font-mono text-xs"
+          />
+          <button
+            type="button"
+            onClick={handleSaveAdTag}
+            disabled={adTagSaving}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {adTagSaving ? "保存中..." : "保存"}
+          </button>
+        </div>
+      </Accordion>
     </div>
   );
 }
