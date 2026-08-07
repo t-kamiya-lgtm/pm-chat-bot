@@ -50,6 +50,8 @@ const updateSchema = z.object({
   userMessageTextColor: z.enum(["white", "black"]).nullable().optional(),
   menuTextColor: z.enum(["white", "black"]).nullable().optional(),
   adTag: z.string().nullable().optional(),
+  popupIconUrl: z.string().nullable().optional(),
+  popupPosition: z.enum(["bottom-right", "bottom-left"]).nullable().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -115,6 +117,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       }),
       ...(input.menuTextColor !== undefined && { menu_text_color: input.menuTextColor }),
       ...(input.adTag !== undefined && { ad_tag: input.adTag }),
+      ...(input.popupIconUrl !== undefined && { popup_icon_url: input.popupIconUrl }),
+      ...(input.popupPosition !== undefined && { popup_position: input.popupPosition }),
     })
     .eq("id", id)
     .select("*")

@@ -84,6 +84,8 @@ export default async function ScenarioEditorPage({
           headerBackgroundColor: scenario.header_background_color,
           headerTextColor: scenario.header_text_color,
           adTag: scenario.ad_tag,
+          popupIconUrl: scenario.popup_icon_url,
+          popupPosition: scenario.popup_position,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,
