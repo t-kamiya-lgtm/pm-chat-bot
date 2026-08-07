@@ -611,6 +611,9 @@ function ImageUrlListEditor({
       <span className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${textSize}`}>
         画像URL(複数登録すると、チャット上でカルーセル表示になります)
       </span>
+      <p className={`text-neutral-400 ${compact ? "text-[11px]" : "text-xs"}`}>
+        推奨比率: 1枚のみの場合は横長など任意の比率で表示されます。2枚以上登録する場合は正方形(1:1)推奨(カルーセル表示時は正方形に切り取られます)
+      </p>
       {urls.map((url, index) => (
         <div key={index} className="flex gap-2">
           <input
@@ -1841,7 +1844,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               onChange={setNewNodeUpsellProductId}
             />
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">アップセル画像URL(任意・正方形推奨)</span>
+              <span className="mb-1 block font-medium text-neutral-700">アップセル画像URL(任意・正方形1:1推奨)</span>
               <input
                 className="input"
                 value={newNodeUpsellImageUrl}
@@ -1866,7 +1869,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               onChange={setNewNodeCrossSellProductId}
             />
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形推奨)</span>
+              <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形1:1推奨)</span>
               <input
                 className="input"
                 value={newNodeCrossSellImageUrl}
@@ -1899,7 +1902,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">画像URL(任意)</span>
+              <span className="mb-1 block font-medium text-neutral-700">画像URL(任意・比率自由・横幅いっぱいに表示)</span>
               <input
                 className="input"
                 value={newNodeImageUrl}
@@ -2075,13 +2078,18 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                 </label>
               </div>
               {display.headerMode === "image" && (
-                <input
-                  className="input"
-                  placeholder="https://..."
-                  value={display.headerImageUrl}
-                  onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
-                  onBlur={commitHeaderImageUrl}
-                />
+                <>
+                  <input
+                    className="input"
+                    placeholder="https://..."
+                    value={display.headerImageUrl}
+                    onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
+                    onBlur={commitHeaderImageUrl}
+                  />
+                  <p className="mt-1 text-xs text-neutral-400">
+                    推奨比率: 横長(比率自由・横幅いっぱいに表示されます)
+                  </p>
+                </>
               )}
               {display.headerMode === "title" && (
                 <div className="space-y-3">
@@ -2334,7 +2342,9 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
           デフォルトのテキストボタンの代わりに丸いアイコンボタンで表示されます。
         </p>
         <label className="block text-sm">
-          <span className="mb-1 block text-xs text-neutral-500">アイコン画像URL(未設定でテキストボタン)</span>
+          <span className="mb-1 block text-xs text-neutral-500">
+            アイコン画像URL(未設定でテキストボタン・正方形1:1推奨・60×60pxの円形で表示されます)
+          </span>
           <div className="flex gap-2">
             <input
               type="text"
@@ -2780,7 +2790,7 @@ function NodeCard({
                 compact
               />
               <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">アップセル画像URL(任意・正方形推奨)</span>
+                <span className="mb-1 block text-neutral-500">アップセル画像URL(任意・正方形1:1推奨)</span>
                 <input className="input" value={upsellImageUrl} onChange={(e) => setUpsellImageUrl(e.target.value)} />
               </label>
               <label className="block text-xs">
@@ -2802,7 +2812,7 @@ function NodeCard({
                 compact
               />
               <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">クロスセル画像URL(任意・正方形推奨)</span>
+                <span className="mb-1 block text-neutral-500">クロスセル画像URL(任意・正方形1:1推奨)</span>
                 <input
                   className="input"
                   value={crossSellImageUrl}
@@ -2835,7 +2845,7 @@ function NodeCard({
                 />
               </label>
               <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">画像URL(任意)</span>
+                <span className="mb-1 block text-neutral-500">画像URL(任意・比率自由・横幅いっぱいに表示)</span>
                 <input className="input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
               </label>
             </>

@@ -235,6 +235,7 @@ export function ProductForm({
         <span className="mb-1 block text-sm font-medium text-neutral-700">
           画像URL(複数可、1枚目がカルーセルに表示されます)
         </span>
+        <p className="mb-1 text-xs text-neutral-400">推奨比率: 正方形(1:1)。商品カード・詳細ともに正方形に切り取られて表示されます</p>
         <div className="space-y-2">
           {values.imageUrls.map((url, index) => (
             <div key={index} className="flex gap-2">
