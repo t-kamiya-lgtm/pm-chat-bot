@@ -98,6 +98,8 @@ export interface Scenario {
   headerBackgroundColor: string | null;
   headerTextColor: "white" | "black" | null;
   adTag: string | null;
+  popupIconUrl: string | null;
+  popupPosition: "bottom-right" | "bottom-left" | null;
   version: number;
   createdBy: string | null;
   createdAt: string;

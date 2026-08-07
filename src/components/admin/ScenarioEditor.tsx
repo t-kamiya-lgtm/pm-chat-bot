@@ -921,6 +921,26 @@ function SurveyQuestionsEditor({
   );
 }
 
+function EmbedSnippet({ label, code }: { label: string; code: string }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-sm text-neutral-600">{label}</span>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(code)}
+          className="text-sm text-blue-600 hover:underline"
+        >
+          コピー
+        </button>
+      </div>
+      <pre className="overflow-x-auto rounded-md bg-neutral-900 p-3 text-xs text-neutral-100">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
 interface Props {
   scenario: Scenario;
   nodes: ScenarioNode[];
@@ -947,6 +967,11 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   });
   const [adTagDraft, setAdTagDraft] = useState(scenario.adTag ?? "");
   const [adTagSaving, setAdTagSaving] = useState(false);
+  const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
+  const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
+  const [popupPosition, setPopupPositionState] = useState<"bottom-right" | "bottom-left">(
+    scenario.popupPosition ?? "bottom-right",
+  );
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
@@ -1149,6 +1174,27 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
       return;
     }
     router.refresh();
+  }
+
+  async function handleSavePopupIconUrl() {
+    setPopupIconUrlSaving(true);
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ popupIconUrl: popupIconUrlDraft.trim() || null }),
+    });
+    setPopupIconUrlSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`アイコン画像の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
+  }
+
+  function setPopupPosition(position: "bottom-right" | "bottom-left") {
+    setPopupPositionState(position);
+    patchDisplaySettings({ popupPosition: position });
   }
 
   async function handleAddMenuItem(event: React.FormEvent) {
@@ -1619,6 +1665,100 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         <button type="button" onClick={handleEditOrderCode} className="text-blue-600 hover:underline">
           編集
         </button>
+      </div>
+
+      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
+        <h2 className="mb-1 text-sm font-semibold text-neutral-700">埋め込みタグ</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          このシナリオを外部サイトに設置するためのコードです。専用URLの発行が必要です。
+        </p>
+        {scenario.slug ? (
+          <div className="space-y-4">
+            <EmbedSnippet
+              label="ポップアップ表示(サイトの隅にボタンを追加)"
+              code={`<script src="${origin}/widget.js" data-widget-origin="${origin}" data-scenario="${scenario.slug}"></script>`}
+            />
+            <EmbedSnippet
+              label="直接埋め込み(ページ全体・LPに設置)"
+              code={`<iframe id="pmchat-${scenario.slug}" src="${origin}/widget/${scenario.slug}" style="width:100%;height:100%;border:none" allow="payment"></iframe>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var utm = new URLSearchParams();
+  var hasUtm = false;
+  ["utm_source", "utm_medium", "utm_campaign"].forEach(function (key) {
+    var value = params.get(key);
+    if (value) {
+      utm.set(key, value);
+      hasUtm = true;
+    }
+  });
+  if (!hasUtm) return;
+  var iframe = document.getElementById("pmchat-${scenario.slug}");
+  iframe.src += (iframe.src.indexOf("?") > -1 ? "&" : "?") + utm.toString();
+})();
+</script>`}
+            />
+            <p className="text-xs text-neutral-500">
+              広告(Google広告・Meta広告等)のリンク先URLにutm_source・utm_medium・utm_campaignを付与しておくと、
+              上記のタグが自動でチャットボット側に引き継ぎ、実績ダッシュボードで広告別に集計できます。
+              LPを複数持つ場合は、LPごとにutm_campaign(またはutm_content)を分けて発行してください。
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-neutral-500">
+            埋め込みタグを発行するには、先に上の「専用URLを発行する」からこのシナリオの公開URLを設定してください。
+          </p>
+        )}
+      </div>
+
+      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
+        <h2 className="mb-1 text-sm font-semibold text-neutral-700">ポップアップ設定</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          上記「ポップアップ表示」タグで表示されるボタンの見た目です。アイコン画像を設定すると、
+          デフォルトのテキストボタンの代わりに丸いアイコンボタンで表示されます。
+        </p>
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block text-xs text-neutral-500">アイコン画像URL(未設定でテキストボタン)</span>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={popupIconUrlDraft}
+              onChange={(e) => setPopupIconUrlDraft(e.target.value)}
+              placeholder="https://..."
+              className="input flex-1"
+            />
+            <button
+              type="button"
+              onClick={handleSavePopupIconUrl}
+              disabled={popupIconUrlSaving}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {popupIconUrlSaving ? "保存中..." : "保存"}
+            </button>
+          </div>
+        </label>
+        <div>
+          <span className="mb-2 block text-sm text-neutral-600">表示位置</span>
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={popupPosition === "bottom-right"}
+                onChange={() => setPopupPosition("bottom-right")}
+              />
+              右下
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={popupPosition === "bottom-left"}
+                onChange={() => setPopupPosition("bottom-left")}
+              />
+              左下
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className="mb-8 rounded-lg border border-neutral-200 p-4">
