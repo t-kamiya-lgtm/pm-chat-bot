@@ -38,6 +38,9 @@ export const checkoutBaseSchema = z.object({
   surveyResponses: z.record(z.string(), z.string()).optional(),
   scenarioId: z.string().uuid().optional(),
   sessionId: z.string().min(1).optional(),
+  utmSource: z.string().optional(),
+  utmMedium: z.string().optional(),
+  utmCampaign: z.string().optional(),
 });
 
 export const deferredCheckoutSchema = checkoutBaseSchema.extend({

@@ -49,6 +49,7 @@ const updateSchema = z.object({
   messageTextColor: z.enum(["white", "black"]).nullable().optional(),
   userMessageTextColor: z.enum(["white", "black"]).nullable().optional(),
   menuTextColor: z.enum(["white", "black"]).nullable().optional(),
+  adTag: z.string().nullable().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -113,6 +114,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         user_message_text_color: input.userMessageTextColor,
       }),
       ...(input.menuTextColor !== undefined && { menu_text_color: input.menuTextColor }),
+      ...(input.adTag !== undefined && { ad_tag: input.adTag }),
     })
     .eq("id", id)
     .select("*")

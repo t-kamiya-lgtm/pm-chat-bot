@@ -83,6 +83,7 @@ export default async function ScenarioEditorPage({
           headerTitle: scenario.header_title,
           headerBackgroundColor: scenario.header_background_color,
           headerTextColor: scenario.header_text_color,
+          adTag: scenario.ad_tag,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,

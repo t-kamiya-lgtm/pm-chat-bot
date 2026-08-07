@@ -4,6 +4,7 @@ import { getCurrentAppUser } from "@/lib/auth";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "ダッシュボード" },
+  { href: "/admin/dashboard", label: "実績ダッシュボード" },
   { href: "/admin/brands", label: "ブランド" },
   { href: "/admin/product-groups", label: "アイテム" },
   { href: "/admin/products", label: "商品(品番)" },

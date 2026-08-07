@@ -21,6 +21,9 @@ const requestSchema = z.object({
   surveyResponses: z.record(z.string(), z.string()).optional(),
   scenarioId: z.string().uuid().optional(),
   sessionId: z.string().min(1).optional(),
+  utmSource: z.string().optional(),
+  utmMedium: z.string().optional(),
+  utmCampaign: z.string().optional(),
 });
 
 /**
@@ -45,6 +48,9 @@ export async function POST(request: Request) {
     surveyResponses,
     scenarioId,
     sessionId,
+    utmSource,
+    utmMedium,
+    utmCampaign,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -129,6 +135,9 @@ export async function POST(request: Request) {
       addon_amount: addonProduct ? addonAmount : null,
       shipping_address: shippingAddress ?? null,
       survey_responses: surveyResponses ?? null,
+      utm_source: utmSource ?? null,
+      utm_medium: utmMedium ?? null,
+      utm_campaign: utmCampaign ?? null,
     })
     .select("id")
     .single();

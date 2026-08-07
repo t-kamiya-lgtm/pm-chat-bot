@@ -97,6 +97,7 @@ export interface Scenario {
   headerTitle: string | null;
   headerBackgroundColor: string | null;
   headerTextColor: "white" | "black" | null;
+  adTag: string | null;
   version: number;
   createdBy: string | null;
   createdAt: string;
