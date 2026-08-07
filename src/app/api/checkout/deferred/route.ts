@@ -33,6 +33,9 @@ export async function POST(request: Request) {
     surveyResponses,
     scenarioId,
     sessionId,
+    utmSource,
+    utmMedium,
+    utmCampaign,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -92,6 +95,9 @@ export async function POST(request: Request) {
       addon_amount: addonProduct ? addonAmount : null,
       shipping_address: shippingAddress ?? null,
       survey_responses: surveyResponses ?? null,
+      utm_source: utmSource ?? null,
+      utm_medium: utmMedium ?? null,
+      utm_campaign: utmCampaign ?? null,
     })
     .select("id")
     .single();

@@ -272,6 +272,9 @@ interface Props {
   privacyText?: string;
   sessionId: string;
   scenarioId?: string;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
   surveyResponses?: Record<string, string>;
   onComplete: (result: { ok: boolean; items: GreetingItem[] }) => void;
   onBack: () => void;
@@ -303,6 +306,9 @@ export function CheckoutForm({
   privacyText,
   sessionId,
   scenarioId,
+  utmSource,
+  utmMedium,
+  utmCampaign,
   surveyResponses,
   onComplete,
   onBack,
@@ -618,6 +624,9 @@ export function CheckoutForm({
               ...(shippingAddress && { shippingAddress }),
               ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
               ...(scenarioId && { scenarioId }),
+              ...(utmSource && { utmSource }),
+              ...(utmMedium && { utmMedium }),
+              ...(utmCampaign && { utmCampaign }),
               sessionId,
             }
           : {
@@ -629,6 +638,9 @@ export function CheckoutForm({
               ...(shippingAddress && { shippingAddress }),
               ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
               ...(scenarioId && { scenarioId }),
+              ...(utmSource && { utmSource }),
+              ...(utmMedium && { utmMedium }),
+              ...(utmCampaign && { utmCampaign }),
               sessionId,
             };
 
@@ -703,6 +715,9 @@ export function CheckoutForm({
           ...(shippingAddress && { shippingAddress }),
           ...(surveyResponsesPayload && { surveyResponses: surveyResponsesPayload }),
           ...(scenarioId && { scenarioId }),
+          ...(utmSource && { utmSource }),
+          ...(utmMedium && { utmMedium }),
+          ...(utmCampaign && { utmCampaign }),
           sessionId,
         }),
       });

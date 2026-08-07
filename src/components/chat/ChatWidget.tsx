@@ -90,6 +90,9 @@ const QA_TARGET_PREFIX = "qa:";
 export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
+  const utmSource = searchParams.get("utm_source");
+  const utmMedium = searchParams.get("utm_medium");
+  const utmCampaign = searchParams.get("utm_campaign");
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nodesById, setNodesById] = useState<Record<string, WidgetScenarioNode>>({});
@@ -111,6 +114,31 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     backgroundColor: string | null;
     textColor: "white" | "black" | null;
   }>({ mode: null, imageUrl: null, title: null, backgroundColor: null, textColor: null });
+  const [adTag, setAdTag] = useState<string | null>(null);
+  // dangerouslySetInnerHTMLで挿入した<script>はブラウザ仕様により実行されないため、
+  // 管理者が設定した広告計測タグ(GA4/Metaピクセル等)は要素を組み立て直してDOMに追加する
+  useEffect(() => {
+    if (!adTag) return;
+    const container = document.createElement("div");
+    container.innerHTML = adTag;
+    const injected: ChildNode[] = [];
+    for (const node of Array.from(container.childNodes)) {
+      if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName === "SCRIPT") {
+        const original = node as HTMLScriptElement;
+        const script = document.createElement("script");
+        for (const attr of Array.from(original.attributes)) script.setAttribute(attr.name, attr.value);
+        script.textContent = original.textContent;
+        document.body.appendChild(script);
+        injected.push(script);
+      } else {
+        document.body.appendChild(node);
+        injected.push(node);
+      }
+    }
+    return () => {
+      for (const node of injected) node.parentNode?.removeChild(node);
+    };
+  }, [adTag]);
   // 入力欄フォーカス中(キーボード表示中)は固定メニューを隠し、スペースを確保する
   const [keyboardActive, setKeyboardActive] = useState(false);
   useEffect(() => {
@@ -241,6 +269,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             header_title?: string | null;
             header_background_color?: string | null;
             header_text_color?: "white" | "black" | null;
+            ad_tag?: string | null;
           };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
@@ -263,6 +292,19 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setOrderedNodeIds(orderedIds);
         setMenuItems(scenarioBody.menuItems ?? []);
         setScenarioId(scenarioBody.scenario?.id);
+        setAdTag(scenarioBody.scenario?.ad_tag ?? null);
+        fetch("/api/widget/access-log", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...(scenarioBody.scenario?.id && { scenarioId: scenarioBody.scenario.id }),
+            sessionId,
+            utmSource,
+            utmMedium,
+            utmCampaign,
+            referrer: document.referrer || null,
+          }),
+        }).catch(() => {});
         setChatBackgroundColor(scenarioBody.scenario?.chat_background_color ?? null);
         setMenuBackgroundColor(scenarioBody.scenario?.menu_background_color ?? null);
         setMenuTextColor(scenarioBody.scenario?.menu_text_color ?? null);
@@ -905,6 +947,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   privacyText={item.privacyText}
                   sessionId={sessionId}
                   scenarioId={scenarioId}
+                  utmSource={utmSource}
+                  utmMedium={utmMedium}
+                  utmCampaign={utmCampaign}
                   surveyResponses={surveyAnswers}
                   onComplete={(result) => handleCheckoutComplete(item, result)}
                   onBack={() => handleCheckoutBack(item)}

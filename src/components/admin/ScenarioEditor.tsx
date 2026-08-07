@@ -945,6 +945,8 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
     headerBackgroundColor: scenario.headerBackgroundColor,
     headerTextColor: scenario.headerTextColor,
   });
+  const [adTagDraft, setAdTagDraft] = useState(scenario.adTag ?? "");
+  const [adTagSaving, setAdTagSaving] = useState(false);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
@@ -1131,6 +1133,22 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
 
   function commitHeaderTitle() {
     patchDisplaySettings({ headerTitle: display.headerTitle.trim() || null });
+  }
+
+  async function handleSaveAdTag() {
+    setAdTagSaving(true);
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adTag: adTagDraft.trim() || null }),
+    });
+    setAdTagSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`広告タグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
   }
 
   async function handleAddMenuItem(event: React.FormEvent) {
@@ -1600,6 +1618,29 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
         </span>
         <button type="button" onClick={handleEditOrderCode} className="text-blue-600 hover:underline">
           編集
+        </button>
+      </div>
+
+      <div className="mb-8 rounded-lg border border-neutral-200 p-4">
+        <h2 className="mb-1 text-sm font-semibold text-neutral-700">広告計測タグ</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          GA4・Google広告・Metaピクセル等、このシナリオのチャット画面に埋め込みたいHTML/JSタグを貼り付けてください。
+          ウィジェットはiframeで表示されるため、タグはそのiframe内で実行されます。
+        </p>
+        <textarea
+          value={adTagDraft}
+          onChange={(e) => setAdTagDraft(e.target.value)}
+          rows={6}
+          placeholder="<script>...</script>"
+          className="mb-2 w-full rounded-md border border-neutral-300 p-2 font-mono text-xs"
+        />
+        <button
+          type="button"
+          onClick={handleSaveAdTag}
+          disabled={adTagSaving}
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {adTagSaving ? "保存中..." : "保存"}
         </button>
       </div>
 

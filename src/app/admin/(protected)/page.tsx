@@ -6,6 +6,7 @@ const CARDS = [
   { href: "/admin/scenarios", title: "シナリオ管理", description: "選択肢分岐型トークフローの作成" },
   { href: "/admin/faqs", title: "商品QAレビュー", description: "生成されたQ&A候補の承認・却下" },
   { href: "/admin/orders", title: "注文一覧", description: "決済・後払い・代引きの注文状況" },
+  { href: "/admin/dashboard", title: "実績ダッシュボード", description: "アクセス数・購入数・売上を広告・シナリオ別に確認" },
 ];
 
 export default function AdminDashboardPage() {
