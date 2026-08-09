@@ -13,10 +13,17 @@ export default async function EditProductPage({
   const { id } = await params;
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: product }, { data: productGroups }] = await Promise.all([
-    supabase.from("products").select("*").eq("id", id).maybeSingle(),
-    supabase.from("product_groups").select("id, name").order("created_at", { ascending: false }),
-  ]);
+  const [{ data: product }, { data: productGroups }, { data: allProducts }, { data: setOptions }] =
+    await Promise.all([
+      supabase.from("products").select("*").eq("id", id).maybeSingle(),
+      supabase.from("product_groups").select("id, name").order("created_at", { ascending: false }),
+      supabase
+        .from("products")
+        .select("id, name")
+        .neq("id", id)
+        .order("smaregi_product_id", { ascending: true, nullsFirst: false }),
+      supabase.from("product_set_options").select("option_product_id").eq("product_id", id),
+    ]);
 
   if (!product) notFound();
 
@@ -36,6 +43,7 @@ export default async function EditProductPage({
 
       <ProductForm
         productGroups={productGroups ?? []}
+        otherProducts={allProducts ?? []}
         initialValues={{
           id: product.id,
           productGroupId: product.product_group_id ?? "",
@@ -51,6 +59,9 @@ export default async function EditProductPage({
           smaregiProductId: product.smaregi_product_id ?? "",
           orderType: product.order_type,
           subscriptionIntervals: product.subscription_intervals ?? [],
+          isSet: product.is_set ?? false,
+          setItemCount: product.set_item_count ?? null,
+          setOptionProductIds: (setOptions ?? []).map((o) => o.option_product_id),
         }}
       />
     </div>

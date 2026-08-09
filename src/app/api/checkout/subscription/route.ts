@@ -32,6 +32,7 @@ const requestSchema = z.object({
   utmMedium: z.string().optional(),
   utmCampaign: z.string().optional(),
   couponCode: z.string().optional(),
+  setSelections: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 
 const INTERVAL_MAP: Record<
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
     utmMedium,
     utmCampaign,
     couponCode,
+    setSelections,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -210,6 +212,7 @@ export async function POST(request: Request) {
       coupon_id: appliedCoupon?.id ?? null,
       coupon_code: appliedCoupon?.code ?? null,
       discount_amount: appliedCoupon?.discountAmount ?? 0,
+      set_selections: setSelections ?? null,
     })
     .select("id")
     .single();

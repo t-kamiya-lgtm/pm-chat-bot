@@ -20,6 +20,9 @@ const productUpdateSchema = z.object({
   orderType: z.enum(["one_time", "subscription"]).optional(),
   subscriptionIntervals: z.array(subscriptionIntervalSchema).optional(),
   displayOrder: z.number().int().optional(),
+  isSet: z.boolean().optional(),
+  setItemCount: z.number().int().min(1).nullable().optional(),
+  setOptionProductIds: z.array(z.string().uuid()).optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -47,6 +50,15 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const input = parsed.data;
+
+  if (input.isSet && input.setOptionProductIds !== undefined) {
+    if (!input.setItemCount || input.setOptionProductIds.length <= input.setItemCount) {
+      return NextResponse.json(
+        { error: "セット品は、セット構成数より多い数の選択肢商品を登録してください" },
+        { status: 400 },
+      );
+    }
+  }
 
   const supabase = createSupabaseAdminClient();
 
@@ -89,12 +101,30 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         subscription_intervals: input.subscriptionIntervals,
       }),
       ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
+      ...(input.isSet !== undefined && { is_set: input.isSet }),
+      ...(input.setItemCount !== undefined && { set_item_count: input.isSet === false ? null : input.setItemCount }),
     })
     .eq("id", id)
     .select("*")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (input.setOptionProductIds !== undefined) {
+    const { error: deleteError } = await supabase.from("product_set_options").delete().eq("product_id", id);
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    if (input.setOptionProductIds.length > 0) {
+      const { error: insertError } = await supabase.from("product_set_options").insert(
+        input.setOptionProductIds.map((optionProductId, index) => ({
+          product_id: id,
+          option_product_id: optionProductId,
+          display_order: index,
+        })),
+      );
+      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({ product: data });
 }
 

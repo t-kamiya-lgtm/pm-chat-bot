@@ -40,6 +40,7 @@ export interface OrderRow {
   delivery_date: string | null;
   delivery_time_slot: string | null;
   survey_responses: Record<string, string> | null;
+  set_selections: { id: string; name: string }[] | null;
   import_status: ImportStatus;
   customers: { name: string; email: string } | null;
   products: { name: string } | null;
@@ -149,6 +150,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
               <th className="px-4 py-2">状態</th>
               <th className="px-4 py-2">お届け希望日時</th>
               <th className="px-4 py-2">アンケート</th>
+              <th className="px-4 py-2">セット内訳</th>
               <th className="px-4 py-2">取り込み</th>
             </tr>
           </thead>
@@ -190,6 +192,18 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2">
+                    {order.set_selections && order.set_selections.length > 0 ? (
+                      <span
+                        title={order.set_selections.map((s) => s.name).join("\n")}
+                        className="cursor-help underline decoration-dotted"
+                      >
+                        {order.set_selections.length}点
+                      </span>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
                     <select
                       value={order.import_status}
                       onChange={(e) => updateOne(order.id, e.target.value as ImportStatus)}
@@ -207,7 +221,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
             })}
             {!orders.length && (
               <tr>
-                <td colSpan={13} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={14} className="px-4 py-6 text-center text-neutral-400">
                   注文はまだありません
                 </td>
               </tr>

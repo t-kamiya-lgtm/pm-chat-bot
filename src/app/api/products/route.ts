@@ -19,6 +19,9 @@ const productInputSchema = z.object({
   smaregiProductId: z.string().optional(),
   orderType: z.enum(["one_time", "subscription"]),
   subscriptionIntervals: z.array(subscriptionIntervalSchema).default([]),
+  isSet: z.boolean().default(false),
+  setItemCount: z.number().int().min(1).nullable().optional(),
+  setOptionProductIds: z.array(z.string().uuid()).default([]),
 });
 
 export async function GET(request: Request) {
@@ -51,6 +54,12 @@ export async function POST(request: Request) {
   if (input.orderType === "subscription" && input.subscriptionIntervals.length === 0) {
     return NextResponse.json(
       { error: "subscriptionIntervals is required when orderType is subscription" },
+      { status: 400 },
+    );
+  }
+  if (input.isSet && (!input.setItemCount || input.setOptionProductIds.length <= input.setItemCount)) {
+    return NextResponse.json(
+      { error: "セット品は、セット構成数より多い数の選択肢商品を登録してください" },
       { status: 400 },
     );
   }
@@ -98,11 +107,25 @@ export async function POST(request: Request) {
       smaregi_product_id: input.smaregiProductId ?? null,
       order_type: input.orderType,
       subscription_intervals: input.orderType === "subscription" ? input.subscriptionIntervals : [],
+      is_set: input.isSet,
+      set_item_count: input.isSet ? input.setItemCount : null,
       created_by: roleCheck.user.id,
     })
     .select("*")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (input.isSet && input.setOptionProductIds.length > 0) {
+    const { error: optionsError } = await supabase.from("product_set_options").insert(
+      input.setOptionProductIds.map((optionProductId, index) => ({
+        product_id: data.id,
+        option_product_id: optionProductId,
+        display_order: index,
+      })),
+    );
+    if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 });
+  }
+
   return NextResponse.json({ product: data }, { status: 201 });
 }

@@ -93,12 +93,20 @@ export default async function ProductGroupDetailPage({
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-medium">品番(単品・定期)一覧</h2>
-          <Link
-            href={`/admin/products/new?productGroupId=${id}`}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
-          >
-            品番を追加
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href={`/admin/products?productGroupId=${id}`}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+            >
+              品番一覧を開く
+            </Link>
+            <Link
+              href={`/admin/products/new?productGroupId=${id}`}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+            >
+              品番を追加
+            </Link>
+          </div>
         </div>
         <div className="space-y-2">
           {products?.map((product) => (

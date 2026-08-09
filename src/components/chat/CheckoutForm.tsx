@@ -319,6 +319,7 @@ export function CheckoutForm({
   const [activeProduct, setActiveProduct] = useState<WidgetProduct>(product);
   const [addonSelected, setAddonSelected] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [selectedSetOptionIds, setSelectedSetOptionIds] = useState<string[]>([]);
   const orderType = activeProduct.order_type;
   // ポスト投函対象商品は、単品1点のみの注文の場合に限りお届け日・時間帯の指定を受け付けない
   // (2点以上、または他商品と同時注文の場合は宅配便出荷となるため指定可能)
@@ -597,6 +598,7 @@ export function CheckoutForm({
     setActiveProduct(upsellProduct);
     setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
+    setSelectedSetOptionIds([]);
   }
 
   /** 商品編集画面から、同じカルーセルの他の商品に切り替える(住所等の入力済み情報は保持したまま)。 */
@@ -604,7 +606,16 @@ export function CheckoutForm({
     setActiveProduct(nextProduct);
     setSubscriptionInterval(nextProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
+    setSelectedSetOptionIds([]);
     setStage("options");
+  }
+
+  function toggleSetOption(optionId: string) {
+    setSelectedSetOptionIds((prev) => {
+      if (prev.includes(optionId)) return prev.filter((id) => id !== optionId);
+      if (activeProduct.set_item_count && prev.length >= activeProduct.set_item_count) return prev;
+      return [...prev, optionId];
+    });
   }
 
   /** 注文者情報・お届け情報など、決済方法によらず共通で送る内容をまとめる。 */
@@ -640,8 +651,15 @@ export function CheckoutForm({
       : undefined;
     const surveyResponsesPayload =
       surveyResponses && Object.keys(surveyResponses).length > 0 ? surveyResponses : undefined;
+    const setSelectionsPayload =
+      activeProduct.is_set && selectedSetOptionIds.length > 0
+        ? selectedSetOptionIds
+            .map((id) => activeProduct.set_options.find((o) => o.id === id))
+            .filter((o): o is NonNullable<typeof o> => Boolean(o))
+            .map((o) => ({ id: o.id, name: o.name }))
+        : undefined;
 
-    return { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload };
+    return { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload, setSelectionsPayload };
   }
 
   /** 規約同意が完了した時点で自動的に呼び出し、カード入力欄の表示に必要なPaymentIntent/Subscriptionを準備する。 */
@@ -650,7 +668,7 @@ export function CheckoutForm({
     setPaymentPrepFailed(false);
     setPreparingPayment(true);
 
-    const { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload } =
+    const { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload, setSelectionsPayload } =
       buildOrderPayload();
 
     try {
@@ -672,6 +690,7 @@ export function CheckoutForm({
               ...(utmMedium && { utmMedium }),
               ...(utmCampaign && { utmCampaign }),
               ...(couponCode.trim() && { couponCode: couponCode.trim() }),
+              ...(setSelectionsPayload && { setSelections: setSelectionsPayload }),
               sessionId,
             }
           : {
@@ -687,6 +706,7 @@ export function CheckoutForm({
               ...(utmMedium && { utmMedium }),
               ...(utmCampaign && { utmCampaign }),
               ...(couponCode.trim() && { couponCode: couponCode.trim() }),
+              ...(setSelectionsPayload && { setSelections: setSelectionsPayload }),
               sessionId,
             };
 
@@ -742,7 +762,7 @@ export function CheckoutForm({
     setError(null);
     setSubmitting(true);
 
-    const { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload } =
+    const { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload, setSelectionsPayload } =
       buildOrderPayload();
 
     try {
@@ -765,6 +785,7 @@ export function CheckoutForm({
           ...(utmMedium && { utmMedium }),
           ...(utmCampaign && { utmCampaign }),
           ...(couponCode.trim() && { couponCode: couponCode.trim() }),
+          ...(setSelectionsPayload && { setSelections: setSelectionsPayload }),
           sessionId,
         }),
       });
@@ -1229,6 +1250,29 @@ export function CheckoutForm({
               <span className="text-neutral-500">お届け周期</span>
               <div className="flex items-center gap-2">
                 <span>{INTERVAL_LABELS[subscriptionInterval]}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReturningToConfirm(true);
+                    setStage("options");
+                  }}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  編集
+                </button>
+              </div>
+            </div>
+          )}
+          {activeProduct.is_set && selectedSetOptionIds.length > 0 && (
+            <div className="flex items-start justify-between">
+              <span className="shrink-0 text-neutral-500">セット内訳</span>
+              <div className="flex items-start gap-2">
+                <span className="text-right">
+                  {selectedSetOptionIds
+                    .map((id) => activeProduct.set_options.find((o) => o.id === id)?.name)
+                    .filter(Boolean)
+                    .join(" / ")}
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1717,6 +1761,45 @@ export function CheckoutForm({
           </p>
         )}
 
+        {activeProduct.is_set && activeProduct.set_item_count && (
+          <div className="rounded-md border border-neutral-200 p-3">
+            <p className="mb-2 text-sm font-medium text-neutral-700">
+              セットの内訳を({activeProduct.set_item_count}点)選択してください
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {activeProduct.set_options.map((option) => {
+                const selected = selectedSetOptionIds.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => toggleSetOption(option.id)}
+                    className={`flex flex-col items-center gap-1 rounded-md border p-2 text-xs ${
+                      selected
+                        ? "border-neutral-900 bg-neutral-50"
+                        : "border-neutral-200 hover:bg-neutral-50"
+                    }`}
+                  >
+                    {option.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={option.image_url}
+                        alt={option.name}
+                        className="aspect-square w-full rounded object-cover"
+                      />
+                    )}
+                    <span>{option.name}</span>
+                    {selected && <span className="text-neutral-900">選択中</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+              選択中: {selectedSetOptionIds.length} / {activeProduct.set_item_count}点
+            </p>
+          </div>
+        )}
+
         <AmountBreakdown
           amount={activeProduct.price}
           quantity={quantity}
@@ -1730,6 +1813,10 @@ export function CheckoutForm({
 
         <button
           type="button"
+          disabled={
+            Boolean(activeProduct.is_set && activeProduct.set_item_count) &&
+            selectedSetOptionIds.length !== activeProduct.set_item_count
+          }
           onClick={() => {
             if (returnToStepIndex !== null) {
               const target = returnToStepIndex;
@@ -1744,7 +1831,7 @@ export function CheckoutForm({
               setStage("wizard");
             }
           }}
-          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700"
+          className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
         >
           次へ
         </button>

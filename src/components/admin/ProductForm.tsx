@@ -25,6 +25,9 @@ export interface ProductFormValues {
   smaregiProductId: string;
   orderType: ProductOrderType;
   subscriptionIntervals: SubscriptionInterval[];
+  isSet: boolean;
+  setItemCount: number | null;
+  setOptionProductIds: string[];
 }
 
 function emptyValues(defaultProductGroupId?: string): ProductFormValues {
@@ -42,16 +45,21 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     smaregiProductId: "",
     orderType: "one_time",
     subscriptionIntervals: [],
+    isSet: false,
+    setItemCount: null,
+    setOptionProductIds: [],
   };
 }
 
 export function ProductForm({
   initialValues,
   productGroups,
+  otherProducts,
   lockProductGroup,
 }: {
   initialValues?: ProductFormValues;
   productGroups: { id: string; name: string }[];
+  otherProducts: { id: string; name: string }[];
   lockProductGroup?: boolean;
 }) {
   const router = useRouter();
@@ -72,6 +80,15 @@ export function ProductForm({
     }));
   }
 
+  function toggleSetOption(productId: string) {
+    setValues((prev) => ({
+      ...prev,
+      setOptionProductIds: prev.setOptionProductIds.includes(productId)
+        ? prev.setOptionProductIds.filter((id) => id !== productId)
+        : [...prev.setOptionProductIds, productId],
+    }));
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSubmitting(true);
@@ -86,6 +103,20 @@ export function ProductForm({
       setSubmitting(false);
       setErrorMessage("定期購入の場合は周期を1つ以上選択してください");
       return;
+    }
+    if (values.isSet) {
+      if (!values.setItemCount || values.setItemCount < 1) {
+        setSubmitting(false);
+        setErrorMessage("セット構成数を入力してください");
+        return;
+      }
+      if (values.setOptionProductIds.length <= values.setItemCount) {
+        setSubmitting(false);
+        setErrorMessage(
+          `選択肢の商品は、セット構成数(${values.setItemCount}点)より多く選択してください`,
+        );
+        return;
+      }
     }
 
     const payload = {
@@ -102,6 +133,9 @@ export function ProductForm({
       smaregiProductId: values.smaregiProductId || undefined,
       orderType: values.orderType,
       subscriptionIntervals: values.orderType === "subscription" ? values.subscriptionIntervals : [],
+      isSet: values.isSet,
+      setItemCount: values.isSet ? values.setItemCount : null,
+      setOptionProductIds: values.isSet ? values.setOptionProductIds : [],
     };
 
     const res = await fetch(isEdit ? `/api/products/${values.id}` : "/api/products", {
@@ -282,9 +316,7 @@ export function ProductForm({
       </Field>
 
       <Field label="備考(社内用・任意)">
-        <p className="mb-1 text-xs text-neutral-400">
-          チャット画面には表示されません。セット品を登録する場合、内訳(同梱商品の一覧)などをここに記録してください
-        </p>
+        <p className="mb-1 text-xs text-neutral-400">チャット画面には表示されません。</p>
         <textarea
           value={values.memo}
           onChange={(e) => setValues((p) => ({ ...p, memo: e.target.value }))}
@@ -292,6 +324,59 @@ export function ProductForm({
           className="input"
         />
       </Field>
+
+      <div className="rounded-md border border-neutral-200 p-3">
+        <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
+          <input
+            type="checkbox"
+            checked={values.isSet}
+            onChange={(e) => setValues((p) => ({ ...p, isSet: e.target.checked }))}
+          />
+          セット品として販売する(お客様が内訳を選ぶ商品)
+        </label>
+        {values.isSet && (
+          <div className="mt-3 space-y-3">
+            <Field label="セット構成数(お客様が選ぶ点数)">
+              <input
+                type="number"
+                min={1}
+                value={values.setItemCount ?? ""}
+                onChange={(e) =>
+                  setValues((p) => ({
+                    ...p,
+                    setItemCount: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="input max-w-[8rem]"
+              />
+            </Field>
+            <div>
+              <span className="mb-1 block text-sm font-medium text-neutral-700">
+                選択肢として提示する商品品番(構成数より多く選択してください)
+              </span>
+              <p className="mb-2 text-xs text-neutral-400">
+                選択中: {values.setOptionProductIds.length}点
+                {values.setItemCount ? `(構成数 ${values.setItemCount}点より多く必要)` : ""}
+              </p>
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
+                {otherProducts.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={values.setOptionProductIds.includes(p.id)}
+                      onChange={() => toggleSetOption(p.id)}
+                    />
+                    {p.name}
+                  </label>
+                ))}
+                {otherProducts.length === 0 && (
+                  <p className="text-sm text-neutral-400">選択肢にできる他の品番がありません</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div>
         <span className="mb-2 block text-sm font-medium text-neutral-700">注文タイプ</span>

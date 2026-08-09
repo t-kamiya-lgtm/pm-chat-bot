@@ -48,11 +48,31 @@ export async function POST(_request: Request, { params }: RouteParams) {
       smaregi_product_id: null,
       order_type: source.order_type,
       subscription_intervals: source.subscription_intervals,
+      is_set: source.is_set,
+      set_item_count: source.set_item_count,
       created_by: roleCheck.user.id,
     })
     .select("*")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (source.is_set) {
+    const { data: sourceOptions } = await supabase
+      .from("product_set_options")
+      .select("option_product_id, display_order")
+      .eq("product_id", id);
+    if (sourceOptions && sourceOptions.length > 0) {
+      const { error: optionsError } = await supabase.from("product_set_options").insert(
+        sourceOptions.map((o) => ({
+          product_id: data.id,
+          option_product_id: o.option_product_id,
+          display_order: o.display_order,
+        })),
+      );
+      if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({ product: data }, { status: 201 });
 }
