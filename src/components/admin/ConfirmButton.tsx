@@ -10,12 +10,14 @@ export function ConfirmButton({
   label,
   confirmLabel = "本当に削除しますか？",
   disabled,
+  title,
   onConfirm,
   className,
 }: {
   label: string;
   confirmLabel?: string;
   disabled?: boolean;
+  title?: string;
   onConfirm: () => void;
   className?: string;
 }) {
@@ -47,6 +49,7 @@ export function ConfirmButton({
     <button
       type="button"
       disabled={disabled}
+      title={title}
       onClick={() => setConfirming(true)}
       className={className ?? "text-xs text-red-600 hover:underline disabled:opacity-30"}
     >
