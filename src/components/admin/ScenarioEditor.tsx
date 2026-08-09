@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
+  Coupon,
   MenuItemActionType,
   Product,
   Scenario,
@@ -611,6 +612,9 @@ function ImageUrlListEditor({
       <span className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${textSize}`}>
         画像URL(複数登録すると、チャット上でカルーセル表示になります)
       </span>
+      <p className={`text-neutral-400 ${compact ? "text-[11px]" : "text-xs"}`}>
+        推奨比率: 1枚のみの場合は横長など任意の比率で表示されます。2枚以上登録する場合は正方形(1:1)推奨(カルーセル表示時は正方形に切り取られます)
+      </p>
       {urls.map((url, index) => (
         <div key={index} className="flex gap-2">
           <input
@@ -982,9 +986,16 @@ interface Props {
   nodes: ScenarioNode[];
   products: PickableProduct[];
   menuItems: ScenarioMenuItem[];
+  coupon: Coupon | null;
 }
 
-export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMenuItems }: Props) {
+export function ScenarioEditor({
+  scenario,
+  nodes,
+  products,
+  menuItems: initialMenuItems,
+  coupon: initialCoupon,
+}: Props) {
   const router = useRouter();
   const [publishing, setPublishing] = useState(false);
   const [display, setDisplay] = useState<DisplaySettings>({
@@ -1008,6 +1019,20 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   const [popupPosition, setPopupPositionState] = useState<"bottom-right" | "bottom-left">(
     scenario.popupPosition ?? "bottom-right",
   );
+  const [couponCodeFieldEnabled, setCouponCodeFieldEnabledState] = useState(
+    scenario.couponCodeFieldEnabled,
+  );
+  const [coupon, setCoupon] = useState<Coupon | null>(initialCoupon);
+  const [couponForm, setCouponForm] = useState({
+    name: initialCoupon?.name ?? "",
+    discountType: initialCoupon?.discountType ?? ("percent" as "percent" | "fixed"),
+    discountValue: initialCoupon ? String(initialCoupon.discountValue) : "",
+    startsAt: initialCoupon?.startsAt ? initialCoupon.startsAt.slice(0, 10) : "",
+    endsAt: initialCoupon?.endsAt ? initialCoupon.endsAt.slice(0, 10) : "",
+    maxUses: initialCoupon?.maxUses ? String(initialCoupon.maxUses) : "",
+    minOrderAmount: initialCoupon?.minOrderAmount ? String(initialCoupon.minOrderAmount) : "",
+  });
+  const [couponSaving, setCouponSaving] = useState(false);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
@@ -1231,6 +1256,97 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
   function setPopupPosition(position: "bottom-right" | "bottom-left") {
     setPopupPositionState(position);
     patchDisplaySettings({ popupPosition: position });
+  }
+
+  function setCouponCodeFieldEnabled(enabled: boolean) {
+    setCouponCodeFieldEnabledState(enabled);
+    patchDisplaySettings({ couponCodeFieldEnabled: enabled });
+  }
+
+  async function handleSaveCoupon() {
+    if (!couponForm.name.trim() || !couponForm.discountValue) {
+      window.alert("名称と割引額を入力してください");
+      return;
+    }
+    setCouponSaving(true);
+    const payload = {
+      name: couponForm.name.trim(),
+      discountType: couponForm.discountType,
+      discountValue: Number(couponForm.discountValue),
+      startsAt: couponForm.startsAt ? new Date(couponForm.startsAt).toISOString() : null,
+      endsAt: couponForm.endsAt ? new Date(couponForm.endsAt).toISOString() : null,
+      maxUses: couponForm.maxUses ? Number(couponForm.maxUses) : null,
+      minOrderAmount: couponForm.minOrderAmount ? Number(couponForm.minOrderAmount) : null,
+    };
+    const res = coupon
+      ? await fetch(`/api/coupons/${coupon.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await fetch("/api/coupons", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...payload, type: "scenario_auto", scenarioId: scenario.id }),
+        });
+    setCouponSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`クーポンの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    const { coupon: saved } = await res.json();
+    setCoupon({
+      id: saved.id,
+      type: saved.type,
+      scenarioId: saved.scenario_id,
+      code: saved.code,
+      name: saved.name,
+      discountType: saved.discount_type,
+      discountValue: saved.discount_value,
+      startsAt: saved.starts_at,
+      endsAt: saved.ends_at,
+      maxUses: saved.max_uses,
+      usedCount: saved.used_count,
+      minOrderAmount: saved.min_order_amount,
+      isActive: saved.is_active,
+      createdAt: saved.created_at,
+      updatedAt: saved.updated_at,
+    });
+  }
+
+  async function handleToggleCouponActive() {
+    if (!coupon) return;
+    setCouponSaving(true);
+    const res = await fetch(`/api/coupons/${coupon.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ isActive: !coupon.isActive }),
+    });
+    setCouponSaving(false);
+    if (!res.ok) {
+      window.alert("更新に失敗しました");
+      return;
+    }
+    setCoupon({ ...coupon, isActive: !coupon.isActive });
+  }
+
+  async function handleDeleteCoupon() {
+    if (!coupon) return;
+    if (!window.confirm("このシナリオの自動適用クーポンを削除しますか？")) return;
+    setCouponSaving(true);
+    await fetch(`/api/coupons/${coupon.id}`, { method: "DELETE" });
+    setCouponSaving(false);
+    setCoupon(null);
+    setCouponForm({
+      name: "",
+      discountType: "percent",
+      discountValue: "",
+      startsAt: "",
+      endsAt: "",
+      maxUses: "",
+      minOrderAmount: "",
+    });
   }
 
   async function handleAddMenuItem(event: React.FormEvent) {
@@ -1841,7 +1957,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               onChange={setNewNodeUpsellProductId}
             />
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">アップセル画像URL(任意・正方形推奨)</span>
+              <span className="mb-1 block font-medium text-neutral-700">アップセル画像URL(任意・正方形1:1推奨)</span>
               <input
                 className="input"
                 value={newNodeUpsellImageUrl}
@@ -1866,7 +1982,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               onChange={setNewNodeCrossSellProductId}
             />
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形推奨)</span>
+              <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形1:1推奨)</span>
               <input
                 className="input"
                 value={newNodeCrossSellImageUrl}
@@ -1899,7 +2015,7 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">画像URL(任意)</span>
+              <span className="mb-1 block font-medium text-neutral-700">画像URL(任意・比率自由・横幅いっぱいに表示)</span>
               <input
                 className="input"
                 value={newNodeImageUrl}
@@ -2075,13 +2191,18 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
                 </label>
               </div>
               {display.headerMode === "image" && (
-                <input
-                  className="input"
-                  placeholder="https://..."
-                  value={display.headerImageUrl}
-                  onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
-                  onBlur={commitHeaderImageUrl}
-                />
+                <>
+                  <input
+                    className="input"
+                    placeholder="https://..."
+                    value={display.headerImageUrl}
+                    onChange={(e) => setDisplay((prev) => ({ ...prev, headerImageUrl: e.target.value }))}
+                    onBlur={commitHeaderImageUrl}
+                  />
+                  <p className="mt-1 text-xs text-neutral-400">
+                    推奨比率: 横長(比率自由・横幅いっぱいに表示されます)
+                  </p>
+                </>
               )}
               {display.headerMode === "title" && (
                 <div className="space-y-3">
@@ -2334,7 +2455,9 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
           デフォルトのテキストボタンの代わりに丸いアイコンボタンで表示されます。
         </p>
         <label className="block text-sm">
-          <span className="mb-1 block text-xs text-neutral-500">アイコン画像URL(未設定でテキストボタン)</span>
+          <span className="mb-1 block text-xs text-neutral-500">
+            アイコン画像URL(未設定でテキストボタン・正方形1:1推奨・60×60pxの円形で表示されます)
+          </span>
           <div className="flex gap-2">
             <input
               type="text"
@@ -2372,6 +2495,142 @@ export function ScenarioEditor({ scenario, nodes, products, menuItems: initialMe
               />
               左下
             </label>
+          </div>
+        </div>
+      </Accordion>
+
+      <Accordion title="クーポン設定">
+        <div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={couponCodeFieldEnabled}
+              onChange={(e) => setCouponCodeFieldEnabled(e.target.checked)}
+            />
+            決済確認画面にクーポンコード入力欄を表示する
+          </label>
+          <p className="mt-1 text-xs text-neutral-500">
+            お客様が手入力するクーポンコード(インフルエンサー計測用等)の入力欄です。コード自体は
+            「クーポン」管理画面で発行します。このシナリオで下記の自動適用クーポンを使う場合は、
+            通常オフにしてください。
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">その場で配布する自動適用クーポン</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            このシナリオを経由した決済に、コード入力なしで自動的に適用されます。広告限定の特別価格などに。
+            シナリオにつき1件のみ設定できます。
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">名称(管理用)</span>
+              <input
+                className="input"
+                value={couponForm.name}
+                onChange={(e) => setCouponForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="例: 夏セール10%オフ"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">割引種別</span>
+              <select
+                className="input"
+                value={couponForm.discountType}
+                onChange={(e) =>
+                  setCouponForm((p) => ({ ...p, discountType: e.target.value as "percent" | "fixed" }))
+                }
+              >
+                <option value="percent">%引き</option>
+                <option value="fixed">定額引き</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">
+                割引額({couponForm.discountType === "percent" ? "%" : "円"})
+              </span>
+              <input
+                type="number"
+                min={1}
+                className="input"
+                value={couponForm.discountValue}
+                onChange={(e) => setCouponForm((p) => ({ ...p, discountValue: e.target.value }))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">開始日(任意)</span>
+              <input
+                type="date"
+                className="input"
+                value={couponForm.startsAt}
+                onChange={(e) => setCouponForm((p) => ({ ...p, startsAt: e.target.value }))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">終了日(任意)</span>
+              <input
+                type="date"
+                className="input"
+                value={couponForm.endsAt}
+                onChange={(e) => setCouponForm((p) => ({ ...p, endsAt: e.target.value }))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">上限枚数(任意)</span>
+              <input
+                type="number"
+                min={1}
+                className="input"
+                value={couponForm.maxUses}
+                onChange={(e) => setCouponForm((p) => ({ ...p, maxUses: e.target.value }))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">最低注文金額(任意・円)</span>
+              <input
+                type="number"
+                min={0}
+                className="input"
+                value={couponForm.minOrderAmount}
+                onChange={(e) => setCouponForm((p) => ({ ...p, minOrderAmount: e.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSaveCoupon}
+              disabled={couponSaving}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {couponSaving ? "保存中..." : coupon ? "更新する" : "作成する"}
+            </button>
+            {coupon && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleToggleCouponActive}
+                  disabled={couponSaving}
+                  className={`rounded-full px-3 py-1 text-xs ${
+                    coupon.isActive ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-500"
+                  }`}
+                >
+                  {coupon.isActive ? "有効" : "無効"}
+                </button>
+                <span className="text-xs text-neutral-500">
+                  使用数: {coupon.usedCount}
+                  {coupon.maxUses !== null ? ` / ${coupon.maxUses}` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleDeleteCoupon}
+                  disabled={couponSaving}
+                  className="text-xs text-red-600 hover:underline disabled:opacity-30"
+                >
+                  削除
+                </button>
+              </>
+            )}
           </div>
         </div>
       </Accordion>
@@ -2780,7 +3039,7 @@ function NodeCard({
                 compact
               />
               <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">アップセル画像URL(任意・正方形推奨)</span>
+                <span className="mb-1 block text-neutral-500">アップセル画像URL(任意・正方形1:1推奨)</span>
                 <input className="input" value={upsellImageUrl} onChange={(e) => setUpsellImageUrl(e.target.value)} />
               </label>
               <label className="block text-xs">
@@ -2802,7 +3061,7 @@ function NodeCard({
                 compact
               />
               <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">クロスセル画像URL(任意・正方形推奨)</span>
+                <span className="mb-1 block text-neutral-500">クロスセル画像URL(任意・正方形1:1推奨)</span>
                 <input
                   className="input"
                   value={crossSellImageUrl}
@@ -2835,7 +3094,7 @@ function NodeCard({
                 />
               </label>
               <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">画像URL(任意)</span>
+                <span className="mb-1 block text-neutral-500">画像URL(任意・比率自由・横幅いっぱいに表示)</span>
                 <input className="input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
               </label>
             </>

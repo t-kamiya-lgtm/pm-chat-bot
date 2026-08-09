@@ -7,6 +7,7 @@ import { getProductById } from "@/lib/products";
 import { upsertCustomer, setCustomerStripeId } from "@/lib/customers";
 import { calculateTotal } from "@/lib/fees";
 import { generateOrderNumber } from "@/lib/order-number";
+import { resolveApplicableCoupon } from "@/lib/coupons";
 
 const requestSchema = z.object({
   productId: z.string().uuid(),
@@ -24,6 +25,7 @@ const requestSchema = z.object({
   utmSource: z.string().optional(),
   utmMedium: z.string().optional(),
   utmCampaign: z.string().optional(),
+  couponCode: z.string().optional(),
 });
 
 /**
@@ -51,6 +53,7 @@ export async function POST(request: Request) {
     utmSource,
     utmMedium,
     utmCampaign,
+    couponCode,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -62,7 +65,18 @@ export async function POST(request: Request) {
   const addonAmount = addonProduct?.price ?? 0;
 
   const amount = product.price * quantity;
-  const breakdown = calculateTotal(amount + addonAmount, product.shipping_fee, 0);
+  const supabase = createSupabaseAdminClient();
+  const appliedCoupon = await resolveApplicableCoupon(supabase, {
+    scenarioId,
+    code: couponCode,
+    subtotal: amount + addonAmount,
+  });
+  const breakdown = calculateTotal(
+    amount + addonAmount,
+    product.shipping_fee,
+    0,
+    appliedCoupon?.discountAmount ?? 0,
+  );
 
   const customer = await upsertCustomer(customerInput);
 
@@ -110,7 +124,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseAdminClient();
   const orderNumber = await generateOrderNumber(supabase, scenarioId);
   const { data: order, error } = await supabase
     .from("orders")
@@ -138,6 +151,9 @@ export async function POST(request: Request) {
       utm_source: utmSource ?? null,
       utm_medium: utmMedium ?? null,
       utm_campaign: utmCampaign ?? null,
+      coupon_id: appliedCoupon?.id ?? null,
+      coupon_code: appliedCoupon?.code ?? null,
+      discount_amount: appliedCoupon?.discountAmount ?? 0,
     })
     .select("id")
     .single();
@@ -145,6 +161,8 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // クーポンの使用回数は、決済確定(Webhook)時点で加算する(与信のみで完了前の失敗・放棄では消費しない)。
 
   // このセッションの離脱リードが実際には注文につながったことを記録する(以後、別注文で上書きしない)。
   if (sessionId) {

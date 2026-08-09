@@ -41,6 +41,7 @@ export default async function EditProductPage({
           productGroupId: product.product_group_id ?? "",
           name: product.name,
           description: product.description ?? "",
+          memo: product.memo ?? "",
           price: product.price,
           listPrice: product.list_price ?? null,
           priceLabel: product.price_label ?? "",

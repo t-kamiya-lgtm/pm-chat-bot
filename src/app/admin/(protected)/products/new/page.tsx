@@ -27,6 +27,7 @@ export default async function NewProductPage({
                 productGroupId,
                 name: "",
                 description: "",
+                memo: "",
                 price: 0,
                 listPrice: null,
                 priceLabel: "",

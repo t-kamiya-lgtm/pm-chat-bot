@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ScenarioEditor } from "@/components/admin/ScenarioEditor";
-import type { MenuItemActionType, ScenarioMenuItem, ScenarioNode } from "@/lib/types";
+import type { Coupon, MenuItemActionType, ScenarioMenuItem, ScenarioNode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,26 @@ function mapMenuItemRow(row: Record<string, unknown>): ScenarioMenuItem {
     targetNodeId: (row.target_node_id as string | null) ?? null,
     url: (row.url as string | null) ?? null,
     displayOrder: (row.display_order as number | null) ?? 0,
+  };
+}
+
+function mapCouponRow(row: Record<string, unknown>): Coupon {
+  return {
+    id: row.id as string,
+    type: row.type as Coupon["type"],
+    scenarioId: (row.scenario_id as string | null) ?? null,
+    code: (row.code as string | null) ?? null,
+    name: row.name as string,
+    discountType: row.discount_type as Coupon["discountType"],
+    discountValue: row.discount_value as number,
+    startsAt: (row.starts_at as string | null) ?? null,
+    endsAt: (row.ends_at as string | null) ?? null,
+    maxUses: (row.max_uses as number | null) ?? null,
+    usedCount: row.used_count as number,
+    minOrderAmount: (row.min_order_amount as number | null) ?? null,
+    isActive: row.is_active as boolean,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
   };
 }
 
@@ -44,16 +64,28 @@ export default async function ScenarioEditorPage({
   const { id } = await params;
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: scenario }, { data: nodes }, { data: products, error: productsError }, { data: menuItems }] =
-    await Promise.all([
-      supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
-      supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
-      supabase
-        .from("products")
-        .select("id, name, price, order_type, product_group_id, product_groups(name)")
-        .order("created_at", { ascending: false }),
-      supabase.from("scenario_menu_items").select("*").eq("scenario_id", id).order("display_order"),
-    ]);
+  const [
+    { data: scenario },
+    { data: nodes },
+    { data: products, error: productsError },
+    { data: menuItems },
+    { data: coupons },
+  ] = await Promise.all([
+    supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
+    supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
+    supabase
+      .from("products")
+      .select("id, name, price, order_type, product_group_id, product_groups(name)")
+      .order("created_at", { ascending: false }),
+    supabase.from("scenario_menu_items").select("*").eq("scenario_id", id).order("display_order"),
+    supabase
+      .from("coupons")
+      .select("*")
+      .eq("scenario_id", id)
+      .eq("type", "scenario_auto")
+      .order("created_at", { ascending: true })
+      .limit(1),
+  ]);
 
   if (!scenario) notFound();
 
@@ -86,6 +118,7 @@ export default async function ScenarioEditorPage({
           adTag: scenario.ad_tag,
           popupIconUrl: scenario.popup_icon_url,
           popupPosition: scenario.popup_position,
+          couponCodeFieldEnabled: scenario.coupon_code_field_enabled,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,
@@ -101,6 +134,7 @@ export default async function ScenarioEditorPage({
           productGroupName: extractGroupName(p.product_groups),
         }))}
         menuItems={(menuItems ?? []).map(mapMenuItemRow)}
+        coupon={coupons && coupons.length > 0 ? mapCouponRow(coupons[0]) : null}
       />
     </div>
   );

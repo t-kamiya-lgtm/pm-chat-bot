@@ -25,6 +25,7 @@ export interface Product {
   productGroupId: string | null;
   name: string;
   description: string | null;
+  memo: string | null;
   price: number;
   listPrice: number | null;
   priceLabel: string | null;
@@ -100,6 +101,7 @@ export interface Scenario {
   adTag: string | null;
   popupIconUrl: string | null;
   popupPosition: "bottom-right" | "bottom-left" | null;
+  couponCodeFieldEnabled: boolean;
   version: number;
   createdBy: string | null;
   createdAt: string;
@@ -198,6 +200,30 @@ export interface Order {
   stripeSubscriptionId: string | null;
   shippingAddress: ShippingAddress | null;
   surveyResponses: Record<string, string> | null;
+  couponId: string | null;
+  couponCode: string | null;
+  discountAmount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CouponType = "scenario_auto" | "manual_code";
+export type CouponDiscountType = "percent" | "fixed";
+
+export interface Coupon {
+  id: string;
+  type: CouponType;
+  scenarioId: string | null;
+  code: string | null;
+  name: string;
+  discountType: CouponDiscountType;
+  discountValue: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  maxUses: number | null;
+  usedCount: number;
+  minOrderAmount: number | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }

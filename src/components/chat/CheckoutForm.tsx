@@ -275,6 +275,7 @@ interface Props {
   utmSource?: string | null;
   utmMedium?: string | null;
   utmCampaign?: string | null;
+  couponCodeFieldEnabled?: boolean;
   surveyResponses?: Record<string, string>;
   onComplete: (result: { ok: boolean; items: GreetingItem[] }) => void;
   onBack: () => void;
@@ -309,6 +310,7 @@ export function CheckoutForm({
   utmSource,
   utmMedium,
   utmCampaign,
+  couponCodeFieldEnabled,
   surveyResponses,
   onComplete,
   onBack,
@@ -331,6 +333,48 @@ export function CheckoutForm({
     deferred_invoice: 0,
     cod: 0,
   });
+
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponInvalid, setCouponInvalid] = useState(false);
+  const [couponChecking, setCouponChecking] = useState(false);
+  const addonAmountForCoupon = addonSelected && crossSellProduct ? crossSellProduct.price : 0;
+  const couponSubtotal = activeProduct.price * quantity + addonAmountForCoupon;
+
+  async function checkCoupon(code: string) {
+    setCouponChecking(true);
+    try {
+      const res = await fetch("/api/widget/coupon", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...(scenarioId && { scenarioId }),
+          code: code.trim() || undefined,
+          subtotal: couponSubtotal,
+        }),
+      });
+      const data = await res.json().catch(() => ({ discountAmount: 0, invalidCode: false }));
+      setCouponDiscount(data.discountAmount ?? 0);
+      setCouponInvalid(Boolean(data.invalidCode));
+    } catch {
+      setCouponDiscount(0);
+      setCouponInvalid(false);
+    } finally {
+      setCouponChecking(false);
+    }
+  }
+
+  // 数量・アドオン変更や商品切り替えで金額が変わるたびに、割引額を再確認する
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) checkCoupon(couponCode);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [couponSubtotal, activeProduct.id, scenarioId]);
 
   const [fieldOrder, setFieldOrder] = useState<CheckoutFieldKey[]>(DEFAULT_CHECKOUT_FIELD_ORDER);
   const steps = buildWizardSteps(fieldOrder);
@@ -627,6 +671,7 @@ export function CheckoutForm({
               ...(utmSource && { utmSource }),
               ...(utmMedium && { utmMedium }),
               ...(utmCampaign && { utmCampaign }),
+              ...(couponCode.trim() && { couponCode: couponCode.trim() }),
               sessionId,
             }
           : {
@@ -641,6 +686,7 @@ export function CheckoutForm({
               ...(utmSource && { utmSource }),
               ...(utmMedium && { utmMedium }),
               ...(utmCampaign && { utmCampaign }),
+              ...(couponCode.trim() && { couponCode: couponCode.trim() }),
               sessionId,
             };
 
@@ -718,6 +764,7 @@ export function CheckoutForm({
           ...(utmSource && { utmSource }),
           ...(utmMedium && { utmMedium }),
           ...(utmCampaign && { utmCampaign }),
+          ...(couponCode.trim() && { couponCode: couponCode.trim() }),
           sessionId,
         }),
       });
@@ -1389,6 +1436,26 @@ export function CheckoutForm({
           })}
         </div>
 
+        {couponCodeFieldEnabled && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">クーポンコード(お持ちの方)</span>
+            <input
+              className="input"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value)}
+              onBlur={() => checkCoupon(couponCode)}
+              placeholder="コードをお持ちの場合はご入力ください"
+            />
+            {couponChecking && <p className="mt-1 text-xs text-neutral-400">確認中...</p>}
+            {!couponChecking && couponInvalid && (
+              <p className="mt-1 text-xs text-red-600">クーポンコードが無効です</p>
+            )}
+            {!couponChecking && !couponInvalid && couponCode.trim() && couponDiscount > 0 && (
+              <p className="mt-1 text-xs text-green-700">クーポンを適用しました</p>
+            )}
+          </label>
+        )}
+
         <AmountBreakdown
           amount={activeProduct.price}
           quantity={quantity}
@@ -1397,6 +1464,7 @@ export function CheckoutForm({
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
           addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
+          discountAmount={couponDiscount}
         />
       </>
     );
@@ -1657,6 +1725,7 @@ export function CheckoutForm({
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
           addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
+          discountAmount={couponDiscount}
         />
 
         <button

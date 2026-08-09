@@ -7,6 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { fulfillOrder } from "@/lib/order-fulfillment";
 import { generateOrderNumber } from "@/lib/order-number";
+import { resolveApplicableCoupon, recordCouponUsage } from "@/lib/coupons";
 
 /**
  * 後払い(スコアあと払い)・代金引換の注文受付。
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     utmSource,
     utmMedium,
     utmCampaign,
+    couponCode,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -67,11 +69,21 @@ export async function POST(request: Request) {
 
   const amount = product.price * quantity;
   const paymentFee = await getPaymentFee(paymentMethod, orderType);
-  const breakdown = calculateTotal(amount + addonAmount, product.shipping_fee, paymentFee);
-
-  const customer = await upsertCustomer(customerInput);
 
   const supabase = createSupabaseAdminClient();
+  const appliedCoupon = await resolveApplicableCoupon(supabase, {
+    scenarioId,
+    code: couponCode,
+    subtotal: amount + addonAmount,
+  });
+  const breakdown = calculateTotal(
+    amount + addonAmount,
+    product.shipping_fee,
+    paymentFee,
+    appliedCoupon?.discountAmount ?? 0,
+  );
+
+  const customer = await upsertCustomer(customerInput);
   const orderNumber = await generateOrderNumber(supabase, scenarioId);
   const { data: order, error } = await supabase
     .from("orders")
@@ -98,6 +110,9 @@ export async function POST(request: Request) {
       utm_source: utmSource ?? null,
       utm_medium: utmMedium ?? null,
       utm_campaign: utmCampaign ?? null,
+      coupon_id: appliedCoupon?.id ?? null,
+      coupon_code: appliedCoupon?.code ?? null,
+      discount_amount: appliedCoupon?.discountAmount ?? 0,
     })
     .select("id")
     .single();
@@ -141,6 +156,9 @@ export async function POST(request: Request) {
 
   if (accepted) {
     await fulfillOrder(order.id);
+    if (appliedCoupon) {
+      await recordCouponUsage(supabase, appliedCoupon.id);
+    }
   }
 
   // このセッションの離脱リードが実際には注文につながったことを記録する(以後、別注文で上書きしない)。

@@ -115,6 +115,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     textColor: "white" | "black" | null;
   }>({ mode: null, imageUrl: null, title: null, backgroundColor: null, textColor: null });
   const [adTag, setAdTag] = useState<string | null>(null);
+  const [couponCodeFieldEnabled, setCouponCodeFieldEnabled] = useState(true);
   // dangerouslySetInnerHTMLで挿入した<script>はブラウザ仕様により実行されないため、
   // 管理者が設定した広告計測タグ(GA4/Metaピクセル等)は要素を組み立て直してDOMに追加する
   useEffect(() => {
@@ -270,6 +271,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             header_background_color?: string | null;
             header_text_color?: "white" | "black" | null;
             ad_tag?: string | null;
+            coupon_code_field_enabled?: boolean;
           };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
@@ -293,6 +295,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setMenuItems(scenarioBody.menuItems ?? []);
         setScenarioId(scenarioBody.scenario?.id);
         setAdTag(scenarioBody.scenario?.ad_tag ?? null);
+        setCouponCodeFieldEnabled(scenarioBody.scenario?.coupon_code_field_enabled ?? true);
         fetch("/api/widget/access-log", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -950,6 +953,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   utmSource={utmSource}
                   utmMedium={utmMedium}
                   utmCampaign={utmCampaign}
+                  couponCodeFieldEnabled={couponCodeFieldEnabled}
                   surveyResponses={surveyAnswers}
                   onComplete={(result) => handleCheckoutComplete(item, result)}
                   onBack={() => handleCheckoutBack(item)}

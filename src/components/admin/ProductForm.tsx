@@ -15,6 +15,7 @@ export interface ProductFormValues {
   productGroupId: string;
   name: string;
   description: string;
+  memo: string;
   price: number;
   listPrice: number | null;
   priceLabel: string;
@@ -31,6 +32,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     productGroupId: defaultProductGroupId ?? "",
     name: "",
     description: "",
+    memo: "",
     price: 0,
     listPrice: null,
     priceLabel: "",
@@ -90,6 +92,7 @@ export function ProductForm({
       productGroupId: values.productGroupId,
       name: values.name,
       description: values.description || undefined,
+      memo: values.memo || null,
       price: Number(values.price),
       listPrice: values.listPrice === null ? null : Number(values.listPrice),
       priceLabel: values.priceLabel || null,
@@ -235,6 +238,7 @@ export function ProductForm({
         <span className="mb-1 block text-sm font-medium text-neutral-700">
           画像URL(複数可、1枚目がカルーセルに表示されます)
         </span>
+        <p className="mb-1 text-xs text-neutral-400">推奨比率: 正方形(1:1)。商品カード・詳細ともに正方形に切り取られて表示されます</p>
         <div className="space-y-2">
           {values.imageUrls.map((url, index) => (
             <div key={index} className="flex gap-2">
@@ -273,6 +277,18 @@ export function ProductForm({
         <input
           value={values.smaregiProductId}
           onChange={(e) => setValues((p) => ({ ...p, smaregiProductId: e.target.value }))}
+          className="input"
+        />
+      </Field>
+
+      <Field label="備考(社内用・任意)">
+        <p className="mb-1 text-xs text-neutral-400">
+          チャット画面には表示されません。セット品を登録する場合、内訳(同梱商品の一覧)などをここに記録してください
+        </p>
+        <textarea
+          value={values.memo}
+          onChange={(e) => setValues((p) => ({ ...p, memo: e.target.value }))}
+          rows={3}
           className="input"
         />
       </Field>

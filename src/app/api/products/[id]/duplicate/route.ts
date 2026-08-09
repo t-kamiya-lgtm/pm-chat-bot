@@ -37,6 +37,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       display_order: displayOrder,
       name: `${source.name}(コピー)`,
       description: source.description,
+      memo: source.memo,
       price: source.price,
       list_price: source.list_price,
       price_label: source.price_label,

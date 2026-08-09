@@ -52,6 +52,7 @@ const updateSchema = z.object({
   adTag: z.string().nullable().optional(),
   popupIconUrl: z.string().nullable().optional(),
   popupPosition: z.enum(["bottom-right", "bottom-left"]).nullable().optional(),
+  couponCodeFieldEnabled: z.boolean().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -119,6 +120,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.adTag !== undefined && { ad_tag: input.adTag }),
       ...(input.popupIconUrl !== undefined && { popup_icon_url: input.popupIconUrl }),
       ...(input.popupPosition !== undefined && { popup_position: input.popupPosition }),
+      ...(input.couponCodeFieldEnabled !== undefined && {
+        coupon_code_field_enabled: input.couponCodeFieldEnabled,
+      }),
     })
     .eq("id", id)
     .select("*")

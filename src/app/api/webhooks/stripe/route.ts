@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fulfillOrder } from "@/lib/order-fulfillment";
+import { recordCouponUsage } from "@/lib/coupons";
 
 export const runtime = "nodejs";
 
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       const { data: order } = await supabase
         .from("orders")
-        .select("id, status, type")
+        .select("id, status, type, coupon_id")
         .eq("stripe_payment_intent_id", paymentIntent.id)
         .maybeSingle();
 
@@ -56,6 +57,8 @@ export async function POST(request: Request) {
           .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
           .eq("id", order.id);
         await fulfillOrder(order.id);
+        // クーポンの使用回数は決済確定時点で加算する(与信のみで完了前の失敗・放棄では消費しない)
+        if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
       }
       break;
     }
@@ -67,7 +70,7 @@ export async function POST(request: Request) {
 
       const { data: order } = await supabase
         .from("orders")
-        .select("id, status")
+        .select("id, status, coupon_id")
         .eq("stripe_subscription_id", subscriptionId)
         .maybeSingle();
       if (!order) break;
@@ -86,6 +89,8 @@ export async function POST(request: Request) {
           .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
           .eq("id", order.id);
         await fulfillOrder(order.id);
+        // クーポンの使用回数は初回決済確定時点で加算する(以降の定期課金では加算しない)
+        if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
       }
       break;
     }

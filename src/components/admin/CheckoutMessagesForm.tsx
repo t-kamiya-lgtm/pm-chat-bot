@@ -90,6 +90,7 @@ function GreetingItemsEditor({
                 value={item.imageUrl}
                 onChange={(e) => update(index, { imageUrl: e.target.value })}
               />
+              <p className="text-xs text-neutral-400">推奨比率: 横長など任意の比率(横幅いっぱいに表示されます)</p>
               <input
                 className="input"
                 placeholder="リンクURL(任意・画像タップ時に開く)"
