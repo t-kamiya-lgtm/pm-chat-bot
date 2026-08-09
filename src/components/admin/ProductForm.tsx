@@ -110,11 +110,9 @@ export function ProductForm({
         setErrorMessage("セット構成数を入力してください");
         return;
       }
-      if (values.setOptionProductIds.length < values.setItemCount) {
+      if (values.setOptionProductIds.length === 0) {
         setSubmitting(false);
-        setErrorMessage(
-          `選択肢の商品は、セット構成数(${values.setItemCount}点)以上選択してください`,
-        );
+        setErrorMessage("選択肢の商品を1つ以上選択してください");
         return;
       }
     }
@@ -154,7 +152,7 @@ export function ProductForm({
       return;
     }
 
-    router.push(isEdit ? `/admin/product-groups/${values.productGroupId}` : "/admin/products");
+    router.push("/admin/products");
     router.refresh();
   }
 
@@ -352,11 +350,10 @@ export function ProductForm({
             </Field>
             <div>
               <span className="mb-1 block text-sm font-medium text-neutral-700">
-                選択肢として提示する商品品番(構成数以上を選択してください)
+                選択肢として提示する商品品番
               </span>
               <p className="mb-2 text-xs text-neutral-400">
-                選択中: {values.setOptionProductIds.length}点
-                {values.setItemCount ? `(構成数 ${values.setItemCount}点以上必要)` : ""}
+                選択中: {values.setOptionProductIds.length}点(同じ商品を複数回選べるため、選択肢の数が構成数より少なくてもかまいません)
               </p>
               <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
                 {otherProducts.map((p) => (
@@ -424,9 +421,7 @@ export function ProductForm({
         </button>
         <button
           type="button"
-          onClick={() =>
-            router.push(isEdit ? `/admin/product-groups/${values.productGroupId}` : "/admin/products")
-          }
+          onClick={() => router.push("/admin/products")}
           className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
         >
           キャンセル
