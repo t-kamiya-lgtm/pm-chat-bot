@@ -20,16 +20,19 @@ export interface ProductRow {
   subscriptionIntervals: string[];
   smaregiProductId: string | null;
   productGroupName: string | null;
+  isActive: boolean;
 }
 
 export function ProductsTable({ initialProducts }: { initialProducts: ProductRow[] }) {
   const router = useRouter();
   const [products, setProducts] = useState(initialProducts);
   const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const filtered = products.filter((p) => {
+    if (!showArchived && !p.isActive) return false;
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return p.name.toLowerCase().includes(q) || (p.productGroupName ?? "").toLowerCase().includes(q);
@@ -37,9 +40,35 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
 
   async function handleDelete(id: string) {
     setPending(id);
-    await fetch(`/api/products/${id}`, { method: "DELETE" });
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
     setPending(null);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "削除に失敗しました",
+        type: "error",
+      });
+      return;
+    }
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+    router.refresh();
+  }
+
+  async function toggleArchive(product: ProductRow) {
+    setPending(product.id);
+    const res = await fetch(`/api/products/${product.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ isActive: !product.isActive }),
+    });
+    setPending(null);
+
+    if (!res.ok) {
+      setToast({ message: "更新に失敗しました", type: "error" });
+      return;
+    }
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, isActive: !p.isActive } : p)));
     router.refresh();
   }
 
@@ -78,6 +107,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
         subscriptionIntervals: created.subscription_intervals,
         smaregiProductId: created.smaregi_product_id,
         productGroupName: product.productGroupName,
+        isActive: true,
       },
     ]);
     setPending(null);
@@ -88,17 +118,25 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
   return (
     <div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-4">
         <input
           className="input max-w-sm"
           placeholder="商品名・アイテムで検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <label className="flex items-center gap-1.5 text-sm text-neutral-600">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          アーカイブ済みも表示
+        </label>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[820px] text-sm">
           <thead className="bg-neutral-50 text-left text-neutral-500">
             <tr>
               <th className="px-4 py-2">スマレジ商品ID</th>
@@ -107,12 +145,13 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
               <th className="px-4 py-2">価格</th>
               <th className="px-4 py-2">送料</th>
               <th className="px-4 py-2">注文タイプ</th>
+              <th className="px-4 py-2">状態</th>
               <th className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((product) => (
-              <tr key={product.id} className="border-t border-neutral-100">
+              <tr key={product.id} className={`border-t border-neutral-100 ${!product.isActive ? "opacity-50" : ""}`}>
                 <td className="px-4 py-2">{product.smaregiProductId ?? "-"}</td>
                 <td className="px-4 py-2">
                   <Link href={`/admin/products/${product.id}`} className="text-blue-600 hover:underline">
@@ -129,6 +168,18 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
                   {product.orderType === "subscription" &&
                     product.subscriptionIntervals?.length > 0 &&
                     `(${product.subscriptionIntervals.join(" / ")})`}
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    type="button"
+                    disabled={pending === product.id}
+                    onClick={() => toggleArchive(product)}
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      product.isActive ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    {product.isActive ? "有効" : "アーカイブ済み"}
+                  </button>
                 </td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
                   <button
@@ -149,7 +200,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-neutral-400">
                   {products.length === 0 ? "商品が登録されていません" : "該当する商品がありません"}
                 </td>
               </tr>
