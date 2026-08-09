@@ -57,11 +57,15 @@ const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = [
   ...SHIPPING_ADDRESS_FIELD_KEYS,
 ];
 
-/** モバイルでキーボード表示時に入力欄が隠れないよう、フォーカス時に画面中央へスクロールする。 */
+/**
+ * モバイルでキーボード表示時に入力欄が隠れないよう、フォーカス時にスクロールする。
+ * block: "center"だと、埋め込みポップアップ等の小さいコンテナでは中央寄せのために
+ * 上下に大きな空白ができ、実質的に入力欄が見えなくなることがあるため"nearest"にする。
+ */
 function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
   const target = e.target;
   setTimeout(() => {
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, 300);
 }
 
