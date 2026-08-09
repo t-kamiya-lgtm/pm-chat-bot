@@ -9,7 +9,7 @@ export default async function AdminProductsPage() {
   const { data: products, error: productsError } = await supabase
     .from("products")
     .select("*, product_groups(name)")
-    .order("display_order", { ascending: true });
+    .order("smaregi_product_id", { ascending: true, nullsFirst: false });
 
   const rows: ProductRow[] = (products ?? []).map((product) => ({
     id: product.id,
@@ -19,7 +19,6 @@ export default async function AdminProductsPage() {
     orderType: product.order_type,
     subscriptionIntervals: product.subscription_intervals ?? [],
     smaregiProductId: product.smaregi_product_id,
-    displayOrder: product.display_order,
     productGroupName: (product.product_groups as { name: string } | null)?.name ?? null,
   }));
 

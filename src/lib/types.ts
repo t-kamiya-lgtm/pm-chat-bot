@@ -25,6 +25,7 @@ export interface Product {
   productGroupId: string | null;
   name: string;
   description: string | null;
+  memo: string | null;
   price: number;
   listPrice: number | null;
   priceLabel: string | null;
