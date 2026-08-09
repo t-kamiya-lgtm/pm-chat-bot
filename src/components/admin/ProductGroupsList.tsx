@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export interface ProductGroupRow {
   id: string;
@@ -12,10 +13,22 @@ export interface ProductGroupRow {
 export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGroupRow[] }) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function startEdit(group: ProductGroupRow) {
+    setEditingId(group.id);
+    setEditValue(group.name);
+    setError(null);
+  }
 
   async function handleRename(group: ProductGroupRow) {
-    const name = window.prompt("新しいアイテム名を入力してください", group.name);
-    if (!name || name === group.name) return;
+    const name = editValue.trim();
+    if (!name || name === group.name) {
+      setEditingId(null);
+      return;
+    }
 
     setPending(group.id);
     const res = await fetch(`/api/product-groups/${group.id}`, {
@@ -27,27 +40,21 @@ export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGro
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
+    setEditingId(null);
     router.refresh();
   }
 
   async function handleDelete(group: ProductGroupRow) {
-    if (
-      !window.confirm(
-        `「${group.name}」を削除しますか？紐づく品番・仕様情報・QAも合わせて削除され、取り消せません。`,
-      )
-    )
-      return;
-
     setPending(group.id);
     const res = await fetch(`/api/product-groups/${group.id}`, { method: "DELETE" });
     setPending(null);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setError(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
     router.refresh();
@@ -55,32 +62,59 @@ export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGro
 
   return (
     <div className="space-y-3">
+      {error && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
       {initialGroups.map((group) => (
         <div
           key={group.id}
-          className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-4 hover:shadow-sm"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white p-4 hover:shadow-sm"
         >
-          <Link href={`/admin/product-groups/${group.id}`} className="flex-1">
-            {group.name}
-          </Link>
-          <div className="flex shrink-0 gap-3 text-sm">
-            <button
-              type="button"
-              disabled={pending === group.id}
-              onClick={() => handleRename(group)}
-              className="text-blue-600 hover:underline disabled:opacity-30"
-            >
-              名前を編集
-            </button>
-            <button
-              type="button"
-              disabled={pending === group.id}
-              onClick={() => handleDelete(group)}
-              className="text-red-600 hover:underline disabled:opacity-30"
-            >
-              削除
-            </button>
-          </div>
+          {editingId === group.id ? (
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="input flex-1"
+              />
+              <button
+                type="button"
+                disabled={pending === group.id}
+                onClick={() => handleRename(group)}
+                className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700 disabled:opacity-50"
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingId(null)}
+                className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+              >
+                キャンセル
+              </button>
+            </div>
+          ) : (
+            <Link href={`/admin/product-groups/${group.id}`} className="flex-1">
+              {group.name}
+            </Link>
+          )}
+          {editingId !== group.id && (
+            <div className="flex shrink-0 gap-3 text-sm">
+              <button
+                type="button"
+                disabled={pending === group.id}
+                onClick={() => startEdit(group)}
+                className="text-blue-600 hover:underline disabled:opacity-30"
+              >
+                名前を編集
+              </button>
+              <ConfirmButton
+                label="削除"
+                confirmLabel="紐づく品番・仕様情報・QAも削除されます。よろしいですか？"
+                disabled={pending === group.id}
+                onConfirm={() => handleDelete(group)}
+              />
+            </div>
+          )}
         </div>
       ))}
       {initialGroups.length === 0 && (
