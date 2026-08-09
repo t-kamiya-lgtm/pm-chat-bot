@@ -20,6 +20,7 @@ const productUpdateSchema = z.object({
   orderType: z.enum(["one_time", "subscription"]).optional(),
   subscriptionIntervals: z.array(subscriptionIntervalSchema).optional(),
   displayOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
   isSet: z.boolean().optional(),
   setItemCount: z.number().int().min(1).nullable().optional(),
   setOptionProductIds: z.array(z.string().uuid()).optional(),
@@ -52,9 +53,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const input = parsed.data;
 
   if (input.isSet && input.setOptionProductIds !== undefined) {
-    if (!input.setItemCount || input.setOptionProductIds.length <= input.setItemCount) {
+    if (!input.setItemCount || input.setOptionProductIds.length < input.setItemCount) {
       return NextResponse.json(
-        { error: "セット品は、セット構成数より多い数の選択肢商品を登録してください" },
+        { error: "セット品は、セット構成数以上の数の選択肢商品を登録してください" },
         { status: 400 },
       );
     }
@@ -101,6 +102,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         subscription_intervals: input.subscriptionIntervals,
       }),
       ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
+      ...(input.isActive !== undefined && { is_active: input.isActive }),
       ...(input.isSet !== undefined && { is_set: input.isSet }),
       ...(input.setItemCount !== undefined && { set_item_count: input.isSet === false ? null : input.setItemCount }),
     })
@@ -134,6 +136,21 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   const { id } = await params;
 
   const supabase = createSupabaseAdminClient();
+
+  // 注文で使用済みの品番は外部キー制約で削除できない(注文履歴が壊れるため)。
+  // 削除前に判定し、アーカイブを促す分かりやすいエラーを返す(でないと削除に失敗しても
+  // 画面上は削除できたように見えてしまい、再読み込みで復活したように見える)。
+  const [{ count: orderCount }, { count: addonCount }] = await Promise.all([
+    supabase.from("orders").select("id", { count: "exact", head: true }).eq("product_id", id),
+    supabase.from("orders").select("id", { count: "exact", head: true }).eq("addon_product_id", id),
+  ]);
+  if ((orderCount ?? 0) > 0 || (addonCount ?? 0) > 0) {
+    return NextResponse.json(
+      { error: "この品番は注文で使用されているため削除できません。代わりに「アーカイブ」で一覧から隠せます。" },
+      { status: 409 },
+    );
+  }
+
   const { error } = await supabase.from("products").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

@@ -34,6 +34,7 @@ export default async function AdminProductsPage({
     subscriptionIntervals: product.subscription_intervals ?? [],
     smaregiProductId: product.smaregi_product_id,
     productGroupName: (product.product_groups as { name: string } | null)?.name ?? null,
+    isActive: product.is_active ?? true,
   }));
 
   return (

@@ -110,10 +110,10 @@ export function ProductForm({
         setErrorMessage("セット構成数を入力してください");
         return;
       }
-      if (values.setOptionProductIds.length <= values.setItemCount) {
+      if (values.setOptionProductIds.length < values.setItemCount) {
         setSubmitting(false);
         setErrorMessage(
-          `選択肢の商品は、セット構成数(${values.setItemCount}点)より多く選択してください`,
+          `選択肢の商品は、セット構成数(${values.setItemCount}点)以上選択してください`,
         );
         return;
       }
@@ -352,11 +352,11 @@ export function ProductForm({
             </Field>
             <div>
               <span className="mb-1 block text-sm font-medium text-neutral-700">
-                選択肢として提示する商品品番(構成数より多く選択してください)
+                選択肢として提示する商品品番(構成数以上を選択してください)
               </span>
               <p className="mb-2 text-xs text-neutral-400">
                 選択中: {values.setOptionProductIds.length}点
-                {values.setItemCount ? `(構成数 ${values.setItemCount}点より多く必要)` : ""}
+                {values.setItemCount ? `(構成数 ${values.setItemCount}点以上必要)` : ""}
               </p>
               <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
                 {otherProducts.map((p) => (
