@@ -20,10 +20,11 @@ export function InquiryForm({
     setSubmitting(true);
     setError(null);
 
+    const chatUrl = typeof window !== "undefined" ? window.location.href : undefined;
     const res = await fetch("/api/inquiries", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, email, message, productName }),
+      body: JSON.stringify({ name, email, message, productName, chatUrl }),
     });
 
     setSubmitting(false);

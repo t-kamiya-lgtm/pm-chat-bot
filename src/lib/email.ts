@@ -8,6 +8,7 @@ export interface InquiryInput {
   email: string;
   message: string;
   productName?: string;
+  chatUrl?: string;
 }
 
 export async function sendInquiryNotification(input: InquiryInput): Promise<void> {
@@ -19,6 +20,9 @@ export async function sendInquiryNotification(input: InquiryInput): Promise<void
     return;
   }
 
+  // 運用テスト期間中、本番の問い合わせと見分けられるよう件名に明記する。
+  const testPrefix = process.env.INQUIRY_TEST_MODE === "true" ? "【テスト】" : "";
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -28,10 +32,14 @@ export async function sendInquiryNotification(input: InquiryInput): Promise<void
     body: JSON.stringify({
       from: process.env.INQUIRY_FROM_EMAIL ?? "chatbot@example.com",
       to,
-      subject: `[チャットボット問い合わせ] ${input.productName ?? "商品QA"}`,
+      subject: `${testPrefix}[チャットボット問い合わせ] ${input.productName ?? "商品QA"}`,
       text: `お名前: ${input.name}\nメールアドレス: ${input.email}\n商品: ${
         input.productName ?? "-"
-      }\n\n${input.message}`,
+      }\n\n${input.message}${
+        input.chatUrl
+          ? `\n\nチャットURL: ${input.chatUrl}\n(お客様への返信時にこちらのリンクをご案内し、チャットボットでのご購入をお促しください)`
+          : ""
+      }`,
     }),
   });
 
