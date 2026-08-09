@@ -53,9 +53,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const input = parsed.data;
 
   if (input.isSet && input.setOptionProductIds !== undefined) {
-    if (!input.setItemCount || input.setOptionProductIds.length <= input.setItemCount) {
+    if (!input.setItemCount || input.setOptionProductIds.length < input.setItemCount) {
       return NextResponse.json(
-        { error: "セット品は、セット構成数より多い数の選択肢商品を登録してください" },
+        { error: "セット品は、セット構成数以上の数の選択肢商品を登録してください" },
         { status: 400 },
       );
     }

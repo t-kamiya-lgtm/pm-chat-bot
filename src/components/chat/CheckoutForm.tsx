@@ -319,7 +319,8 @@ export function CheckoutForm({
   const [activeProduct, setActiveProduct] = useState<WidgetProduct>(product);
   const [addonSelected, setAddonSelected] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const [selectedSetOptionIds, setSelectedSetOptionIds] = useState<string[]>([]);
+  const [setOptionQuantities, setSetOptionQuantities] = useState<Record<string, number>>({});
+  const totalSetSelected = Object.values(setOptionQuantities).reduce((sum, q) => sum + q, 0);
   const orderType = activeProduct.order_type;
   // ポスト投函対象商品は、単品1点のみの注文の場合に限りお届け日・時間帯の指定を受け付けない
   // (2点以上、または他商品と同時注文の場合は宅配便出荷となるため指定可能)
@@ -598,7 +599,7 @@ export function CheckoutForm({
     setActiveProduct(upsellProduct);
     setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
-    setSelectedSetOptionIds([]);
+    setSetOptionQuantities({});
   }
 
   /** 商品編集画面から、同じカルーセルの他の商品に切り替える(住所等の入力済み情報は保持したまま)。 */
@@ -606,15 +607,25 @@ export function CheckoutForm({
     setActiveProduct(nextProduct);
     setSubscriptionInterval(nextProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
-    setSelectedSetOptionIds([]);
+    setSetOptionQuantities({});
     setStage("options");
   }
 
-  function toggleSetOption(optionId: string) {
-    setSelectedSetOptionIds((prev) => {
-      if (prev.includes(optionId)) return prev.filter((id) => id !== optionId);
-      if (activeProduct.set_item_count && prev.length >= activeProduct.set_item_count) return prev;
-      return [...prev, optionId];
+  /** セットの内訳は、同じ商品を複数個選ぶこともできる(合計は構成数まで)。 */
+  function incrementSetOption(optionId: string) {
+    if (activeProduct.set_item_count && totalSetSelected >= activeProduct.set_item_count) return;
+    setSetOptionQuantities((prev) => ({ ...prev, [optionId]: (prev[optionId] ?? 0) + 1 }));
+  }
+
+  function decrementSetOption(optionId: string) {
+    setSetOptionQuantities((prev) => {
+      const current = prev[optionId] ?? 0;
+      if (current <= 1) {
+        const rest = { ...prev };
+        delete rest[optionId];
+        return rest;
+      }
+      return { ...prev, [optionId]: current - 1 };
     });
   }
 
@@ -652,11 +663,12 @@ export function CheckoutForm({
     const surveyResponsesPayload =
       surveyResponses && Object.keys(surveyResponses).length > 0 ? surveyResponses : undefined;
     const setSelectionsPayload =
-      activeProduct.is_set && selectedSetOptionIds.length > 0
-        ? selectedSetOptionIds
-            .map((id) => activeProduct.set_options.find((o) => o.id === id))
-            .filter((o): o is NonNullable<typeof o> => Boolean(o))
-            .map((o) => ({ id: o.id, name: o.name }))
+      activeProduct.is_set && totalSetSelected > 0
+        ? Object.entries(setOptionQuantities).flatMap(([id, qty]) => {
+            const option = activeProduct.set_options.find((o) => o.id === id);
+            if (!option) return [];
+            return Array.from({ length: qty }, () => ({ id: option.id, name: option.name }));
+          })
         : undefined;
 
     return { customer, delivery, addonProductId, shippingAddress, surveyResponsesPayload, setSelectionsPayload };
@@ -1263,13 +1275,17 @@ export function CheckoutForm({
               </div>
             </div>
           )}
-          {activeProduct.is_set && selectedSetOptionIds.length > 0 && (
+          {activeProduct.is_set && totalSetSelected > 0 && (
             <div className="flex items-start justify-between">
               <span className="shrink-0 text-neutral-500">セット内訳</span>
               <div className="flex items-start gap-2">
                 <span className="text-right">
-                  {selectedSetOptionIds
-                    .map((id) => activeProduct.set_options.find((o) => o.id === id)?.name)
+                  {Object.entries(setOptionQuantities)
+                    .map(([id, qty]) => {
+                      const option = activeProduct.set_options.find((o) => o.id === id);
+                      if (!option) return null;
+                      return qty > 1 ? `${option.name} ×${qty}` : option.name;
+                    })
                     .filter(Boolean)
                     .join(" / ")}
                 </span>
@@ -1680,6 +1696,8 @@ export function CheckoutForm({
     );
   }
 
+  const setItemCount = activeProduct.set_item_count;
+
   return (
     <div className="space-y-3">
       <div ref={containerRef} className="max-w-[95%] space-y-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -1761,23 +1779,20 @@ export function CheckoutForm({
           </p>
         )}
 
-        {activeProduct.is_set && activeProduct.set_item_count && (
+        {activeProduct.is_set && setItemCount && (
           <div className="rounded-md border border-neutral-200 p-3">
             <p className="mb-2 text-sm font-medium text-neutral-700">
-              セットの内訳を({activeProduct.set_item_count}点)選択してください
+              セットの内訳を({setItemCount}点)選択してください
             </p>
+            <p className="mb-2 text-xs text-neutral-400">同じ商品を複数個選ぶこともできます</p>
             <div className="grid grid-cols-2 gap-2">
               {activeProduct.set_options.map((option) => {
-                const selected = selectedSetOptionIds.includes(option.id);
+                const qty = setOptionQuantities[option.id] ?? 0;
                 return (
-                  <button
+                  <div
                     key={option.id}
-                    type="button"
-                    onClick={() => toggleSetOption(option.id)}
                     className={`flex flex-col items-center gap-1 rounded-md border p-2 text-xs ${
-                      selected
-                        ? "border-neutral-900 bg-neutral-50"
-                        : "border-neutral-200 hover:bg-neutral-50"
+                      qty > 0 ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
                     }`}
                   >
                     {option.image_url && (
@@ -1789,13 +1804,31 @@ export function CheckoutForm({
                       />
                     )}
                     <span>{option.name}</span>
-                    {selected && <span className="text-neutral-900">選択中</span>}
-                  </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={qty === 0}
+                        onClick={() => decrementSetOption(option.id)}
+                        className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 disabled:opacity-30"
+                      >
+                        −
+                      </button>
+                      <span className="w-4 text-center">{qty}</span>
+                      <button
+                        type="button"
+                        disabled={totalSetSelected >= setItemCount}
+                        onClick={() => incrementSetOption(option.id)}
+                        className="h-6 w-6 rounded border border-neutral-300 hover:bg-neutral-100 disabled:opacity-30"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
             <p className="mt-2 text-xs text-neutral-500">
-              選択中: {selectedSetOptionIds.length} / {activeProduct.set_item_count}点
+              選択中: {totalSetSelected} / {setItemCount}点
             </p>
           </div>
         )}
@@ -1815,7 +1848,7 @@ export function CheckoutForm({
           type="button"
           disabled={
             Boolean(activeProduct.is_set && activeProduct.set_item_count) &&
-            selectedSetOptionIds.length !== activeProduct.set_item_count
+            totalSetSelected !== activeProduct.set_item_count
           }
           onClick={() => {
             if (returnToStepIndex !== null) {

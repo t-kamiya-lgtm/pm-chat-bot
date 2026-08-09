@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "実績ダッシュボード" },
@@ -21,9 +22,17 @@ const CATALOG_ITEMS = [
 ];
 
 const linkClass = "text-neutral-600 transition-colors hover:text-neutral-900 active:text-blue-600";
+const activeLinkClass = "font-semibold text-blue-600";
 
 export function AdminNav() {
+  const pathname = usePathname();
   const [catalogOpen, setCatalogOpen] = useState(false);
+
+  function isActive(href: string) {
+    return pathname === href || Boolean(pathname?.startsWith(`${href}/`));
+  }
+
+  const catalogActive = CATALOG_ITEMS.some((item) => isActive(item.href));
 
   return (
     <div className="mx-auto max-w-5xl px-6 pb-3 text-sm">
@@ -31,24 +40,26 @@ export function AdminNav() {
         <button
           type="button"
           onClick={() => setCatalogOpen((prev) => !prev)}
-          className={`flex items-center gap-1 ${linkClass}`}
+          className={`flex items-center gap-1 ${catalogActive ? activeLinkClass : linkClass}`}
         >
           商品登録
-          <span className={`text-xs transition-transform ${catalogOpen ? "rotate-180" : ""}`}>▼</span>
+          <span className={`text-xs transition-transform ${catalogOpen || catalogActive ? "rotate-180" : ""}`}>
+            ▼
+          </span>
         </button>
         {NAV_ITEMS.map((item) => (
-          <Link key={item.href} href={item.href} className={linkClass}>
+          <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
             {item.label}
           </Link>
         ))}
-        <Link href="/admin/users" className={linkClass}>
+        <Link href="/admin/users" className={isActive("/admin/users") ? activeLinkClass : linkClass}>
           ログイン者一覧
         </Link>
       </nav>
-      {catalogOpen && (
+      {(catalogOpen || catalogActive) && (
         <div className="mt-2 flex flex-wrap gap-4 border-t border-neutral-100 pt-2 pl-4 text-sm">
           {CATALOG_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className={linkClass}>
+            <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
               {item.label}
             </Link>
           ))}
