@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export interface BrandRow {
   id: string;
@@ -13,10 +14,22 @@ export interface BrandRow {
 export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function startEdit(brand: BrandRow) {
+    setEditingId(brand.id);
+    setEditValue(brand.name);
+    setError(null);
+  }
 
   async function handleRename(brand: BrandRow) {
-    const name = window.prompt("新しいブランド名を入力してください", brand.name);
-    if (!name || name === brand.name) return;
+    const name = editValue.trim();
+    if (!name || name === brand.name) {
+      setEditingId(null);
+      return;
+    }
 
     setPending(brand.id);
     const res = await fetch(`/api/brands/${brand.id}`, {
@@ -28,27 +41,21 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
+    setEditingId(null);
     router.refresh();
   }
 
   async function handleDelete(brand: BrandRow) {
-    if (
-      !window.confirm(
-        `「${brand.name}」を削除しますか？紐づくアイテムのブランド設定は解除されます(アイテム自体は削除されません)。`,
-      )
-    )
-      return;
-
     setPending(brand.id);
     const res = await fetch(`/api/brands/${brand.id}`, { method: "DELETE" });
     setPending(null);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setError(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
     router.refresh();
@@ -56,28 +63,55 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
 
   return (
     <div className="space-y-3">
+      {error && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
       {initialBrands.map((brand) => (
         <div key={brand.id} className="rounded-lg border border-neutral-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <p className="font-medium">{brand.name}</p>
-            <div className="flex shrink-0 gap-3 text-sm">
-              <button
-                type="button"
-                disabled={pending === brand.id}
-                onClick={() => handleRename(brand)}
-                className="text-blue-600 hover:underline disabled:opacity-30"
-              >
-                名前を編集
-              </button>
-              <button
-                type="button"
-                disabled={pending === brand.id}
-                onClick={() => handleDelete(brand)}
-                className="text-red-600 hover:underline disabled:opacity-30"
-              >
-                削除
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {editingId === brand.id ? (
+              <div className="flex flex-1 flex-wrap items-center gap-2">
+                <input
+                  autoFocus
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="input flex-1"
+                />
+                <button
+                  type="button"
+                  disabled={pending === brand.id}
+                  onClick={() => handleRename(brand)}
+                  className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700 disabled:opacity-50"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingId(null)}
+                  className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+                >
+                  キャンセル
+                </button>
+              </div>
+            ) : (
+              <p className="font-medium">{brand.name}</p>
+            )}
+            {editingId !== brand.id && (
+              <div className="flex shrink-0 gap-3 text-sm">
+                <button
+                  type="button"
+                  disabled={pending === brand.id}
+                  onClick={() => startEdit(brand)}
+                  className="text-blue-600 hover:underline disabled:opacity-30"
+                >
+                  名前を編集
+                </button>
+                <ConfirmButton
+                  label="削除"
+                  confirmLabel="アイテムのブランド設定が解除されます。よろしいですか？"
+                  disabled={pending === brand.id}
+                  onConfirm={() => handleDelete(brand)}
+                />
+              </div>
+            )}
           </div>
           <div className="mt-2 space-y-1">
             {brand.groups.map((g) => (

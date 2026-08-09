@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toast } from "@/components/admin/Toast";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export interface CouponRow {
   id: string;
@@ -109,7 +110,6 @@ export function CouponsTable({ initialCoupons }: { initialCoupons: CouponRow[] }
   }
 
   async function handleDelete(coupon: CouponRow) {
-    if (!window.confirm(`クーポン「${coupon.name}」を削除しますか？`)) return;
     setPending(coupon.id);
     await fetch(`/api/coupons/${coupon.id}`, { method: "DELETE" });
     setCoupons((prev) => prev.filter((c) => c.id !== coupon.id));
@@ -268,14 +268,7 @@ export function CouponsTable({ initialCoupons }: { initialCoupons: CouponRow[] }
                   </button>
                 </td>
                 <td className="px-4 py-2 text-right whitespace-nowrap">
-                  <button
-                    type="button"
-                    disabled={pending === c.id}
-                    onClick={() => handleDelete(c)}
-                    className="text-xs text-red-600 hover:underline disabled:opacity-30"
-                  >
-                    削除
-                  </button>
+                  <ConfirmButton label="削除" disabled={pending === c.id} onConfirm={() => handleDelete(c)} />
                 </td>
               </tr>
             ))}

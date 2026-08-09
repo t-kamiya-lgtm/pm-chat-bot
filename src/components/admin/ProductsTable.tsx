@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Toast } from "@/components/admin/Toast";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
   one_time: "単品",
@@ -34,8 +35,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
     return p.name.toLowerCase().includes(q) || (p.productGroupName ?? "").toLowerCase().includes(q);
   });
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(`「${name}」を削除しますか？この操作は取り消せません。`)) return;
+  async function handleDelete(id: string) {
     setPending(id);
     await fetch(`/api/products/${id}`, { method: "DELETE" });
     setProducts((prev) => prev.filter((p) => p.id !== id));
@@ -139,14 +139,11 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
                   >
                     複製
                   </button>
-                  <button
-                    type="button"
+                  <ConfirmButton
+                    label="削除"
                     disabled={pending === product.id}
-                    onClick={() => handleDelete(product.id, product.name)}
-                    className="text-xs text-red-600 hover:underline disabled:opacity-30"
-                  >
-                    削除
-                  </button>
+                    onConfirm={() => handleDelete(product.id)}
+                  />
                 </td>
               </tr>
             ))}

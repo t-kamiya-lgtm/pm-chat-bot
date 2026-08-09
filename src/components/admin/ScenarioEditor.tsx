@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio } from "@/lib/video-embed";
 import { contrastTextColor, effectiveTextColor, type TextColorOverride } from "@/lib/color";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   checkbox: "チェックボックス(複数選択)",
@@ -998,6 +999,15 @@ export function ScenarioEditor({
 }: Props) {
   const router = useRouter();
   const [publishing, setPublishing] = useState(false);
+  const [editingScenarioName, setEditingScenarioName] = useState(false);
+  const [scenarioNameDraft, setScenarioNameDraft] = useState(scenario.name);
+  const [scenarioNameError, setScenarioNameError] = useState<string | null>(null);
+  const [editingSlug, setEditingSlug] = useState(false);
+  const [slugDraft, setSlugDraft] = useState(scenario.slug ?? "");
+  const [slugError, setSlugError] = useState<string | null>(null);
+  const [editingOrderCode, setEditingOrderCode] = useState(false);
+  const [orderCodeDraft, setOrderCodeDraft] = useState(scenario.orderCode ?? "");
+  const [orderCodeError, setOrderCodeError] = useState<string | null>(null);
   const [display, setDisplay] = useState<DisplaySettings>({
     chatBackgroundColor: scenario.chatBackgroundColor,
     menuBackgroundColor: scenario.menuBackgroundColor,
@@ -1111,8 +1121,11 @@ export function ScenarioEditor({
   }
 
   async function handleRenameScenario() {
-    const name = window.prompt("新しいシナリオ名を入力してください", scenario.name);
-    if (!name || name === scenario.name) return;
+    const name = scenarioNameDraft.trim();
+    if (!name || name === scenario.name) {
+      setEditingScenarioName(false);
+      return;
+    }
 
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
@@ -1121,20 +1134,20 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setScenarioNameError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
+    setEditingScenarioName(false);
     router.refresh();
   }
 
   async function handleEditSlug() {
-    const input = window.prompt(
-      "公開用URLに使う識別子を入力してください(半角英小文字・数字・ハイフンのみ。空欄で解除)",
-      scenario.slug ?? "",
-    );
-    if (input === null) return;
-    const slug = input.trim() ? input.trim() : null;
-    if (slug === scenario.slug) return;
+    const trimmed = slugDraft.trim();
+    const slug = trimmed ? trimmed : null;
+    if (slug === scenario.slug) {
+      setEditingSlug(false);
+      return;
+    }
 
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
@@ -1143,20 +1156,20 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`公開用URLの設定に失敗しました: ${body.error ?? res.status}`);
+      setSlugError(`公開用URLの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
+    setEditingSlug(false);
     router.refresh();
   }
 
   async function handleEditOrderCode() {
-    const input = window.prompt(
-      "注文番号に使う識別コードを入力してください(半角英数字のみ。空欄で解除するとデフォルトの「XX」が使われます)",
-      scenario.orderCode ?? "",
-    );
-    if (input === null) return;
-    const orderCode = input.trim() ? input.trim() : null;
-    if (orderCode === scenario.orderCode) return;
+    const trimmed = orderCodeDraft.trim();
+    const orderCode = trimmed ? trimmed : null;
+    if (orderCode === scenario.orderCode) {
+      setEditingOrderCode(false);
+      return;
+    }
 
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
@@ -1165,9 +1178,10 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`識別コードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setOrderCodeError(`識別コードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
+    setEditingOrderCode(false);
     router.refresh();
   }
 
@@ -1333,7 +1347,6 @@ export function ScenarioEditor({
 
   async function handleDeleteCoupon() {
     if (!coupon) return;
-    if (!window.confirm("このシナリオの自動適用クーポンを削除しますか？")) return;
     setCouponSaving(true);
     await fetch(`/api/coupons/${coupon.id}`, { method: "DELETE" });
     setCouponSaving(false);
@@ -1400,8 +1413,6 @@ export function ScenarioEditor({
   }
 
   async function handleDeleteMenuItem(item: ScenarioMenuItem) {
-    if (!window.confirm(`「${item.label}」を削除しますか？`)) return;
-
     setMenuPending(item.id);
     const res = await fetch(`/api/scenarios/${scenario.id}/menu-items/${item.id}`, { method: "DELETE" });
     setMenuPending(null);
@@ -1502,11 +1513,6 @@ export function ScenarioEditor({
   }
 
   async function handleDeleteScenario() {
-    if (
-      !window.confirm(`「${scenario.name}」を削除しますか？中のノードもすべて削除され、取り消せません。`)
-    )
-      return;
-
     const res = await fetch(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -1682,7 +1688,6 @@ export function ScenarioEditor({
   }
 
   async function handleDeleteNode(nodeId: string) {
-    if (!window.confirm("このノードを削除しますか？")) return;
     await fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, { method: "DELETE" });
     router.refresh();
   }
@@ -1745,24 +1750,57 @@ export function ScenarioEditor({
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{scenario.name}</h1>
-          <button
-            type="button"
-            onClick={handleRenameScenario}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            名前を編集
-          </button>
-          <button
-            type="button"
-            onClick={handleDeleteScenario}
-            className="text-sm text-red-600 hover:underline"
-          >
-            削除
-          </button>
-        </div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+        {editingScenarioName ? (
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            <input
+              autoFocus
+              value={scenarioNameDraft}
+              onChange={(e) => setScenarioNameDraft(e.target.value)}
+              className="input max-w-xs"
+            />
+            <button
+              type="button"
+              onClick={handleRenameScenario}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700"
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingScenarioName(false);
+                setScenarioNameDraft(scenario.name);
+                setScenarioNameError(null);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+            >
+              キャンセル
+            </button>
+            {scenarioNameError && <p className="w-full text-xs text-red-600">{scenarioNameError}</p>}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold">{scenario.name}</h1>
+            <button
+              type="button"
+              onClick={() => {
+                setScenarioNameDraft(scenario.name);
+                setScenarioNameError(null);
+                setEditingScenarioName(true);
+              }}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              名前を編集
+            </button>
+            <ConfirmButton
+              label="削除"
+              confirmLabel="中のノードもすべて削除されます。よろしいですか？"
+              className="text-sm text-red-600 hover:underline"
+              onConfirm={handleDeleteScenario}
+            />
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <a
             href={`/widget?scenarioId=${scenario.id}`}
@@ -1787,36 +1825,118 @@ export function ScenarioEditor({
         </div>
       </div>
 
-      <div className="mb-6 flex items-center gap-2 text-sm text-neutral-500">
-        {scenario.slug ? (
+      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+        {editingSlug ? (
           <>
-            <span className="font-mono text-neutral-700">
-              {origin}/widget/{scenario.slug}
+            <input
+              autoFocus
+              value={slugDraft}
+              onChange={(e) => setSlugDraft(e.target.value)}
+              placeholder="半角英小文字・数字・ハイフンのみ(空欄で解除)"
+              className="input max-w-xs"
+            />
+            <button
+              type="button"
+              onClick={handleEditSlug}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700"
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingSlug(false);
+                setSlugDraft(scenario.slug ?? "");
+                setSlugError(null);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+            >
+              キャンセル
+            </button>
+            {slugError && <p className="w-full text-xs text-red-600">{slugError}</p>}
+          </>
+        ) : (
+          <>
+            {scenario.slug ? (
+              <>
+                <span className="font-mono text-neutral-700">
+                  {origin}/widget/{scenario.slug}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(`${origin}/widget/${scenario.slug}`)}
+                  className="text-blue-600 hover:underline"
+                >
+                  コピー
+                </button>
+              </>
+            ) : (
+              <span>この商品・ブランド専用の公開URLは未設定です</span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSlugDraft(scenario.slug ?? "");
+                setSlugError(null);
+                setEditingSlug(true);
+              }}
+              className="text-blue-600 hover:underline"
+            >
+              {scenario.slug ? "URLを編集" : "専用URLを発行する"}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+        {editingOrderCode ? (
+          <>
+            <input
+              autoFocus
+              value={orderCodeDraft}
+              onChange={(e) => setOrderCodeDraft(e.target.value)}
+              placeholder="半角英数字のみ(空欄でデフォルトのXXを使用)"
+              className="input max-w-xs"
+            />
+            <button
+              type="button"
+              onClick={handleEditOrderCode}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700"
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingOrderCode(false);
+                setOrderCodeDraft(scenario.orderCode ?? "");
+                setOrderCodeError(null);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+            >
+              キャンセル
+            </button>
+            {orderCodeError && <p className="w-full text-xs text-red-600">{orderCodeError}</p>}
+          </>
+        ) : (
+          <>
+            <span>
+              注文番号の識別コード:{" "}
+              <span className="font-mono text-neutral-700">{scenario.orderCode || "(未設定・XXを使用)"}</span>
             </span>
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText(`${origin}/widget/${scenario.slug}`)}
+              onClick={() => {
+                setOrderCodeDraft(scenario.orderCode ?? "");
+                setOrderCodeError(null);
+                setEditingOrderCode(true);
+              }}
               className="text-blue-600 hover:underline"
             >
-              コピー
+              編集
             </button>
           </>
-        ) : (
-          <span>この商品・ブランド専用の公開URLは未設定です</span>
         )}
-        <button type="button" onClick={handleEditSlug} className="text-blue-600 hover:underline">
-          {scenario.slug ? "URLを編集" : "専用URLを発行する"}
-        </button>
-      </div>
-
-      <div className="mb-6 flex items-center gap-2 text-sm text-neutral-500">
-        <span>
-          注文番号の識別コード:{" "}
-          <span className="font-mono text-neutral-700">{scenario.orderCode || "(未設定・XXを使用)"}</span>
-        </span>
-        <button type="button" onClick={handleEditOrderCode} className="text-blue-600 hover:underline">
-          編集
-        </button>
       </div>
 
       <Accordion title="シナリオ設定" defaultOpen>
@@ -2316,14 +2436,11 @@ export function ScenarioEditor({
                         編集
                       </button>
                     )}
-                    <button
-                      type="button"
+                    <ConfirmButton
+                      label="削除"
                       disabled={menuPending === item.id}
-                      onClick={() => handleDeleteMenuItem(item)}
-                      className="text-red-600 hover:underline disabled:opacity-30"
-                    >
-                      削除
-                    </button>
+                      onConfirm={() => handleDeleteMenuItem(item)}
+                    />
                   </div>
                 </div>
 
@@ -2621,14 +2738,12 @@ export function ScenarioEditor({
                   使用数: {coupon.usedCount}
                   {coupon.maxUses !== null ? ` / ${coupon.maxUses}` : ""}
                 </span>
-                <button
-                  type="button"
-                  onClick={handleDeleteCoupon}
+                <ConfirmButton
+                  label="削除"
+                  confirmLabel="このシナリオの自動適用クーポンを削除しますか？"
                   disabled={couponSaving}
-                  className="text-xs text-red-600 hover:underline disabled:opacity-30"
-                >
-                  削除
-                </button>
+                  onConfirm={handleDeleteCoupon}
+                />
               </>
             )}
           </div>
@@ -2964,9 +3079,7 @@ function NodeCard({
               編集
             </button>
           )}
-          <button type="button" onClick={onDelete} className="text-red-600 hover:underline">
-            削除
-          </button>
+          <ConfirmButton label="削除" onConfirm={onDelete} />
         </div>
       </div>
       <div className="mb-2 flex items-center gap-2 text-xs text-neutral-500">

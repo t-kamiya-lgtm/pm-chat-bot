@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductFaqCategory } from "@/lib/types";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export function FaqCategoryManager({
   productGroupId,
@@ -63,7 +64,6 @@ export function FaqCategoryManager({
   }
 
   async function handleDelete(categoryId: string) {
-    if (!window.confirm("このカテゴリを削除しますか？(紐づくQAは未分類になります)")) return;
     setBusy(true);
     await fetch(`/api/product-groups/${productGroupId}/faq-categories/${categoryId}`, {
       method: "DELETE",
@@ -101,13 +101,12 @@ export function FaqCategoryManager({
               if (e.target.value !== category.title) handleRename(category.id, e.target.value);
             }}
           />
-          <button
-            type="button"
-            onClick={() => handleDelete(category.id)}
-            className="text-xs text-red-600 hover:underline"
-          >
-            削除
-          </button>
+          <ConfirmButton
+            label="削除"
+            confirmLabel="紐づくQAは未分類になります。よろしいですか？"
+            disabled={busy}
+            onConfirm={() => handleDelete(category.id)}
+          />
         </div>
       ))}
       {categories.length === 0 && (
