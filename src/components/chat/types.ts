@@ -1,5 +1,11 @@
 import type { Address, OrderType, PaymentMethod, SubscriptionInterval } from "@/lib/types";
 
+export interface WidgetSetOption {
+  id: string;
+  name: string;
+  image_url: string | null;
+}
+
 export interface WidgetProduct {
   id: string;
   name: string;
@@ -13,6 +19,9 @@ export interface WidgetProduct {
   image_urls: string[];
   order_type: "one_time" | "subscription";
   subscription_intervals: SubscriptionInterval[];
+  is_set: boolean;
+  set_item_count: number | null;
+  set_options: WidgetSetOption[];
 }
 
 export interface WidgetScenarioNode {

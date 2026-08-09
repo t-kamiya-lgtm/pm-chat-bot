@@ -94,6 +94,30 @@ export async function GET(request: Request) {
     products = data ?? [];
   }
 
+  // セット品(構成数の分だけ内訳を選ばせる商品)の選択肢を、対象商品にまとめて付与する
+  const setProductIds = products.filter((p) => p.is_set).map((p) => p.id as string);
+  if (setProductIds.length > 0) {
+    const { data: setOptionRows, error: setOptionsError } = await supabase
+      .from("product_set_options")
+      .select("product_id, option_product_id, display_order, products!option_product_id(id, name, image_url)")
+      .in("product_id", setProductIds)
+      .order("display_order", { ascending: true });
+    if (setOptionsError) return NextResponse.json({ error: setOptionsError.message }, { status: 500 });
+
+    const optionsByProduct: Record<string, { id: string; name: string; image_url: string | null }[]> = {};
+    for (const row of setOptionRows ?? []) {
+      const joined = row.products as unknown;
+      const option = (Array.isArray(joined) ? joined[0] : joined) as
+        | { id: string; name: string; image_url: string | null }
+        | null;
+      if (!option) continue;
+      (optionsByProduct[row.product_id as string] ??= []).push(option);
+    }
+    products = products.map((p) => ({ ...p, set_options: p.is_set ? (optionsByProduct[p.id as string] ?? []) : [] }));
+  } else {
+    products = products.map((p) => ({ ...p, set_options: [] }));
+  }
+
   const { data: menuItems, error: menuItemsError } = await supabase
     .from("scenario_menu_items")
     .select("id, scenario_id, label, action_type, target_node_id, url, display_order")

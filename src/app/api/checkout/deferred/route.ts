@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     utmMedium,
     utmCampaign,
     couponCode,
+    setSelections,
   } = parsed.data;
 
   if (orderType === "subscription" && !subscriptionInterval) {
@@ -113,6 +114,7 @@ export async function POST(request: Request) {
       coupon_id: appliedCoupon?.id ?? null,
       coupon_code: appliedCoupon?.code ?? null,
       discount_amount: appliedCoupon?.discountAmount ?? 0,
+      set_selections: setSelections ?? null,
     })
     .select("id")
     .single();

@@ -10,16 +10,17 @@ export default async function NewProductPage({
 }) {
   const { productGroupId } = await searchParams;
   const supabase = createSupabaseAdminClient();
-  const { data: productGroups } = await supabase
-    .from("product_groups")
-    .select("id, name")
-    .order("created_at", { ascending: false });
+  const [{ data: productGroups }, { data: otherProducts }] = await Promise.all([
+    supabase.from("product_groups").select("id, name").order("created_at", { ascending: false }),
+    supabase.from("products").select("id, name").order("smaregi_product_id", { ascending: true, nullsFirst: false }),
+  ]);
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">商品(品番)を登録</h1>
       <ProductForm
         productGroups={productGroups ?? []}
+        otherProducts={otherProducts ?? []}
         lockProductGroup={Boolean(productGroupId)}
         initialValues={
           productGroupId
@@ -37,6 +38,9 @@ export default async function NewProductPage({
                 smaregiProductId: "",
                 orderType: "one_time",
                 subscriptionIntervals: [],
+                isSet: false,
+                setItemCount: null,
+                setOptionProductIds: [],
               }
             : undefined
         }

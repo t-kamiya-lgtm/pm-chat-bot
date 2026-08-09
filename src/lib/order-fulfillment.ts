@@ -79,6 +79,7 @@ function mapOrderRow(row: Record<string, unknown>): Order {
     couponId: (row.coupon_id as string | null) ?? null,
     couponCode: (row.coupon_code as string | null) ?? null,
     discountAmount: (row.discount_amount as number) ?? 0,
+    setSelections: (row.set_selections as Order["setSelections"]) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -102,6 +103,8 @@ function mapProductRow(row: Record<string, unknown>): Product {
     subscriptionIntervals: row.subscription_intervals as Product["subscriptionIntervals"],
     stripeProductId: row.stripe_product_id as string | null,
     stripePriceId: row.stripe_price_id as string | null,
+    isSet: (row.is_set as boolean) ?? false,
+    setItemCount: (row.set_item_count as number | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

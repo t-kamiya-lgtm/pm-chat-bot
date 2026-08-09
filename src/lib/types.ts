@@ -37,8 +37,17 @@ export interface Product {
   subscriptionIntervals: SubscriptionInterval[];
   stripeProductId: string | null;
   stripePriceId: string | null;
+  isSet: boolean;
+  setItemCount: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductSetOption {
+  id: string;
+  productId: string;
+  optionProductId: string;
+  displayOrder: number;
 }
 
 export interface ProductSpec {
@@ -203,6 +212,7 @@ export interface Order {
   couponId: string | null;
   couponCode: string | null;
   discountAmount: number;
+  setSelections: { id: string; name: string }[] | null;
   createdAt: string;
   updatedAt: string;
 }
