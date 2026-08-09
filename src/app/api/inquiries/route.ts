@@ -7,6 +7,7 @@ const inquirySchema = z.object({
   email: z.string().email(),
   message: z.string().min(1),
   productName: z.string().optional(),
+  chatUrl: z.string().url().optional(),
 });
 
 /**
