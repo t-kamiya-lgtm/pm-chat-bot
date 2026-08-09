@@ -154,7 +154,7 @@ export function ProductForm({
       return;
     }
 
-    router.push(isEdit ? `/admin/product-groups/${values.productGroupId}` : "/admin/products");
+    router.push("/admin/products");
     router.refresh();
   }
 
@@ -424,9 +424,7 @@ export function ProductForm({
         </button>
         <button
           type="button"
-          onClick={() =>
-            router.push(isEdit ? `/admin/product-groups/${values.productGroupId}` : "/admin/products")
-          }
+          onClick={() => router.push("/admin/products")}
           className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
         >
           キャンセル
