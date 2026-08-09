@@ -140,13 +140,25 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   // 注文で使用済みの品番は外部キー制約で削除できない(注文履歴が壊れるため)。
   // 削除前に判定し、アーカイブを促す分かりやすいエラーを返す(でないと削除に失敗しても
   // 画面上は削除できたように見えてしまい、再読み込みで復活したように見える)。
-  const [{ count: orderCount }, { count: addonCount }] = await Promise.all([
+  const [{ count: orderCount }, { count: addonCount }, { count: leadCount }] = await Promise.all([
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("product_id", id),
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("addon_product_id", id),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("product_id", id),
   ]);
   if ((orderCount ?? 0) > 0 || (addonCount ?? 0) > 0) {
     return NextResponse.json(
       { error: "この品番は注文で使用されているため削除できません。代わりに「アーカイブ」で一覧から隠せます。" },
+      { status: 409 },
+    );
+  }
+  // アクセスログ(leads)が残っている品番も、閲覧履歴の分析データが壊れないよう削除をブロックする。
+  // 不要なテストデータの場合は、先にアクセスログ側を削除してから品番を削除する。
+  if ((leadCount ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "この品番は閲覧履歴(アクセスログ)が残っているため削除できません。アクセスログを削除するか、代わりに「アーカイブ」で一覧から隠せます。",
+      },
       { status: 409 },
     );
   }
