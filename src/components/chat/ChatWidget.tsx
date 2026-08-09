@@ -161,20 +161,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     };
   }, []);
 
-  // iOSでキーボード表示後に画面のフィットがずれることがあるため、実際の表示領域(visualViewport)に
-  // 合わせて高さを追従させ、ずれたページスクロールも都度リセットする
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    function handleViewportChange() {
-      setViewportHeight(vv!.height);
-      window.scrollTo(0, 0);
-    }
-    handleViewportChange();
-    vv.addEventListener("resize", handleViewportChange);
-    return () => vv.removeEventListener("resize", handleViewportChange);
-  }, []);
+  // 高さは常にh-full(親のdvh)に任せる。以前はvisualViewport.heightをJSでheightに
+  // 反映していたが、埋め込みiframe内でキーボード表示時に実際より小さい値が返ることがあり、
+  // コンテナが縮んでその下に空白(親要素の背景)が見えてしまう不具合があったため廃止した。
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({});
   const [checkoutMessages, setCheckoutMessages] = useState<{
     greetingItems?: GreetingItem[];
@@ -793,7 +782,6 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     <div
       className={`relative flex h-full flex-col ${chatBackgroundColor ? "" : "bg-yellow-50"}`}
       style={{
-        ...(viewportHeight && { height: viewportHeight }),
         ...(chatBackgroundColor && { backgroundColor: chatBackgroundColor }),
         ...(messageBackgroundColor && { "--message-bg": messageBackgroundColor }),
         ...(userMessageBackgroundColor && { "--user-message-bg": userMessageBackgroundColor }),
