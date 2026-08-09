@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/admin/scenarios", label: "シナリオ" },
   { href: "/admin/faqs", label: "商品QA" },
   { href: "/admin/orders", label: "注文" },
+  { href: "/admin/coupons", label: "クーポン" },
   { href: "/admin/leads", label: "アクセスログ" },
   { href: "/admin/checkout-fields", label: "決済フォーム設定" },
   { href: "/admin/business-days", label: "営業日設定" },

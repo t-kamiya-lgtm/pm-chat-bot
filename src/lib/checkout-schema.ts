@@ -41,6 +41,7 @@ export const checkoutBaseSchema = z.object({
   utmSource: z.string().optional(),
   utmMedium: z.string().optional(),
   utmCampaign: z.string().optional(),
+  couponCode: z.string().optional(),
 });
 
 export const deferredCheckoutSchema = checkoutBaseSchema.extend({

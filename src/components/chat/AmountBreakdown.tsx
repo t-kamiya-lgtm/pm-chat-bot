@@ -6,6 +6,7 @@ export function AmountBreakdown({
   paymentFeeLabel,
   addonAmount,
   addonLabel,
+  discountAmount,
 }: {
   amount: number;
   quantity?: number;
@@ -14,9 +15,13 @@ export function AmountBreakdown({
   paymentFeeLabel?: string;
   addonAmount?: number;
   addonLabel?: string;
+  discountAmount?: number;
 }) {
   const subtotal = amount * quantity;
-  const total = subtotal + shippingFee + paymentFee + (addonAmount ?? 0);
+  const total = Math.max(
+    0,
+    subtotal + shippingFee + paymentFee + (addonAmount ?? 0) - (discountAmount ?? 0),
+  );
   return (
     <div className="rounded-md bg-neutral-50 p-3 text-sm">
       <Row label={quantity > 1 ? `商品代金(数量: ${quantity})` : "商品代金"} value={subtotal} />
@@ -25,6 +30,12 @@ export function AmountBreakdown({
       )}
       <Row label="送料" value={shippingFee} note={shippingFee === 0 ? "送料無料" : undefined} />
       {paymentFee > 0 && <Row label={paymentFeeLabel ?? "決済手数料"} value={paymentFee} note="税込" />}
+      {discountAmount !== undefined && discountAmount > 0 && (
+        <div className="flex justify-between text-red-600">
+          <span>クーポン割引</span>
+          <span>-{discountAmount.toLocaleString()}円</span>
+        </div>
+      )}
       <div className="mt-1 flex justify-between border-t border-neutral-200 pt-1 font-medium">
         <span>合計</span>
         <span>{total.toLocaleString()}円</span>

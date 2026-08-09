@@ -12,6 +12,7 @@ import { getProductById } from "@/lib/products";
 import { upsertCustomer, setCustomerStripeId } from "@/lib/customers";
 import { calculateTotal } from "@/lib/fees";
 import { generateOrderNumber } from "@/lib/order-number";
+import { resolveApplicableCoupon } from "@/lib/coupons";
 
 const requestSchema = z.object({
   productId: z.string().uuid(),
@@ -30,6 +31,7 @@ const requestSchema = z.object({
   utmSource: z.string().optional(),
   utmMedium: z.string().optional(),
   utmCampaign: z.string().optional(),
+  couponCode: z.string().optional(),
 });
 
 const INTERVAL_MAP: Record<
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
     utmSource,
     utmMedium,
     utmCampaign,
+    couponCode,
   } = parsed.data;
 
   const product = await getProductById(productId);
@@ -89,6 +92,14 @@ export async function POST(request: Request) {
   const amount = product.price * quantity;
   // 定期支払いの単価には含めない(アドオンは初回請求のみの一括請求項目として追加する)
   const breakdown = calculateTotal(amount, product.shipping_fee, 0);
+
+  const supabase = createSupabaseAdminClient();
+  // クーポン割引も、定期の単価自体は変えず初回請求のみの一括値引き項目として適用する
+  const appliedCoupon = await resolveApplicableCoupon(supabase, {
+    scenarioId,
+    code: couponCode,
+    subtotal: amount + addonAmount,
+  });
 
   const customer = await upsertCustomer(customerInput);
 
@@ -121,6 +132,16 @@ export async function POST(request: Request) {
         amount: addonAmount,
         currency: "jpy",
         description: `${addonProduct.name}(初回のみ)`,
+      });
+    }
+
+    if (appliedCoupon && appliedCoupon.discountAmount > 0) {
+      // クーポン割引も初回請求のみの一括値引き項目として乗せる(定期の単価自体は変えない)
+      await stripe.invoiceItems.create({
+        customer: stripeCustomerId,
+        amount: -appliedCoupon.discountAmount,
+        currency: "jpy",
+        description: "クーポン割引(初回のみ)",
       });
     }
 
@@ -159,7 +180,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseAdminClient();
   const orderNumber = await generateOrderNumber(supabase, scenarioId);
   const { data: order, error } = await supabase
     .from("orders")
@@ -187,6 +207,9 @@ export async function POST(request: Request) {
       utm_source: utmSource ?? null,
       utm_medium: utmMedium ?? null,
       utm_campaign: utmCampaign ?? null,
+      coupon_id: appliedCoupon?.id ?? null,
+      coupon_code: appliedCoupon?.code ?? null,
+      discount_amount: appliedCoupon?.discountAmount ?? 0,
     })
     .select("id")
     .single();

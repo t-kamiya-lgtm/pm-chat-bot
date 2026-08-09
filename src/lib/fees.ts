@@ -37,6 +37,7 @@ export interface AmountBreakdown {
   amount: number;
   shippingFee: number;
   paymentFee: number;
+  discount: number;
   total: number;
 }
 
@@ -44,11 +45,13 @@ export function calculateTotal(
   amount: number,
   shippingFee: number,
   paymentFee: number,
+  discount: number = 0,
 ): AmountBreakdown {
   return {
     amount,
     shippingFee,
     paymentFee,
-    total: amount + shippingFee + paymentFee,
+    discount,
+    total: Math.max(0, amount + shippingFee + paymentFee - discount),
   };
 }
