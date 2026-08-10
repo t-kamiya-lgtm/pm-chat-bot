@@ -27,6 +27,7 @@ const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
   biweekly: "2週間ごと",
   monthly: "1ヶ月ごと",
   bimonthly: "2ヶ月ごと",
+  test_3day: "3日ごと(テスト用)",
 };
 
 const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description: string }[] = [
