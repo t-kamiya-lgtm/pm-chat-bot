@@ -12,7 +12,11 @@ export default async function NewProductPage({
   const supabase = createSupabaseAdminClient();
   const [{ data: productGroups }, { data: otherProducts }] = await Promise.all([
     supabase.from("product_groups").select("id, name").order("created_at", { ascending: false }),
-    supabase.from("products").select("id, name").order("smaregi_product_id", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("products")
+      .select("id, name")
+      .eq("is_set", false)
+      .order("smaregi_product_id", { ascending: true, nullsFirst: false }),
   ]);
 
   return (
