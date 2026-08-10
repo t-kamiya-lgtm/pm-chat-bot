@@ -4,6 +4,7 @@ import { getStripeClient } from "@/lib/stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { recordCouponUsage } from "@/lib/coupons";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
+import { createSubscriptionRenewalOrder } from "@/lib/subscription-renewal";
 
 export const runtime = "nodejs";
 
@@ -69,10 +70,12 @@ export async function POST(request: Request) {
       const subscriptionId = getSubscriptionIdFromInvoice(invoice);
       if (!subscriptionId) break;
 
+      // 定期購入は「初回の注文行」1件のみをこの条件で特定する(2回目以降は別行として生成するため)
       const { data: order } = await supabase
         .from("orders")
         .select("id, status, coupon_id")
         .eq("stripe_subscription_id", subscriptionId)
+        .is("parent_order_id", null)
         .maybeSingle();
       if (!order) break;
 
@@ -84,7 +87,10 @@ export async function POST(request: Request) {
           .eq("order_id", order.id);
       }
 
-      if (order.status !== "paid") {
+      if (invoice.billing_reason === "subscription_cycle") {
+        // 2回目以降の周期課金: チャットシステム内に今回分の注文データを新規生成する
+        await createSubscriptionRenewalOrder({ stripeSubscriptionId: subscriptionId, invoiceId: invoice.id });
+      } else if (order.status !== "paid") {
         await supabase
           .from("orders")
           .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
@@ -105,6 +111,7 @@ export async function POST(request: Request) {
         .from("orders")
         .select("id")
         .eq("stripe_subscription_id", subscriptionId)
+        .is("parent_order_id", null)
         .maybeSingle();
       if (order) {
         await supabase.from("orders").update({ status: "failed" }).eq("id", order.id);
@@ -119,6 +126,7 @@ export async function POST(request: Request) {
         .from("orders")
         .select("id")
         .eq("stripe_subscription_id", subscription.id)
+        .is("parent_order_id", null)
         .maybeSingle();
       if (!order) break;
 

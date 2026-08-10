@@ -6,16 +6,22 @@ import { Toast } from "@/components/admin/Toast";
 export function EmailTemplatesForm({
   initialOrderCompletionSubject,
   initialOrderCompletionBody,
+  initialRenewalSubject,
+  initialRenewalBody,
   initialAbandonedLeadSubject,
   initialAbandonedLeadBody,
 }: {
   initialOrderCompletionSubject: string;
   initialOrderCompletionBody: string;
+  initialRenewalSubject: string;
+  initialRenewalBody: string;
   initialAbandonedLeadSubject: string;
   initialAbandonedLeadBody: string;
 }) {
   const [orderCompletionSubject, setOrderCompletionSubject] = useState(initialOrderCompletionSubject);
   const [orderCompletionBody, setOrderCompletionBody] = useState(initialOrderCompletionBody);
+  const [renewalSubject, setRenewalSubject] = useState(initialRenewalSubject);
+  const [renewalBody, setRenewalBody] = useState(initialRenewalBody);
   const [abandonedLeadSubject, setAbandonedLeadSubject] = useState(initialAbandonedLeadSubject);
   const [abandonedLeadBody, setAbandonedLeadBody] = useState(initialAbandonedLeadBody);
   const [saving, setSaving] = useState(false);
@@ -32,6 +38,8 @@ export function EmailTemplatesForm({
       body: JSON.stringify({
         orderCompletionSubject,
         orderCompletionBody,
+        renewalSubject,
+        renewalBody,
         abandonedLeadSubject,
         abandonedLeadBody,
       }),
@@ -71,6 +79,30 @@ export function EmailTemplatesForm({
             rows={10}
             value={orderCompletionBody}
             onChange={(e) => setOrderCompletionBody(e.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="space-y-3 rounded-md border border-neutral-200 p-4">
+        <div>
+          <p className="text-sm font-medium text-neutral-700">定期便メール(2回目以降のお届け)</p>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            定期購入の2回目以降の周期課金が完了するたびに送信されます。差し込み項目:
+            {" "}
+            {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}}"}
+          </p>
+        </div>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-neutral-700">件名</span>
+          <input className="input" value={renewalSubject} onChange={(e) => setRenewalSubject(e.target.value)} />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-neutral-700">本文</span>
+          <textarea
+            className="input font-mono"
+            rows={10}
+            value={renewalBody}
+            onChange={(e) => setRenewalBody(e.target.value)}
           />
         </label>
       </div>

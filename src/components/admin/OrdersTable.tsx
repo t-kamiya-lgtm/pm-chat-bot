@@ -42,6 +42,7 @@ export interface OrderRow {
   survey_responses: Record<string, string> | null;
   set_selections: { id: string; name: string }[] | null;
   import_status: ImportStatus;
+  billing_cycle_number: number;
   customers: { name: string; email: string } | null;
   products: { name: string } | null;
 }
@@ -173,7 +174,14 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
                   <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
                   <td className="px-4 py-2">{order.quantity}</td>
-                  <td className="px-4 py-2">{order.type === "subscription" ? "定期" : "単発"}</td>
+                  <td className="px-4 py-2">
+                    {order.type === "subscription" ? "定期" : "単発"}
+                    {order.billing_cycle_number > 1 && (
+                      <span className="ml-1 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
+                        {order.billing_cycle_number}回目
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
                   <td className="px-4 py-2">
                     {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
