@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { fulfillOrder } from "@/lib/order-fulfillment";
 import { recordCouponUsage } from "@/lib/coupons";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 
@@ -18,7 +17,8 @@ function getSubscriptionIdFromInvoice(invoice: Stripe.Invoice): string | undefin
 
 /**
  * Stripe Webhook受信。署名検証を行った上で、注文・サブスクリプション状態をDBに反映する。
- * 決済成功時に会員情報移行(fulfillOrder)を実行する。
+ * Stripe決済の注文はチャットシステム内の受注管理のみで完結させ、基幆システム・スマレジには連携しない
+ * (受注確認はチャットシステム、入金突合せはStripe側で行う運用のため)。
  */
 export async function POST(request: Request) {
   const stripe = getStripeClient();
@@ -57,7 +57,6 @@ export async function POST(request: Request) {
           .from("orders")
           .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
           .eq("id", order.id);
-        await fulfillOrder(order.id);
         await sendOrderCompletionEmail(order.id);
         // クーポンの使用回数は決済確定時点で加算する(与信のみで完了前の失敗・放棄では消費しない)
         if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
@@ -90,7 +89,6 @@ export async function POST(request: Request) {
           .from("orders")
           .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
           .eq("id", order.id);
-        await fulfillOrder(order.id);
         await sendOrderCompletionEmail(order.id);
         // クーポンの使用回数は初回決済確定時点で加算する(以降の定期課金では加算しない)
         if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);

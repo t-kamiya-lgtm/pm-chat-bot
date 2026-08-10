@@ -4,10 +4,10 @@ import type { Order, Product } from "@/lib/types";
 import type { CustomerRow } from "@/lib/customers";
 
 /**
- * 決済/受注確定後に共通で行う「会員情報移行」処理(要件定義書 4.3)。
+ * 後払い/代引き受理後に行う「会員情報移行」処理(要件定義書 4.3)。
  * - メールアドレスで既存スマレジ会員に名寄せ、なければ新規作成
  * - 注文内容をスマレジ連携アダプタ経由で連携
- * Stripe決済はWebhook確定時、後払い/代引きは基幹システム受理直後に呼び出す。
+ * Stripe決済の注文はチャットシステム内の受注管理のみで完結させるため、この処理は呼び出さない。
  */
 export async function fulfillOrder(orderId: string): Promise<void> {
   const supabase = createSupabaseAdminClient();
