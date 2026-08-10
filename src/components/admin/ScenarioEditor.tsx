@@ -490,6 +490,54 @@ function ProductPicker({
         ))}
       </select>
 
+      {type === "product" && selectedIds.length > 0 && (
+        <div className="space-y-1 rounded-md border border-neutral-200 bg-neutral-50 p-2">
+          <p className="text-xs font-medium text-neutral-500">選択中(カルーセルの表示順)</p>
+          {selectedIds.map((id, index) => {
+            const product = products.find((p) => p.id === id);
+            return (
+              <div key={id} className="flex items-center gap-2 text-xs">
+                <span className="w-5 text-center font-medium text-neutral-400">{index + 1}</span>
+                <span className="flex-1 truncate">{product ? productLabel(product) : id}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (index === 0) return;
+                    const next = [...selectedIds];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    onChange(next);
+                  }}
+                  disabled={index === 0}
+                  className="text-neutral-500 hover:text-neutral-900 disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (index === selectedIds.length - 1) return;
+                    const next = [...selectedIds];
+                    [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                    onChange(next);
+                  }}
+                  disabled={index === selectedIds.length - 1}
+                  className="text-neutral-500 hover:text-neutral-900 disabled:opacity-30"
+                >
+                  ▼
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange(selectedIds.filter((sid) => sid !== id))}
+                  className="text-red-600 hover:underline"
+                >
+                  削除
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {type === "product" ? (
         <div className="space-y-1 rounded-md border border-neutral-200 p-3">
           {productsInGroup.map((product) => (
