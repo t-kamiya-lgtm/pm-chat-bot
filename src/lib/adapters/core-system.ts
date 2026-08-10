@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Address, OrderType, ShippingAddress, SubscriptionInterval } from "@/lib/types";
 
-export type CoreSystemPaymentMethod = "deferred_invoice" | "cod";
+export type CoreSystemPaymentMethod = "deferred_invoice" | "cod" | "stripe";
 
 export interface CoreSystemOrderInput {
   orderId: string;
@@ -23,9 +23,12 @@ export interface CoreSystemOrderInput {
 }
 
 /**
- * docs/requirements.md 6.2 基幹システム連携アダプタ(スコアあと払い・代金引換)
- * 与信判定・請求書発行・入金確認・定期注文の継続課金はすべて基幹システム側の責務。
- * 本システムは submitOrder で注文データを渡すところまでを担う。
+ * docs/requirements.md 6.2 基幹システム連携アダプタ。
+ * 後払い・代金引換は与信判定・請求書発行・入金確認・定期注文の継続課金を基幹システム側が担う
+ * (submitOrderは受注データを渡すところまでを担う)。
+ * Stripe決済は与信・課金自体はStripe側で完結しているため、submitOrderは
+ * 決済確定した注文データを基幹システムへ取り込むための通知として使う。
+ * すべての注文(支払方法を問わず)は、最終的に基幹システムへ取り込まれる必要がある。
  */
 export interface CoreSystemAdapter {
   submitOrder(order: CoreSystemOrderInput): Promise<{ accepted: boolean }>;

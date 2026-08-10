@@ -1,12 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateOrderNumber } from "@/lib/order-number";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
+import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
 
 /**
  * 定期購入(Stripe決済)の2回目以降の周期課金(invoice.paid, billing_reason=subscription_cycle)を
  * 受けて、チャットシステム内に今回分の注文データを生成する。
- * Stripe決済の注文はチャットシステム内の受注管理のみで完結させる運用のため、
- * 基幆システム・スマレジへの連携は行わない(注文完了メールの送信のみ行う)。
+ * スマレジへの連携は行わないが、他の注文と同様に基幹システムへは取り込む。
  * 同一invoiceでWebhookが複数回届いても、既に生成済みなら何もしない。
  */
 export async function createSubscriptionRenewalOrder(params: {
@@ -77,6 +77,7 @@ export async function createSubscriptionRenewalOrder(params: {
     }
 
     await sendOrderCompletionEmail(newOrder.id);
+    await submitStripeOrderToCoreSystem(newOrder.id);
   } catch (err) {
     console.error("[subscription-renewal] unexpected error", { params, err });
   }
