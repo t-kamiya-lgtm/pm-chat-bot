@@ -89,6 +89,16 @@ export function ProductForm({
     }));
   }
 
+  function moveSetOption(index: number, direction: -1 | 1) {
+    setValues((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.setOptionProductIds.length) return prev;
+      const next = [...prev.setOptionProductIds];
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...prev, setOptionProductIds: next };
+    });
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSubmitting(true);
@@ -355,6 +365,36 @@ export function ProductForm({
               <p className="mb-2 text-xs text-neutral-400">
                 選択中: {values.setOptionProductIds.length}点(同じ商品を複数回選べるため、選択肢の数が構成数より少なくてもかまいません)
               </p>
+              {values.setOptionProductIds.length > 0 && (
+                <div className="mb-2 space-y-1 rounded-md border border-neutral-200 bg-neutral-50 p-2">
+                  <p className="text-xs font-medium text-neutral-500">選択中(内訳ギャラリーの表示順)</p>
+                  {values.setOptionProductIds.map((id, index) => {
+                    const product = otherProducts.find((p) => p.id === id);
+                    return (
+                      <div key={`${id}-${index}`} className="flex items-center gap-2 text-xs">
+                        <span className="w-5 text-center font-medium text-neutral-400">{index + 1}</span>
+                        <span className="flex-1 truncate">{product?.name ?? id}</span>
+                        <button
+                          type="button"
+                          onClick={() => moveSetOption(index, -1)}
+                          disabled={index === 0}
+                          className="text-neutral-500 hover:text-neutral-900 disabled:opacity-30"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSetOption(index, 1)}
+                          disabled={index === values.setOptionProductIds.length - 1}
+                          className="text-neutral-500 hover:text-neutral-900 disabled:opacity-30"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
                 {otherProducts.map((p) => (
                   <label key={p.id} className="flex items-center gap-2 text-sm">
