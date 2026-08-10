@@ -47,3 +47,40 @@ export async function sendInquiryNotification(input: InquiryInput): Promise<void
     throw new Error(`Failed to send inquiry notification: ${res.status}`);
   }
 }
+
+export interface SendEmailInput {
+  to: string;
+  from: string;
+  subject: string;
+  text: string;
+}
+
+/**
+ * 汎用のResend送信ヘルパー(注文完了メール・離脱者リマインドメール用)。
+ * RESEND_API_KEY未設定時はコンソールログに出力するだけのフォールバックとする。
+ */
+export async function sendResendEmail(input: SendEmailInput): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.log("[email] RESEND_API_KEY not configured, logging instead:", input);
+    return;
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      from: input.from,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to send email: ${res.status}`);
+  }
+}
