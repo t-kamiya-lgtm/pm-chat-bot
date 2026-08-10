@@ -3,6 +3,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export interface EmailTemplates {
   orderCompletionSubject: string;
   orderCompletionBody: string;
+  renewalSubject: string;
+  renewalBody: string;
   abandonedLeadSubject: string;
   abandonedLeadBody: string;
 }
@@ -20,6 +22,16 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■お支払い金額: {{total_amount}}円
 
 発送準備が整いましたら、改めてご連絡いたします。
+今後ともよろしくお願いいたします。`,
+  renewalSubject: "【定期便】{{product_name}}をお届けします(第{{cycle_number}}回)",
+  renewalBody: `{{customer_name}} 様
+
+いつもご利用ありがとうございます。定期便(第{{cycle_number}}回)のお支払いが完了し、発送準備を進めております。
+
+■商品: {{product_name}}
+■数量: {{quantity}}
+■お支払い金額: {{total_amount}}円
+
 今後ともよろしくお願いいたします。`,
   abandonedLeadSubject: "{{customer_name}}様、ご注文の途中ではありませんか?",
   abandonedLeadBody: `{{customer_name}} 様
@@ -45,6 +57,8 @@ export async function getEmailTemplates(
   return {
     orderCompletionSubject: data?.order_completion_subject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject,
     orderCompletionBody: data?.order_completion_body || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody,
+    renewalSubject: data?.renewal_subject || DEFAULT_EMAIL_TEMPLATES.renewalSubject,
+    renewalBody: data?.renewal_body || DEFAULT_EMAIL_TEMPLATES.renewalBody,
     abandonedLeadSubject: data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
     abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
   };

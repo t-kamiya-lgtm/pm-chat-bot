@@ -19,6 +19,8 @@ export default async function EmailTemplatesPage() {
           data?.order_completion_subject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject
         }
         initialOrderCompletionBody={data?.order_completion_body || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody}
+        initialRenewalSubject={data?.renewal_subject || DEFAULT_EMAIL_TEMPLATES.renewalSubject}
+        initialRenewalBody={data?.renewal_body || DEFAULT_EMAIL_TEMPLATES.renewalBody}
         initialAbandonedLeadSubject={
           data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject
         }

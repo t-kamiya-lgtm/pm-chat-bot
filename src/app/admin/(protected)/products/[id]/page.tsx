@@ -21,6 +21,7 @@ export default async function EditProductPage({
         .from("products")
         .select("id, name")
         .neq("id", id)
+        .eq("is_set", false)
         .order("smaregi_product_id", { ascending: true, nullsFirst: false }),
       supabase.from("product_set_options").select("option_product_id").eq("product_id", id),
     ]);

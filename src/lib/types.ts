@@ -8,7 +8,7 @@ export interface AppUser {
   createdAt: string;
 }
 
-export type SubscriptionInterval = "biweekly" | "monthly" | "bimonthly";
+export type SubscriptionInterval = "biweekly" | "monthly" | "bimonthly" | "test_3day";
 export type ProductOrderType = "one_time" | "subscription";
 
 /** 商品種類(親品番)。QA・仕様情報はこちらに紐づく。 */

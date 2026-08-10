@@ -42,6 +42,7 @@ const INTERVAL_MAP: Record<
   biweekly: { interval: "week", intervalCount: 2 },
   monthly: { interval: "month", intervalCount: 1 },
   bimonthly: { interval: "month", intervalCount: 2 },
+  test_3day: { interval: "day", intervalCount: 3 },
 };
 
 /**

@@ -7,6 +7,8 @@ import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/email-templates";
 const updateSchema = z.object({
   orderCompletionSubject: z.string().optional(),
   orderCompletionBody: z.string().optional(),
+  renewalSubject: z.string().optional(),
+  renewalBody: z.string().optional(),
   abandonedLeadSubject: z.string().optional(),
   abandonedLeadBody: z.string().optional(),
 });
@@ -23,6 +25,8 @@ export async function GET() {
   return NextResponse.json({
     orderCompletionSubject: data?.order_completion_subject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject,
     orderCompletionBody: data?.order_completion_body || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody,
+    renewalSubject: data?.renewal_subject || DEFAULT_EMAIL_TEMPLATES.renewalSubject,
+    renewalBody: data?.renewal_body || DEFAULT_EMAIL_TEMPLATES.renewalBody,
     abandonedLeadSubject: data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
     abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
   });
@@ -47,6 +51,8 @@ export async function PATCH(request: Request) {
         order_completion_subject: input.orderCompletionSubject,
       }),
       ...(input.orderCompletionBody !== undefined && { order_completion_body: input.orderCompletionBody }),
+      ...(input.renewalSubject !== undefined && { renewal_subject: input.renewalSubject }),
+      ...(input.renewalBody !== undefined && { renewal_body: input.renewalBody }),
       ...(input.abandonedLeadSubject !== undefined && { abandoned_lead_subject: input.abandonedLeadSubject }),
       ...(input.abandonedLeadBody !== undefined && { abandoned_lead_body: input.abandonedLeadBody }),
       updated_at: new Date().toISOString(),
