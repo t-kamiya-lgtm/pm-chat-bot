@@ -33,7 +33,15 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   try {
-    await sendUserInviteEmail({ to: email, role, invitedByEmail: roleCheck.user.email });
+    const sent = await sendUserInviteEmail({ to: email, role, invitedByEmail: roleCheck.user.email });
+    if (!sent) {
+      return NextResponse.json({
+        ok: true,
+        emailSent: false,
+        warning:
+          "ユーザーは登録されましたが、メール送信基盤(Resend)が未設定のため招待メールは送信されていません。ログイン用URLを直接共有してください。",
+      });
+    }
   } catch (err) {
     console.error("[users/invite] failed to send invite email", { email, err });
     return NextResponse.json(
