@@ -7,6 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { fulfillOrder } from "@/lib/order-fulfillment";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
+import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 import { generateOrderNumber } from "@/lib/order-number";
 import { resolveApplicableCoupon, recordCouponUsage } from "@/lib/coupons";
 
@@ -160,6 +161,7 @@ export async function POST(request: Request) {
   if (accepted) {
     await fulfillOrder(order.id);
     await sendOrderCompletionEmail(order.id);
+    await assignCustomerNumberIfNeeded(customer.id);
     if (appliedCoupon) {
       await recordCouponUsage(supabase, appliedCoupon.id);
     }

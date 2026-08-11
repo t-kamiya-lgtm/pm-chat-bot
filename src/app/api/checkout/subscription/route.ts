@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -13,6 +13,7 @@ import { upsertCustomer, setCustomerStripeId } from "@/lib/customers";
 import { calculateTotal } from "@/lib/fees";
 import { generateOrderNumber } from "@/lib/order-number";
 import { resolveApplicableCoupon } from "@/lib/coupons";
+import { SUBSCRIPTION_INTERVAL_STRIPE_MAP } from "@/lib/subscription-intervals";
 
 const requestSchema = z.object({
   productId: z.string().uuid(),
@@ -35,15 +36,7 @@ const requestSchema = z.object({
   setSelections: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 
-const INTERVAL_MAP: Record<
-  z.infer<typeof subscriptionIntervalSchema>,
-  { interval: Stripe.PriceCreateParams.Recurring.Interval; intervalCount: number }
-> = {
-  biweekly: { interval: "week", intervalCount: 2 },
-  monthly: { interval: "month", intervalCount: 1 },
-  bimonthly: { interval: "month", intervalCount: 2 },
-  test_3day: { interval: "day", intervalCount: 3 },
-};
+const INTERVAL_MAP = SUBSCRIPTION_INTERVAL_STRIPE_MAP;
 
 /**
  * 定期注文のカード決済(Stripe Billing)。

@@ -6,6 +6,7 @@ import { recordCouponUsage } from "@/lib/coupons";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { createSubscriptionRenewalOrder } from "@/lib/subscription-renewal";
 import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
+import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 
 export const runtime = "nodejs";
 
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       const { data: order } = await supabase
         .from("orders")
-        .select("id, status, type, coupon_id")
+        .select("id, status, type, coupon_id, customer_id")
         .eq("stripe_payment_intent_id", paymentIntent.id)
         .maybeSingle();
 
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
           .eq("id", order.id);
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
+        await assignCustomerNumberIfNeeded(order.customer_id);
         // クーポンの使用回数は決済確定時点で加算する(与信のみで完了前の失敗・放棄では消費しない)
         if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
       }
@@ -75,7 +77,7 @@ export async function POST(request: Request) {
       // 定期購入は「初回の注文行」1件のみをこの条件で特定する(2回目以降は別行として生成するため)
       const { data: order } = await supabase
         .from("orders")
-        .select("id, status, coupon_id")
+        .select("id, status, coupon_id, customer_id")
         .eq("stripe_subscription_id", subscriptionId)
         .is("parent_order_id", null)
         .maybeSingle();
@@ -99,6 +101,7 @@ export async function POST(request: Request) {
           .eq("id", order.id);
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
+        await assignCustomerNumberIfNeeded(order.customer_id);
         // クーポンの使用回数は初回決済確定時点で加算する(以降の定期課金では加算しない)
         if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
       }
