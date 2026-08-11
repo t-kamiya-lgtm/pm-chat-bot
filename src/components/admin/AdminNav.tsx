@@ -55,7 +55,7 @@ export function AdminNav() {
           </Link>
         ))}
         <Link href="/admin/users" className={isActive("/admin/users") ? activeLinkClass : linkClass}>
-          ログイン者一覧
+          ユーザー権限
         </Link>
       </nav>
       {(catalogOpen || catalogActive) && (

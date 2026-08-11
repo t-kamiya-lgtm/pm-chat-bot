@@ -20,8 +20,9 @@ function toAppUser(row: {
 
 /**
  * ログイン中のGoogleアカウントに対応する管理画面ユーザーを取得する。
- * 許可ドメイン(ADMIN_ALLOWED_GOOGLE_DOMAIN)によるログイン制御のみで権限を管理するため、
- * 初回ログイン時からroleは"admin"として自動作成し、即座にフルアクセスできるようにする。
+ * 招待制: 管理者が事前に「ユーザー権限」画面でメールアドレス・権限を登録した場合のみ、
+ * 初回ログイン時にそのレコードへauth_user_idを紐付ける。未登録のメールアドレスは
+ * 許可ドメイン内であってもログインできない(自動での新規admin作成は行わない)。
  */
 export async function getCurrentAppUser(): Promise<AppUser | null> {
   const supabase = await createSupabaseServerClient();
@@ -45,23 +46,14 @@ export async function getCurrentAppUser(): Promise<AppUser | null> {
 
   if (existing) return toAppUser(existing);
 
-  const { data: created, error } = await admin
+  // 招待済み(管理者が事前に登録したメールアドレス)であれば、この認証情報を紐付ける
+  const { data: invited } = await admin
     .from("users")
-    .insert({ auth_user_id: authUser.id, email: authUser.email, role: "admin" })
+    .update({ auth_user_id: authUser.id })
+    .eq("email", authUser.email)
+    .is("auth_user_id", null)
     .select("*")
-    .single();
+    .maybeSingle();
 
-  if (error) {
-    // メールアドレスが既存レコードと重複している場合は auth_user_id を紐付ける
-    const { data: byEmail } = await admin
-      .from("users")
-      .update({ auth_user_id: authUser.id })
-      .eq("email", authUser.email)
-      .select("*")
-      .maybeSingle();
-    if (byEmail) return toAppUser(byEmail);
-    throw error;
-  }
-
-  return toAppUser(created);
+  return invited ? toAppUser(invited) : null;
 }
