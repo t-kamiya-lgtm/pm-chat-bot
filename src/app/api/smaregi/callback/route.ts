@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     await exchangeSmaregiCodeForToken(code);
     redirectTo.searchParams.set("smaregi_oauth", "connected");
   } catch (err) {
-    console.error("[smaregi/oauth/callback] failed to exchange code", err);
+    console.error("[smaregi/callback] failed to exchange code", err);
     redirectTo.searchParams.set("smaregi_oauth", "error");
   }
 

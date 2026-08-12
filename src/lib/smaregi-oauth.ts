@@ -29,7 +29,8 @@ function siteUrl(): string {
 }
 
 export function getSmaregiOauthRedirectUri(): string {
-  return `${siteUrl()}/api/admin/smaregi/oauth/callback`;
+  // スマレジEC・リピート側の「外部アプリ連携」に登録済みのリダイレクトURLと完全一致させる必要がある。
+  return `${siteUrl()}/api/smaregi/callback`;
 }
 
 export function getSmaregiAuthorizeUrl(state: string): string {
