@@ -40,10 +40,8 @@ export function getSmaregiAuthorizeUrl(state: string): string {
     redirect_uri: getSmaregiOauthRedirectUri(),
     response_type: "code",
     state,
-    // ドキュメントには「予約パラメータ、現在は指定不可」とあるが、実際は受注APIの参照に
-    // read_salesの指定が必須(スマレジサポート確認済み)。複数スコープ同時指定はinvalid_scopeで
-    // 拒否されたため、まずは読み取りに必要なread_salesのみ指定する。
-    scope: "read_sales",
+    // scopeパラメータを付けるとinvalid_scopeで認可ページ自体が表示できないため一時的に外す。
+    // アプリ側(外部アプリ連携の編集画面)で権限を設定する必要がある可能性を調査中。
   });
   return `https://${domain}/api/oauth/authorize.php?${params.toString()}`;
 }
