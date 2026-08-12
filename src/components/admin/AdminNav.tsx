@@ -55,6 +55,11 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
           </Link>
         ))}
         {isAdmin && (
+          <Link href="/admin/smaregi" className={isActive("/admin/smaregi") ? activeLinkClass : linkClass}>
+            スマレジ連携
+          </Link>
+        )}
+        {isAdmin && (
           <Link href="/admin/users" className={isActive("/admin/users") ? activeLinkClass : linkClass}>
             ユーザー権限
           </Link>
