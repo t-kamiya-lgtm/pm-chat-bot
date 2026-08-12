@@ -54,6 +54,7 @@ export default async function EditProductPage({
           price: product.price,
           listPrice: product.list_price ?? null,
           priceLabel: product.price_label ?? "",
+          taxRate: product.tax_rate === 10 ? 10 : 8,
           shippingFee: product.shipping_fee,
           isMailDeliverable: product.is_mail_deliverable ?? false,
           imageUrls: product.image_urls?.length ? product.image_urls : product.image_url ? [product.image_url] : [],
