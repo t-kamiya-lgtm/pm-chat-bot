@@ -38,9 +38,17 @@ function buildBracketQuery(obj: Record<string, unknown>, prefix = ""): string[] 
 }
 
 async function parseSmaregiResponse<T>(res: Response): Promise<T> {
-  const body = (await res.json()) as SmaregiApiResponse<T>;
-  if (!res.ok || body.success !== "ok") {
-    throw new Error(`smaregi api error: ${body.error_cd ?? res.status} ${body.error_message ?? ""}`.trim());
+  const text = await res.text();
+  let body: SmaregiApiResponse<T> | null = null;
+  try {
+    body = JSON.parse(text) as SmaregiApiResponse<T>;
+  } catch {
+    // レスポンスがJSONでない場合(WAFのブロックページ等)、生テキストをそのままエラーに含める
+  }
+
+  if (!res.ok || !body || body.success !== "ok") {
+    const detail = body ? `${body.error_cd ?? ""} ${body.error_message ?? ""}`.trim() : text.slice(0, 500);
+    throw new Error(`smaregi api error (HTTP ${res.status}): ${detail}`);
   }
   return body.response;
 }
@@ -63,11 +71,16 @@ export async function smaregiSearch<T>(
     response_options: { response_type: "json", ...params.responseOptions },
   }).join("&");
 
-  const res = await fetch(`https://${domain}${path}?${query}`, {
+  const url = `https://${domain}${path}?${query}`;
+  const res = await fetch(url, {
     method: "GET",
     headers: { authorization: `Bearer ${accessToken}` },
   });
-  return parseSmaregiResponse<T>(res);
+  try {
+    return await parseSmaregiResponse<T>(res);
+  } catch (err) {
+    throw new Error(`${err instanceof Error ? err.message : String(err)} (url: ${url})`);
+  }
 }
 
 /** 登録・更新・削除系API(受注API・定期申込APIのcreate/update/remove)。 */
