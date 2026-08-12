@@ -2,15 +2,9 @@ import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { InviteUserForm } from "@/components/admin/InviteUserForm";
-import type { UserRole } from "@/lib/types";
+import { UsersTable } from "@/components/admin/UsersTable";
 
 export const dynamic = "force-dynamic";
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "管理者",
-  staff: "スタッフ",
-  unassigned: "未割り当て",
-};
 
 export default async function AdminUsersPage() {
   const currentUser = await getCurrentAppUser();
@@ -33,26 +27,7 @@ export default async function AdminUsersPage() {
 
       <InviteUserForm />
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[480px] text-sm">
-          <thead className="bg-neutral-50 text-left text-neutral-500">
-            <tr>
-              <th className="px-4 py-2">メールアドレス</th>
-              <th className="px-4 py-2">権限</th>
-              <th className="px-4 py-2">登録日</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users?.map((u) => (
-              <tr key={u.id} className="border-t border-neutral-100">
-                <td className="px-4 py-2">{u.email}</td>
-                <td className="px-4 py-2">{ROLE_LABELS[u.role as UserRole] ?? u.role}</td>
-                <td className="px-4 py-2">{new Date(u.created_at).toLocaleDateString("ja-JP")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <UsersTable users={users ?? []} />
     </div>
   );
 }
