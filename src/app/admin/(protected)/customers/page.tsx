@@ -29,11 +29,25 @@ export default async function AdminCustomersPage({
   const smaregiFilter: SmaregiFilter =
     smaregiFilterRaw === "include" || smaregiFilterRaw === "only" ? smaregiFilterRaw : "exclude";
 
-  const customers = await getCustomerSummaries({ q, subscriptionStatus, smaregiFilter });
+  let customers: Awaited<ReturnType<typeof getCustomerSummaries>> = [];
+  let loadError: string | null = null;
+  try {
+    customers = await getCustomerSummaries({ q, subscriptionStatus, smaregiFilter });
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : String(err);
+    console.error("[admin/customers] failed to load customer summaries", err);
+  }
 
   return (
     <div>
       <h1 className="mb-4 text-2xl font-semibold">顧客管理</h1>
+
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="mb-1 font-semibold">顧客データの取得に失敗しました。</p>
+          <p className="whitespace-pre-wrap break-all">{loadError}</p>
+        </div>
+      )}
 
       <form
         method="get"
