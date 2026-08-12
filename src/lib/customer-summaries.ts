@@ -46,7 +46,7 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
   const { data, error } = await supabase
     .from("customers")
     .select(
-      "id, customer_number, name, smaregi_synced_at, orders(id, type, payment_method, amount, created_at, parent_order_id, products(name, smaregi_product_id), subscriptions(status, next_billing_date))",
+      "id, customer_number, name, smaregi_synced_at, orders(id, type, payment_method, amount, created_at, parent_order_id, products!orders_product_id_fkey(name, smaregi_product_id), subscriptions(status, next_billing_date))",
     )
     .not("customer_number", "is", null)
     .order("customer_number", { ascending: false });
