@@ -26,7 +26,7 @@ const CATALOG_ITEMS = [
 const linkClass = "text-neutral-600 transition-colors hover:text-neutral-900 active:text-blue-600";
 const activeLinkClass = "font-semibold text-blue-600";
 
-export function AdminNav() {
+export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const [catalogOpen, setCatalogOpen] = useState(false);
 
@@ -54,9 +54,11 @@ export function AdminNav() {
             {item.label}
           </Link>
         ))}
-        <Link href="/admin/users" className={isActive("/admin/users") ? activeLinkClass : linkClass}>
-          ユーザー権限
-        </Link>
+        {isAdmin && (
+          <Link href="/admin/users" className={isActive("/admin/users") ? activeLinkClass : linkClass}>
+            ユーザー権限
+          </Link>
+        )}
       </nav>
       {(catalogOpen || catalogActive) && (
         <div className="mt-2 flex flex-wrap gap-4 border-t border-neutral-100 pt-2 pl-4 text-sm">
