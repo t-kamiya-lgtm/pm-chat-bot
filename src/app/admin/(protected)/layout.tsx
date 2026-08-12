@@ -25,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <LogoutButton />
           </div>
         </div>
-        <AdminNav />
+        <AdminNav isAdmin={user.role === "admin"} />
       </header>
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
     </div>
