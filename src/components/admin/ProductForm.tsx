@@ -20,6 +20,7 @@ export interface ProductFormValues {
   price: number;
   listPrice: number | null;
   priceLabel: string;
+  taxRate: 8 | 10;
   shippingFee: number;
   isMailDeliverable: boolean;
   imageUrls: string[];
@@ -40,6 +41,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     price: 0,
     listPrice: null,
     priceLabel: "",
+    taxRate: 8,
     shippingFee: 0,
     isMailDeliverable: false,
     imageUrls: [],
@@ -136,6 +138,7 @@ export function ProductForm({
       price: Number(values.price),
       listPrice: values.listPrice === null ? null : Number(values.listPrice),
       priceLabel: values.priceLabel || null,
+      taxRate: values.taxRate,
       shippingFee: Number(values.shippingFee),
       isMailDeliverable: values.isMailDeliverable,
       imageUrls: values.imageUrls.map((u) => u.trim()).filter(Boolean),
@@ -231,6 +234,17 @@ export function ProductForm({
           />
         </Field>
       </div>
+
+      <Field label="消費税区分(スマレジ連携用)">
+        <select
+          value={values.taxRate}
+          onChange={(e) => setValues((p) => ({ ...p, taxRate: Number(e.target.value) === 10 ? 10 : 8 }))}
+          className="input"
+        >
+          <option value={8}>軽減税率(8%)</option>
+          <option value={10}>標準税率(10%)</option>
+        </select>
+      </Field>
 
       <label className="flex items-center gap-2 text-sm">
         <input

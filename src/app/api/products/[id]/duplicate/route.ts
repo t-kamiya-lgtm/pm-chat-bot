@@ -41,6 +41,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       price: source.price,
       list_price: source.list_price,
       price_label: source.price_label,
+      tax_rate: source.tax_rate,
       shipping_fee: source.shipping_fee,
       is_mail_deliverable: source.is_mail_deliverable,
       image_url: source.image_url,

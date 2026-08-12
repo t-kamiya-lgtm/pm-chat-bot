@@ -36,6 +36,7 @@ export default async function NewProductPage({
                 price: 0,
                 listPrice: null,
                 priceLabel: "",
+                taxRate: 8,
                 shippingFee: 0,
                 isMailDeliverable: false,
                 imageUrls: [],

@@ -95,6 +95,7 @@ function mapProductRow(row: Record<string, unknown>): Product {
     price: row.price as number,
     listPrice: row.list_price as number | null,
     priceLabel: row.price_label as string | null,
+    taxRate: (row.tax_rate as 8 | 10) ?? 8,
     shippingFee: row.shipping_fee as number,
     imageUrl: row.image_url as string | null,
     imageUrls: (row.image_urls as string[] | null) ?? [],

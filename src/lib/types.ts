@@ -29,6 +29,7 @@ export interface Product {
   price: number;
   listPrice: number | null;
   priceLabel: string | null;
+  taxRate: 8 | 10;
   shippingFee: number;
   imageUrl: string | null;
   imageUrls: string[];
