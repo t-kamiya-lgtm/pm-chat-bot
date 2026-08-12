@@ -108,6 +108,8 @@ export async function POST(request: Request) {
         email: customer.email,
         name: customer.name,
         phone: customer.phone ?? undefined,
+        // サンドボックスでの定期2回目以降の請求検証用。本番では未設定のため無効。
+        ...(process.env.STRIPE_TEST_CLOCK_ID && { test_clock: process.env.STRIPE_TEST_CLOCK_ID }),
       });
       stripeCustomerId = stripeCustomer.id;
       await setCustomerStripeId(customer.id, stripeCustomerId);
