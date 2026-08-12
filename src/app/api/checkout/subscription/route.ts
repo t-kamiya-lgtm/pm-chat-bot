@@ -111,6 +111,11 @@ export async function POST(request: Request) {
         // サンドボックスでの定期2回目以降の請求検証用。本番では未設定のため無効。
         ...(process.env.STRIPE_TEST_CLOCK_ID && { test_clock: process.env.STRIPE_TEST_CLOCK_ID }),
       });
+      console.log("[checkout/subscription] created stripe customer", {
+        stripeCustomerId: stripeCustomer.id,
+        envTestClock: process.env.STRIPE_TEST_CLOCK_ID ?? null,
+        stripeCustomerTestClock: stripeCustomer.test_clock ?? null,
+      });
       stripeCustomerId = stripeCustomer.id;
       await setCustomerStripeId(customer.id, stripeCustomerId);
     }
