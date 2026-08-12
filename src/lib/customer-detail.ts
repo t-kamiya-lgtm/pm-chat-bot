@@ -56,7 +56,7 @@ export async function getCustomerDetail(
 
   const { data: orders } = await supabase
     .from("orders")
-    .select("*, products(name), subscriptions(status, next_billing_date, interval)")
+    .select("*, products!orders_product_id_fkey(name), subscriptions(status, next_billing_date, interval)")
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false });
 
