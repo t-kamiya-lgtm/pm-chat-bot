@@ -282,7 +282,11 @@ interface Props {
   utmCampaign?: string | null;
   couponCodeFieldEnabled?: boolean;
   surveyResponses?: Record<string, string>;
-  onComplete: (result: { ok: boolean; items: GreetingItem[] }) => void;
+  onComplete: (result: {
+    ok: boolean;
+    items: GreetingItem[];
+    order?: { orderId: string; amount: number };
+  }) => void;
   onBack: () => void;
 }
 
@@ -445,6 +449,9 @@ export function CheckoutForm({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [preparingPayment, setPreparingPayment] = useState(false);
   const [paymentPrepFailed, setPaymentPrepFailed] = useState(false);
+  // Stripeの決済確定(onSuccess)はprepareStripePayment完了後に別途発火するため、
+  // コンバージョン計測用の注文情報を保持しておく
+  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; amount: number } | null>(null);
 
   // 「同意します」チェック後は決済方法の入力欄が下に表示されるため下部合わせにするが、
   // Stripeの決済フォーム(PaymentElement)は非同期で読み込まれ高さが変わるため、
@@ -736,6 +743,9 @@ export function CheckoutForm({
       if (!res.ok) throw new Error(data.error ?? "決済の準備に失敗しました");
       if (!data.clientSecret) throw new Error("決済の準備に失敗しました(client secret missing)");
 
+      if (data.orderId && data.breakdown) {
+        setPendingOrder({ orderId: data.orderId, amount: data.breakdown.total });
+      }
       setClientSecret(data.clientSecret);
     } catch (err) {
       setError((err as Error).message);
@@ -816,6 +826,9 @@ export function CheckoutForm({
             ? completionItems
             : DEFAULT_ACCEPTED_ITEMS
           : FAILED_ITEMS,
+        order: data.accepted && data.orderId && data.breakdown
+          ? { orderId: data.orderId, amount: data.breakdown.total }
+          : undefined,
       });
     } catch (err) {
       setError((err as Error).message);
@@ -1645,11 +1658,13 @@ export function CheckoutForm({
           ) : clientSecret ? (
             <StripePaymentForm
               clientSecret={clientSecret}
+              order={pendingOrder ?? undefined}
               onSuccess={() =>
                 onComplete({
                   ok: true,
                   items:
                     completionItems && completionItems.length > 0 ? completionItems : DEFAULT_SUCCESS_ITEMS,
+                  order: pendingOrder ?? undefined,
                 })
               }
               onError={(message) => setError(message)}

@@ -1072,6 +1072,8 @@ export function ScenarioEditor({
   });
   const [adTagDraft, setAdTagDraft] = useState(scenario.adTag ?? "");
   const [adTagSaving, setAdTagSaving] = useState(false);
+  const [conversionTagDraft, setConversionTagDraft] = useState(scenario.conversionTag ?? "");
+  const [conversionTagSaving, setConversionTagSaving] = useState(false);
   const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
   const [popupPosition, setPopupPositionState] = useState<"bottom-right" | "bottom-left">(
@@ -1294,6 +1296,22 @@ export function ScenarioEditor({
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       window.alert(`広告タグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleSaveConversionTag() {
+    setConversionTagSaving(true);
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conversionTag: conversionTagDraft.trim() || null }),
+    });
+    setConversionTagSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      window.alert(`コンバージョンタグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
       return;
     }
     router.refresh();
@@ -2825,9 +2843,41 @@ export function ScenarioEditor({
       hasUtm = true;
     }
   });
-  if (!hasUtm) return;
-  var iframe = document.getElementById("pmchat-${scenario.slug}");
-  iframe.src += (iframe.src.indexOf("?") > -1 ? "&" : "?") + utm.toString();
+  if (hasUtm) {
+    var iframe = document.getElementById("pmchat-${scenario.slug}");
+    iframe.src += (iframe.src.indexOf("?") > -1 ? "&" : "?") + utm.toString();
+  }
+
+  // 購入完了時のコンバージョンタグ。iframe内ではなくこのページの文脈で実行する必要があるため、
+  // チャットウィジェットからのpostMessageを受けてここで実行する。
+  var conversionTag = null;
+  fetch("${origin}/api/widget/scenario?slug=${scenario.slug}")
+    .then(function (res) { return res.ok ? res.json() : {}; })
+    .then(function (body) { conversionTag = (body && body.scenario && body.scenario.conversion_tag) || null; })
+    .catch(function () {});
+
+  window.addEventListener("message", function (event) {
+    if (event.origin !== "${origin}") return;
+    var data = event.data;
+    if (!data || data.source !== "pm-chatbot" || data.type !== "conversion" || !conversionTag) return;
+    var filled = conversionTag
+      .split("{{amount}}").join(String(data.amount))
+      .split("{{orderId}}").join(String(data.orderId));
+    var container = document.createElement("div");
+    container.innerHTML = filled;
+    Array.prototype.slice.call(container.childNodes).forEach(function (node) {
+      if (node.nodeType === 1 && node.tagName === "SCRIPT") {
+        var script = document.createElement("script");
+        Array.prototype.slice.call(node.attributes).forEach(function (attr) {
+          script.setAttribute(attr.name, attr.value);
+        });
+        script.textContent = node.textContent;
+        document.body.appendChild(script);
+      } else {
+        document.body.appendChild(node);
+      }
+    });
+  });
 })();
 </script>`}
               />
@@ -2864,6 +2914,33 @@ export function ScenarioEditor({
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {adTagSaving ? "保存中..." : "保存"}
+          </button>
+        </div>
+
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">購入完了計測タグ(コンバージョンタグ)</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            Google広告のコンバージョンタグ、Metaの購入イベント等、注文完了の瞬間にのみ発火させたいタグを貼り付けてください。
+            上の「広告計測タグ」はチャット表示のたびに発火しますが、こちらは注文完了時に1回だけ発火します。
+            タグ内で <code className="rounded bg-neutral-100 px-1">{"{{amount}}"}</code> と書くと注文金額に、
+            <code className="rounded bg-neutral-100 px-1">{"{{orderId}}"}</code> と書くと注文IDに置き換わります
+            (例: <code className="rounded bg-neutral-100 px-1">value: {"{{amount}}"}, transaction_id: &apos;{"{{orderId}}"}&apos;</code>)。
+            埋め込み先ページ側で正しく計測するため、タグは埋め込み元ページ(ポップアップの場合)側で実行されます。
+          </p>
+          <textarea
+            value={conversionTagDraft}
+            onChange={(e) => setConversionTagDraft(e.target.value)}
+            rows={6}
+            placeholder="<script>gtag('event', 'conversion', { send_to: 'AW-XXXXXXX/YYYYYYY', value: {{amount}}, currency: 'JPY', transaction_id: '{{orderId}}' });</script>"
+            className="mb-2 w-full rounded-md border border-neutral-300 p-2 font-mono text-xs"
+          />
+          <button
+            type="button"
+            onClick={handleSaveConversionTag}
+            disabled={conversionTagSaving}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {conversionTagSaving ? "保存中..." : "保存"}
           </button>
         </div>
       </Accordion>
