@@ -30,6 +30,34 @@
     iframeSrc += "?" + utmParams.toString();
   }
 
+  // 購入完了時のコンバージョンタグ(Google広告のコンバージョンタグ等)。
+  // iframe内で実行すると広告クリック情報(gclid等)を持つこのページの文脈にならないため、
+  // チャットウィジェット(iframe)からのpostMessageを受けて、このページ側で実行する。
+  var conversionTag = null;
+  window.addEventListener("message", function (event) {
+    if (event.origin !== origin) return;
+    var data = event.data;
+    if (!data || data.source !== "pm-chatbot" || data.type !== "conversion" || !conversionTag) return;
+
+    var filled = conversionTag
+      .split("{{amount}}").join(String(data.amount))
+      .split("{{orderId}}").join(String(data.orderId));
+    var container = document.createElement("div");
+    container.innerHTML = filled;
+    Array.prototype.slice.call(container.childNodes).forEach(function (node) {
+      if (node.nodeType === 1 && node.tagName === "SCRIPT") {
+        var script = document.createElement("script");
+        Array.prototype.slice.call(node.attributes).forEach(function (attr) {
+          script.setAttribute(attr.name, attr.value);
+        });
+        script.textContent = node.textContent;
+        document.body.appendChild(script);
+      } else {
+        document.body.appendChild(node);
+      }
+    });
+  });
+
   function render(config) {
     config = config || {};
     var side = config.popup_position === "bottom-left" ? "left" : "right";
@@ -145,6 +173,7 @@
       return res.ok ? res.json() : {};
     })
     .then(function (body) {
+      conversionTag = (body && body.scenario && body.scenario.conversion_tag) || null;
       render(body && body.scenario);
     })
     .catch(function () {

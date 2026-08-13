@@ -13,24 +13,28 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
 
 export function StripePaymentForm({
   clientSecret,
+  order,
   onSuccess,
   onError,
 }: {
   clientSecret: string;
+  order?: { orderId: string; amount: number };
   onSuccess: () => void;
   onError: (message: string) => void;
 }) {
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <StripePaymentFormInner onSuccess={onSuccess} onError={onError} />
+      <StripePaymentFormInner order={order} onSuccess={onSuccess} onError={onError} />
     </Elements>
   );
 }
 
 function StripePaymentFormInner({
+  order,
   onSuccess,
   onError,
 }: {
+  order?: { orderId: string; amount: number };
   onSuccess: () => void;
   onError: (message: string) => void;
 }) {
@@ -42,12 +46,19 @@ function StripePaymentFormInner({
     if (!stripe || !elements) return;
     setSubmitting(true);
 
+    // PayPay等、決済確定にリダイレクトが必須な手段では、戻り先URLからしか注文を特定できない
+    // (カード等は同一画面に留まりonSuccessがそのまま呼ばれる)ため、注文情報をURLに載せておく。
+    const returnUrl = new URL(window.location.href);
+    if (order) {
+      returnUrl.searchParams.set("pm_order_id", order.orderId);
+      returnUrl.searchParams.set("pm_amount", String(order.amount));
+    }
+
     const { error } = await stripe.confirmPayment({
       elements,
       redirect: "if_required",
-      // PayPay等、決済確定にリダイレクトが必須な手段のために指定(カード等は同一画面に留まる)
       confirmParams: {
-        return_url: window.location.href,
+        return_url: returnUrl.toString(),
       },
     });
 

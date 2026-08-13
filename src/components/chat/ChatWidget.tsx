@@ -115,6 +115,13 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     textColor: "white" | "black" | null;
   }>({ mode: null, imageUrl: null, title: null, backgroundColor: null, textColor: null });
   const [adTag, setAdTag] = useState<string | null>(null);
+  const [conversionTag, setConversionTag] = useState<string | null>(null);
+  const conversionFiredRef = useRef(false);
+  // 決済リダイレクト復帰の判定effect(マウント時に一度だけ実行)から呼ばれても最新値を読めるようref化する
+  const conversionTagRef = useRef<string | null>(null);
+  useEffect(() => {
+    conversionTagRef.current = conversionTag;
+  }, [conversionTag]);
   const [couponCodeFieldEnabled, setCouponCodeFieldEnabled] = useState(true);
   // dangerouslySetInnerHTMLで挿入した<script>はブラウザ仕様により実行されないため、
   // 管理者が設定した広告計測タグ(GA4/Metaピクセル等)は要素を組み立て直してDOMに追加する
@@ -140,6 +147,40 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       for (const node of injected) node.parentNode?.removeChild(node);
     };
   }, [adTag]);
+  /**
+   * 注文完了時にのみ1回発火するコンバージョン計測タグ(Google広告のコンバージョンタグ等)。
+   * iframeで埋め込まれている場合、iframe内で発火してもgclid等の広告クリック情報を持つ
+   * 親ページの文脈では実行されないため正しく計測できない。そのため親ページへpostMessageし、
+   * widget.js側で親ページの文脈でタグを実行してもらう。埋め込みでなければこの場で直接実行する。
+   */
+  function fireConversion(orderId: string, amount: number) {
+    if (conversionFiredRef.current) return;
+    conversionFiredRef.current = true;
+
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ source: "pm-chatbot", type: "conversion", orderId, amount }, "*");
+      return;
+    }
+    const tag = conversionTagRef.current;
+    if (!tag) return;
+
+    const filled = tag
+      .split("{{amount}}").join(String(amount))
+      .split("{{orderId}}").join(orderId);
+    const container = document.createElement("div");
+    container.innerHTML = filled;
+    for (const node of Array.from(container.childNodes)) {
+      if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName === "SCRIPT") {
+        const original = node as HTMLScriptElement;
+        const script = document.createElement("script");
+        for (const attr of Array.from(original.attributes)) script.setAttribute(attr.name, attr.value);
+        script.textContent = original.textContent;
+        document.body.appendChild(script);
+      } else {
+        document.body.appendChild(node);
+      }
+    }
+  }
   // 入力欄フォーカス中(キーボード表示中)は固定メニューを隠し、スペースを確保する
   const [keyboardActive, setKeyboardActive] = useState(false);
   useEffect(() => {
@@ -198,11 +239,20 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         if (cancelled) return;
         const status = paymentIntent?.status;
         setRedirectStatus(status === "succeeded" ? "succeeded" : status === "processing" ? "processing" : "failed");
+        // PayPay等のリダイレクト決済は、Stripe.js(公開鍵)側にmetadataが返らないため、
+        // 決済確定前にreturn_urlへ載せておいた注文情報をURLパラメータから読み取る
+        const orderId = searchParams.get("pm_order_id");
+        const amount = searchParams.get("pm_amount");
+        if (status === "succeeded" && orderId && amount) {
+          fireConversion(orderId, Number(amount));
+        }
         // 再読み込みしても再度判定されないよう、決済関連のクエリパラメータをURLから除去する
         const url = new URL(window.location.href);
         url.searchParams.delete("payment_intent");
         url.searchParams.delete("payment_intent_client_secret");
         url.searchParams.delete("redirect_status");
+        url.searchParams.delete("pm_order_id");
+        url.searchParams.delete("pm_amount");
         window.history.replaceState({}, "", url.toString());
       });
     });
@@ -260,6 +310,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             header_background_color?: string | null;
             header_text_color?: "white" | "black" | null;
             ad_tag?: string | null;
+            conversion_tag?: string | null;
             coupon_code_field_enabled?: boolean;
           };
           nodes: WidgetScenarioNode[];
@@ -284,6 +335,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setMenuItems(scenarioBody.menuItems ?? []);
         setScenarioId(scenarioBody.scenario?.id);
         setAdTag(scenarioBody.scenario?.ad_tag ?? null);
+        setConversionTag(scenarioBody.scenario?.conversion_tag ?? null);
         setCouponCodeFieldEnabled(scenarioBody.scenario?.coupon_code_field_enabled ?? true);
         fetch("/api/widget/access-log", {
           method: "POST",
@@ -732,13 +784,16 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
 
   function handleCheckoutComplete(
     item: Extract<TimelineItem, { kind: "checkout" }>,
-    result: { ok: boolean; items: GreetingItem[] },
+    result: { ok: boolean; items: GreetingItem[]; order?: { orderId: string; amount: number } },
   ) {
     setTimeline((prev) => [
       ...prev.filter((i) => i.id !== item.id),
       { id: nextId(), kind: "checkout-result", ok: result.ok, items: result.items },
     ]);
-    if (result.ok) setOrderConfirmed(true);
+    if (result.ok) {
+      setOrderConfirmed(true);
+      if (result.order) fireConversion(result.order.orderId, result.order.amount);
+    }
 
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     resetTimerRef.current = setTimeout(resetConversation, RESET_AFTER_COMPLETE_MS);

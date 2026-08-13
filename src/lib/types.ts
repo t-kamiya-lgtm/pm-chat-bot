@@ -109,6 +109,7 @@ export interface Scenario {
   headerBackgroundColor: string | null;
   headerTextColor: "white" | "black" | null;
   adTag: string | null;
+  conversionTag: string | null;
   popupIconUrl: string | null;
   popupPosition: "bottom-right" | "bottom-left" | null;
   couponCodeFieldEnabled: boolean;
