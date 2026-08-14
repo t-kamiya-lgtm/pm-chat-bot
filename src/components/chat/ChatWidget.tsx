@@ -162,7 +162,18 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       return;
     }
     const tag = conversionTagRef.current;
-    if (!tag) return;
+    if (!tag) {
+      // 個別のコンバージョンタグ未設定時は、このページに設置済みの計測基盤へ標準の購入イベントを送る
+      const w = window as unknown as {
+        dataLayer?: { push: (v: unknown) => void };
+        gtag?: (...args: unknown[]) => void;
+        fbq?: (...args: unknown[]) => void;
+      };
+      w.dataLayer?.push({ event: "purchase", ecommerce: { transaction_id: orderId, value: amount, currency: "JPY" } });
+      w.gtag?.("event", "purchase", { transaction_id: orderId, value: amount, currency: "JPY" });
+      w.fbq?.("track", "Purchase", { value: amount, currency: "JPY" });
+      return;
+    }
 
     const filled = tag
       .split("{{amount}}").join(String(amount))

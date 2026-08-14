@@ -2856,10 +2856,28 @@ export function ScenarioEditor({
     .then(function (body) { conversionTag = (body && body.scenario && body.scenario.conversion_tag) || null; })
     .catch(function () {});
 
+  // 個別のコンバージョンタグが未設定の場合、このページに元々設置されている広告計測基盤
+  // (Google Tag Manager / gtag.js / Metaピクセル)へ、標準の購入イベントを自動で送信する。
+  function fireAutoFallback(amount, orderId) {
+    if (window.dataLayer && typeof window.dataLayer.push === "function") {
+      window.dataLayer.push({ event: "purchase", ecommerce: { transaction_id: orderId, value: amount, currency: "JPY" } });
+    }
+    if (typeof window.gtag === "function") {
+      window.gtag("event", "purchase", { transaction_id: orderId, value: amount, currency: "JPY" });
+    }
+    if (typeof window.fbq === "function") {
+      window.fbq("track", "Purchase", { value: amount, currency: "JPY" });
+    }
+  }
+
   window.addEventListener("message", function (event) {
     if (event.origin !== "${origin}") return;
     var data = event.data;
-    if (!data || data.source !== "pm-chatbot" || data.type !== "conversion" || !conversionTag) return;
+    if (!data || data.source !== "pm-chatbot" || data.type !== "conversion") return;
+    if (!conversionTag) {
+      fireAutoFallback(data.amount, data.orderId);
+      return;
+    }
     var filled = conversionTag
       .split("{{amount}}").join(String(data.amount))
       .split("{{orderId}}").join(String(data.orderId));
