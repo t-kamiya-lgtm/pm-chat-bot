@@ -96,6 +96,15 @@ async function refreshSmaregiToken(refreshToken: string): Promise<string> {
   return token.access_token;
 }
 
+/** 診断用: トークンが化けていないか目視確認するためのマスク済み情報(先頭/末尾数文字と長さのみ)。 */
+export async function getSmaregiTokenDebugInfo(): Promise<{ length: number; preview: string } | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data } = await supabase.from("smaregi_oauth_tokens").select("access_token").eq("id", 1).maybeSingle();
+  const token = (data?.access_token as string | undefined) ?? null;
+  if (!token) return null;
+  return { length: token.length, preview: `${token.slice(0, 6)}...${token.slice(-4)}` };
+}
+
 /** 接続状態の確認用(管理画面表示)。 */
 export async function getSmaregiConnectionStatus(): Promise<{ connected: boolean; expiresAt: string | null }> {
   const supabase = createSupabaseAdminClient();

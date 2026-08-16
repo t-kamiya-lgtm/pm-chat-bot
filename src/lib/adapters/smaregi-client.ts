@@ -65,21 +65,25 @@ export async function smaregiSearch<T>(
   const domain = requireEnv("SMAREGI_DOMAIN");
   const accessToken = await getValidSmaregiAccessToken();
 
-  const query = buildBracketQuery({
+  const body = buildBracketQuery({
     search_options: params.searchOptions ?? {},
     search_fields: params.searchFields ?? [],
     response_options: { response_type: "json", ...params.responseOptions },
   }).join("&");
 
-  const url = `https://${domain}${path}?${query}`;
+  const url = `https://${domain}${path}`;
   const res = await fetch(url, {
-    method: "GET",
-    headers: { authorization: `Bearer ${accessToken}` },
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body,
   });
   try {
     return await parseSmaregiResponse<T>(res);
   } catch (err) {
-    throw new Error(`${err instanceof Error ? err.message : String(err)} (url: ${url})`);
+    throw new Error(`${err instanceof Error ? err.message : String(err)} (url: ${url}, body: ${body})`);
   }
 }
 
