@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminRole } from "@/lib/require-role";
 import { smaregiSearch } from "@/lib/adapters/smaregi-client";
+import { getSmaregiTokenDebugInfo } from "@/lib/smaregi-oauth";
 
 /**
  * 【調査用・一時的なエンドポイント】直近の実際の受注データを数件取得し、
@@ -33,6 +34,10 @@ export async function GET() {
     });
     return NextResponse.json({ response });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    const tokenInfo = await getSmaregiTokenDebugInfo().catch(() => null);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err), tokenInfo },
+      { status: 500 },
+    );
   }
 }
