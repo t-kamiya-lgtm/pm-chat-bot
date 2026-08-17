@@ -163,7 +163,12 @@ export async function POST(request: Request) {
     .eq("id", order.id);
 
   if (accepted) {
-    await fulfillOrder(order.id);
+    try {
+      await fulfillOrder(order.id);
+    } catch (err) {
+      // スマレジ連携の失敗で、お客様の注文確定自体をブロックしない(エラー内容はsmaregi_sync_logsに記録済み)。
+      console.error("[checkout/deferred] fulfillOrder failed", { orderId: order.id, err });
+    }
     await sendOrderCompletionEmail(order.id);
     await assignCustomerNumberIfNeeded(customer.id);
     if (appliedCoupon) {
