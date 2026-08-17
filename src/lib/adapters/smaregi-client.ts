@@ -37,8 +37,17 @@ function buildBracketQuery(obj: Record<string, unknown>, prefix = ""): string[] 
   return parts;
 }
 
+/**
+ * ドキュメント上はJSONレスポンスは常にUTF-8とされているが、実際にはShift-JISで
+ * 返ってくるため(日本語部分が文字化けすることを確認済み)、Shift-JISとしてデコードする。
+ */
+async function decodeSmaregiBody(res: Response): Promise<string> {
+  const buffer = await res.arrayBuffer();
+  return new TextDecoder("shift-jis").decode(buffer);
+}
+
 async function parseSmaregiResponse<T>(res: Response): Promise<T> {
-  const text = await res.text();
+  const text = await decodeSmaregiBody(res);
   let body: SmaregiApiResponse<T> | null = null;
   try {
     body = JSON.parse(text) as SmaregiApiResponse<T>;
