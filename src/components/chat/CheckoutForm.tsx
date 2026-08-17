@@ -143,12 +143,16 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
         ? null
         : "正しいメールアドレスを入力してください";
-    case "phone":
+    case "phone": {
       if (!trimmed) return "電話番号を入力してください";
-      // 数字・ハイフン以外の文字が紛れ込んだ場合(誤入力・IME変換の残り等)もエラーとする
-      return /^0[\d-]{9,13}$/.test(trimmed) && /^0\d{9,10}$/.test(trimmed.replace(/-/g, ""))
+      // 数字の区切り以外の位置にハイフンがある(先頭・末尾・連続)場合や、数字・ハイフン以外の
+      // 文字が紛れ込んだ場合(誤入力・IME変換の残り等)もエラーとする
+      const hasValidShape = /^[0-9]+(-[0-9]+)*$/.test(trimmed);
+      const hasValidDigitCount = /^0\d{9,10}$/.test(trimmed.replace(/-/g, ""));
+      return hasValidShape && hasValidDigitCount
         ? null
         : "正しい電話番号を入力してください(ハイフンなし10〜11桁)";
+    }
     case "postalCode":
       return /^\d{7}$/.test(value.replace(/[^0-9]/g, ""))
         ? null
