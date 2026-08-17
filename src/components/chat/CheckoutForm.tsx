@@ -145,7 +145,8 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
         : "正しいメールアドレスを入力してください";
     case "phone":
       if (!trimmed) return "電話番号を入力してください";
-      return /^0\d{9,10}$/.test(trimmed.replace(/[^0-9]/g, ""))
+      // 数字・ハイフン以外の文字が紛れ込んだ場合(誤入力・IME変換の残り等)もエラーとする
+      return /^0[\d-]{9,13}$/.test(trimmed) && /^0\d{9,10}$/.test(trimmed.replace(/-/g, ""))
         ? null
         : "正しい電話番号を入力してください(ハイフンなし10〜11桁)";
     case "postalCode":
@@ -1212,7 +1213,8 @@ export function CheckoutForm({
           <label className="block">
             <input
               autoFocus
-              type={step.key === "email" ? "email" : "text"}
+              type={step.key === "email" ? "email" : step.key === "phone" ? "tel" : "text"}
+              inputMode={step.key === "phone" ? "tel" : undefined}
               className="input"
               value={values[step.key]}
               onChange={(e) => setValues((prev) => ({ ...prev, [step.key]: e.target.value }))}
