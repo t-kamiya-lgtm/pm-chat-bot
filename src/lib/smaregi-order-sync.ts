@@ -68,6 +68,18 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
     .single();
   if (productError) throw productError;
 
+  // クロスセル(アドオン)商品。定期の有無に関わらず、常に単発の追加購入品として1明細追加する。
+  let addonProduct: Record<string, unknown> | null = null;
+  if (order.addon_product_id) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("id", order.addon_product_id)
+      .maybeSingle();
+    if (error) throw error;
+    addonProduct = data;
+  }
+
   const isSubscription = order.type === "subscription";
   let subscriptionRow: { interval: SubscriptionInterval; next_billing_date: string | null } | null = null;
   if (isSubscription) {
@@ -93,10 +105,16 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   const taxRate = (product.tax_rate as number) ?? 8;
   const productTax = calcTax(productTotal, taxRate);
 
+  // アドオン金額は order.addon_amount(注文時点の価格)を正とする。
+  const addonAmount = addonProduct ? ((order.addon_amount as number | null) ?? 0) : 0;
+  const addonTaxRate = addonProduct ? ((addonProduct.tax_rate as number) ?? 8) : 8;
+  const addonTax = addonProduct ? calcTax(addonAmount, addonTaxRate) : 0;
+
   const shippingFee = order.shipping_fee as number;
   const paymentFee = order.payment_fee as number;
   const discount = (order.discount_amount as number) ?? 0;
-  const subtotal = productTotal;
+  const subtotal = productTotal + addonAmount;
+  const totalTax = productTax + addonTax;
   const total = Math.max(0, subtotal - discount + shippingFee + paymentFee);
 
   const paymentId =
@@ -123,10 +141,10 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       total,
       deliv_fee: shippingFee,
       charge: paymentFee,
-      tax: productTax,
+      tax: totalTax,
       payment_total: total,
-      total_notax: subtotal - productTax,
-      total_tax: productTax,
+      total_notax: subtotal - totalTax,
+      total_tax: totalTax,
       deliv_fee_notax: shippingFee,
       charge_notax: paymentFee,
       ec_type: EC_TYPE,
@@ -164,6 +182,25 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
         product_tax: productTax,
         product_reg_flag: isSubscription ? "定期" : "商品",
       },
+      ...(addonProduct
+        ? [
+            {
+              product_code: (addonProduct.smaregi_product_id as string | null) ?? (addonProduct.id as string),
+              product_name: addonProduct.name as string,
+              product_quantity: 1,
+              product_tax_flag: "込",
+              tax_rule: 2,
+              product_postage_flag: "込",
+              product_daibiki_flag: "込",
+              product_price: addonAmount,
+              product_total: addonAmount,
+              tax_rate: addonTaxRate,
+              product_tax: addonTax,
+              // アドオンはメインが定期でも常に単発の追加購入品として扱う。
+              product_reg_flag: "商品",
+            },
+          ]
+        : []),
     ],
   };
 
