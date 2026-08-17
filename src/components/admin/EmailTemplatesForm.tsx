@@ -61,7 +61,7 @@ export function EmailTemplatesForm({
           <p className="mt-0.5 text-xs text-neutral-500">
             決済確定時に購入者へ送信されます。差し込み項目:
             {" "}
-            {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}}"}
+            {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}} {{chat_url}}"}
           </p>
         </div>
         <label className="block text-sm">
@@ -89,7 +89,7 @@ export function EmailTemplatesForm({
           <p className="mt-0.5 text-xs text-neutral-500">
             定期購入の2回目以降の周期課金が完了するたびに送信されます。差し込み項目:
             {" "}
-            {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}}"}
+            {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}} {{chat_url}}"}
           </p>
         </div>
         <label className="block text-sm">
@@ -113,7 +113,7 @@ export function EmailTemplatesForm({
           <p className="mt-0.5 text-xs text-neutral-500">
             注文フォームの入力途中で1時間以上離脱したお客様へ送信されます。差し込み項目:
             {" "}
-            {"{{customer_name}} {{product_name}} {{unsubscribe_url}}"}
+            {"{{customer_name}} {{product_name}} {{chat_url}} {{unsubscribe_url}}"}
             <br />
             配信停止リンク({"{{unsubscribe_url}}"})は特定電子メール法対応のため必ず本文に含めてください。
           </p>
