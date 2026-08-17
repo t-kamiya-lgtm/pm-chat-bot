@@ -61,7 +61,7 @@ export function EmailTemplatesForm({
           <p className="mt-0.5 text-xs text-neutral-500">
             決済確定時に購入者へ送信されます。差し込み項目:
             {" "}
-            {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}} {{chat_url}}"}
+            {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}}"}
           </p>
         </div>
         <label className="block text-sm">
@@ -89,7 +89,7 @@ export function EmailTemplatesForm({
           <p className="mt-0.5 text-xs text-neutral-500">
             定期購入の2回目以降の周期課金が完了するたびに送信されます。差し込み項目:
             {" "}
-            {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}} {{chat_url}}"}
+            {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}}"}
           </p>
         </div>
         <label className="block text-sm">
