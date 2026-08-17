@@ -1549,6 +1549,11 @@ export function CheckoutForm({
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
           addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
           discountAmount={couponDiscount}
+          firstTimeUnitPrice={
+            orderType === "subscription" && activeProduct.first_time_price !== null
+              ? activeProduct.first_time_price
+              : undefined
+          }
         />
       </>
     );
@@ -1868,6 +1873,11 @@ export function CheckoutForm({
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
           addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
           discountAmount={couponDiscount}
+          firstTimeUnitPrice={
+            orderType === "subscription" && activeProduct.first_time_price !== null
+              ? activeProduct.first_time_price
+              : undefined
+          }
         />
 
         <button

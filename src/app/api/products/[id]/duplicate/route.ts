@@ -40,6 +40,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       memo: source.memo,
       price: source.price,
       list_price: source.list_price,
+      first_time_price: source.first_time_price,
       price_label: source.price_label,
       tax_rate: source.tax_rate,
       shipping_fee: source.shipping_fee,

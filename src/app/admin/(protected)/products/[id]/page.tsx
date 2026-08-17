@@ -53,6 +53,7 @@ export default async function EditProductPage({
           memo: product.memo ?? "",
           price: product.price,
           listPrice: product.list_price ?? null,
+          firstTimePrice: product.first_time_price ?? null,
           priceLabel: product.price_label ?? "",
           taxRate: product.tax_rate === 10 ? 10 : 8,
           shippingFee: product.shipping_fee,

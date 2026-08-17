@@ -12,6 +12,7 @@ export interface WidgetProduct {
   description: string | null;
   price: number;
   list_price: number | null;
+  first_time_price: number | null;
   price_label: string | null;
   shipping_fee: number;
   is_mail_deliverable: boolean;
