@@ -5,9 +5,9 @@ import type { Address, ShippingAddress, SubscriptionInterval } from "@/lib/types
 
 /**
  * 代引き・後払いの注文を、スマレジEC・リピートの受注APIへ連携する。
- * customer_id: 0(非会員)を指定する。-1(名寄せ・新規会員作成)にするとログインパスワードの
- * わからない中途半端な会員アカウントが作成されてしまうため、顧客管理はチャットシステム側で行い、
- * スマレジ側は非会員注文として登録する。定期の場合はperiodical_orderを同時に埋め込み、
+ * customer_id: -1(名寄せ・新規会員作成)を指定する。パスワード未設定の本会員が自動作成されるが、
+ * 顧客マスタにも反映させたいという要望のためこちらを採用する(顧客管理はチャットシステム側で行うため、
+ * スマレジ側のログイン可否は運用上問題としない)。定期の場合はperiodical_orderを同時に埋め込み、
  * 1回のAPI呼び出しで受注データと定期申込データを同時作成する(受注APIドキュメント記載の仕様)。
  *
  * 以下はスマレジ側マスタ設定に基づく固定値(2026年時点でヒアリング済み):
@@ -105,7 +105,7 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
 
   const record: Record<string, unknown> = {
     order: {
-      customer_id: 0,
+      customer_id: -1,
       order_name01: customer.name,
       order_email: customer.email,
       order_email_type: "1",
