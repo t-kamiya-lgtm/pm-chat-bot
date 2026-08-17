@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ProductOrderType, SubscriptionInterval } from "@/lib/types";
+import type { ComparePriceType, ProductOrderType, SubscriptionInterval } from "@/lib/types";
+
+const COMPARE_PRICE_TYPE_LABELS: Record<ComparePriceType, string> = {
+  none: "比較価格を表示しない",
+  list_price: "通常価格",
+  unit_total: "単品合計価格",
+  custom: "その他(自由入力)",
+};
 
 const INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
   biweekly: "2週間ごと",
@@ -20,6 +27,10 @@ export interface ProductFormValues {
   price: number;
   listPrice: number | null;
   firstTimePrice: number | null;
+  comparePriceType: ComparePriceType;
+  unitTotalPrice: number | null;
+  customCompareLabel: string;
+  customComparePrice: number | null;
   priceLabel: string;
   taxRate: 8 | 10;
   shippingFee: number;
@@ -42,6 +53,10 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     price: 0,
     listPrice: null,
     firstTimePrice: null,
+    comparePriceType: "none",
+    unitTotalPrice: null,
+    customCompareLabel: "",
+    customComparePrice: null,
     priceLabel: "",
     taxRate: 8,
     shippingFee: 0,
@@ -143,6 +158,10 @@ export function ProductForm({
         values.orderType === "subscription" && values.firstTimePrice !== null
           ? Number(values.firstTimePrice)
           : null,
+      comparePriceType: values.comparePriceType,
+      unitTotalPrice: values.unitTotalPrice === null ? null : Number(values.unitTotalPrice),
+      customCompareLabel: values.customCompareLabel || null,
+      customComparePrice: values.customComparePrice === null ? null : Number(values.customComparePrice),
       priceLabel: values.priceLabel || null,
       taxRate: values.taxRate,
       shippingFee: Number(values.shippingFee),
@@ -263,24 +282,88 @@ export function ProductForm({
 
       <div className="rounded-md border border-neutral-200 p-3">
         <p className="mb-3 text-sm font-medium text-neutral-700">
-          二重価格表記(任意): 通常価格を取り消し線で表示し、「ラベル特別価格」として上記の価格を強調表示します
+          二重価格表記(任意): 比較価格を取り消し線で表示し、「ラベル特別価格」として上記の価格を強調表示します
         </p>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="通常価格(円、任意)">
-            <input
-              type="number"
-              min={0}
-              value={values.listPrice ?? ""}
-              onChange={(e) =>
-                setValues((p) => ({
-                  ...p,
-                  listPrice: e.target.value === "" ? null : Number(e.target.value),
-                }))
-              }
-              className="input"
-            />
-          </Field>
-          <Field label="ラベル(例: 定期, おためし)">
+        <Field label="比較価格ラベル">
+          <select
+            value={values.comparePriceType}
+            onChange={(e) => setValues((p) => ({ ...p, comparePriceType: e.target.value as ComparePriceType }))}
+            className="input"
+          >
+            {(Object.keys(COMPARE_PRICE_TYPE_LABELS) as ComparePriceType[]).map((type) => (
+              <option key={type} value={type}>
+                {COMPARE_PRICE_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {values.comparePriceType === "list_price" && (
+          <div className="mt-3">
+            <Field label="通常価格(円)">
+              <input
+                type="number"
+                min={0}
+                value={values.listPrice ?? ""}
+                onChange={(e) =>
+                  setValues((p) => ({
+                    ...p,
+                    listPrice: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="input"
+              />
+            </Field>
+          </div>
+        )}
+
+        {values.comparePriceType === "unit_total" && (
+          <div className="mt-3">
+            <Field label="単品合計価格(円、構成品を個別に買った場合の合計金額を手入力)">
+              <input
+                type="number"
+                min={0}
+                value={values.unitTotalPrice ?? ""}
+                onChange={(e) =>
+                  setValues((p) => ({
+                    ...p,
+                    unitTotalPrice: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="input"
+              />
+            </Field>
+          </div>
+        )}
+
+        {values.comparePriceType === "custom" && (
+          <div className="mt-3 grid grid-cols-2 gap-4">
+            <Field label="ラベル文言(例: SNS限定価格)">
+              <input
+                value={values.customCompareLabel}
+                onChange={(e) => setValues((p) => ({ ...p, customCompareLabel: e.target.value }))}
+                className="input"
+              />
+            </Field>
+            <Field label="金額(円)">
+              <input
+                type="number"
+                min={0}
+                value={values.customComparePrice ?? ""}
+                onChange={(e) =>
+                  setValues((p) => ({
+                    ...p,
+                    customComparePrice: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="input"
+              />
+            </Field>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <Field label="強調価格のラベル(例: 定期, おためし)">
             <input
               value={values.priceLabel}
               onChange={(e) => setValues((p) => ({ ...p, priceLabel: e.target.value }))}
@@ -288,13 +371,31 @@ export function ProductForm({
             />
           </Field>
         </div>
-        {values.listPrice !== null && values.listPrice > values.price && (
-          <p className="mt-2 text-xs text-neutral-500">
-            表示例: <span className="line-through">{values.listPrice.toLocaleString()}円</span>
-            {" → "}
-            {values.priceLabel || "特別"}価格 {values.price.toLocaleString()}円
-          </p>
-        )}
+
+        {(() => {
+          const compareAmount =
+            values.comparePriceType === "list_price"
+              ? values.listPrice
+              : values.comparePriceType === "unit_total"
+                ? values.unitTotalPrice
+                : values.comparePriceType === "custom"
+                  ? values.customComparePrice
+                  : null;
+          const compareLabel =
+            values.comparePriceType === "list_price"
+              ? "通常価格"
+              : values.comparePriceType === "unit_total"
+                ? "単品合計価格"
+                : values.customCompareLabel || "比較価格";
+          if (compareAmount === null || compareAmount <= values.price) return null;
+          return (
+            <p className="mt-2 text-xs text-neutral-500">
+              表示例: {compareLabel} <span className="line-through">{compareAmount.toLocaleString()}円</span>
+              {" → "}
+              {values.priceLabel || "特別"}価格 {values.price.toLocaleString()}円
+            </p>
+          );
+        })()}
       </div>
 
       <div>
