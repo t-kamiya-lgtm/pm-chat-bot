@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toast } from "@/components/admin/Toast";
 
 export interface GreetingItemDraft {
@@ -165,6 +165,16 @@ export function CheckoutMessagesForm({
   const [shoppingGuideText, setShoppingGuideText] = useState(initialShoppingGuideText);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const skipResetRef = useRef(true);
+
+  useEffect(() => {
+    if (skipResetRef.current) {
+      skipResetRef.current = false;
+      return;
+    }
+    setJustSaved(false);
+  }, [greetingItems, completionItems, privacyNotice, termsText, privacyText, shoppingGuideText]);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -185,9 +195,12 @@ export function CheckoutMessagesForm({
     });
 
     setSaving(false);
-    setToast(
-      res.ok ? { message: "保存しました", type: "success" } : { message: "保存に失敗しました", type: "error" },
-    );
+    if (res.ok) {
+      setJustSaved(true);
+      setToast({ message: "保存しました", type: "success" });
+    } else {
+      setToast({ message: "保存に失敗しました", type: "error" });
+    }
   }
 
   return (
@@ -261,7 +274,7 @@ export function CheckoutMessagesForm({
         disabled={saving}
         className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
       >
-        {saving ? "保存中..." : "保存する"}
+        {saving ? "保存中..." : justSaved ? "保存済み" : "保存する"}
       </button>
     </form>
   );

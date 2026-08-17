@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ImportStatus } from "@/lib/order-filters";
+import { Toast } from "@/components/admin/Toast";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   stripe: "即時決済(Stripe)",
@@ -64,6 +65,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<ImportStatus>("imported");
   const [applying, setApplying] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -89,7 +91,14 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
     setApplying(false);
     if (res.ok) {
       setSelected(new Set());
+      setToast({ message: "選択した注文に一括適用しました", type: "success" });
       router.refresh();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "一括適用に失敗しました",
+        type: "error",
+      });
     }
   }
 
@@ -99,11 +108,16 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ importStatus }),
     });
-    if (res.ok) router.refresh();
+    if (res.ok) {
+      router.refresh();
+    } else {
+      setToast({ message: "取り込み状況の更新に失敗しました", type: "error" });
+    }
   }
 
   return (
     <div>
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 text-sm">
           <span>{selected.size}件選択中</span>

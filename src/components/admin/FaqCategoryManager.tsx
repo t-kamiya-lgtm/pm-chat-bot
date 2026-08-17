@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductFaqCategory } from "@/lib/types";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
+import { Toast } from "@/components/admin/Toast";
 
 export function FaqCategoryManager({
   productGroupId,
@@ -15,29 +16,46 @@ export function FaqCategoryManager({
   const router = useRouter();
   const [newTitle, setNewTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function handleAdd(event: React.FormEvent) {
     event.preventDefault();
     if (!newTitle.trim()) return;
     setBusy(true);
-    await fetch(`/api/product-groups/${productGroupId}/faq-categories`, {
+    const res = await fetch(`/api/product-groups/${productGroupId}/faq-categories`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: newTitle }),
     });
     setBusy(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "カテゴリの追加に失敗しました",
+        type: "error",
+      });
+      return;
+    }
     setNewTitle("");
     router.refresh();
   }
 
   async function handleRename(categoryId: string, title: string) {
     setBusy(true);
-    await fetch(`/api/product-groups/${productGroupId}/faq-categories/${categoryId}`, {
+    const res = await fetch(`/api/product-groups/${productGroupId}/faq-categories/${categoryId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title }),
     });
     setBusy(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "カテゴリ名の変更に失敗しました",
+        type: "error",
+      });
+      return;
+    }
     router.refresh();
   }
 
@@ -47,7 +65,7 @@ export function FaqCategoryManager({
     if (!target || !swapWith) return;
 
     setBusy(true);
-    await Promise.all([
+    const [resA, resB] = await Promise.all([
       fetch(`/api/product-groups/${productGroupId}/faq-categories/${target.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -60,20 +78,33 @@ export function FaqCategoryManager({
       }),
     ]);
     setBusy(false);
+    if (!resA.ok || !resB.ok) {
+      setToast({ message: "並び順の変更に失敗しました", type: "error" });
+      return;
+    }
     router.refresh();
   }
 
   async function handleDelete(categoryId: string) {
     setBusy(true);
-    await fetch(`/api/product-groups/${productGroupId}/faq-categories/${categoryId}`, {
+    const res = await fetch(`/api/product-groups/${productGroupId}/faq-categories/${categoryId}`, {
       method: "DELETE",
     });
     setBusy(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "カテゴリの削除に失敗しました",
+        type: "error",
+      });
+      return;
+    }
     router.refresh();
   }
 
   return (
     <div className="space-y-3">
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {categories.map((category, index) => (
         <div key={category.id} className="flex items-center gap-2 rounded-md border border-neutral-200 p-2">
           <div className="flex flex-col">

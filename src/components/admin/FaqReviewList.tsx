@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductFaq } from "@/lib/types";
+import { Toast } from "@/components/admin/Toast";
 
 type FaqWithCategory = ProductFaq & { categoryTitle: string | null };
 
@@ -22,6 +23,8 @@ export function FaqReviewList({
   const router = useRouter();
   const [editing, setEditing] = useState<Record<string, { question: string; answer: string }>>({});
   const [pending, setPending] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [justSavedId, setJustSavedId] = useState<string | null>(null);
 
   async function updateFaq(
     id: string,
@@ -33,17 +36,35 @@ export function FaqReviewList({
     }>,
   ) {
     setPending(id);
-    await fetch(`/api/faqs/${id}`, {
+    const res = await fetch(`/api/faqs/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
     setPending(null);
+    if (!res.ok) {
+      const responseBody = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof responseBody.error === "string" ? responseBody.error : "更新に失敗しました",
+        type: "error",
+      });
+      return;
+    }
+    if ("question" in body || "answer" in body) {
+      setJustSavedId(id);
+      setToast({ message: "内容を保存しました", type: "success" });
+    }
     router.refresh();
+  }
+
+  function updateDraft(id: string, draft: { question: string; answer: string }) {
+    setEditing((prev) => ({ ...prev, [id]: draft }));
+    if (justSavedId === id) setJustSavedId(null);
   }
 
   return (
     <div className="space-y-4">
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {faqs.map((faq) => {
         const draft = editing[faq.id] ?? { question: faq.question, answer: faq.answer };
         return (
@@ -92,9 +113,7 @@ export function FaqReviewList({
               <input
                 className="input"
                 value={draft.question}
-                onChange={(e) =>
-                  setEditing((p) => ({ ...p, [faq.id]: { ...draft, question: e.target.value } }))
-                }
+                onChange={(e) => updateDraft(faq.id, { ...draft, question: e.target.value })}
               />
             </label>
             <label className="mb-3 block text-sm">
@@ -103,9 +122,7 @@ export function FaqReviewList({
                 className="input"
                 rows={2}
                 value={draft.answer}
-                onChange={(e) =>
-                  setEditing((p) => ({ ...p, [faq.id]: { ...draft, answer: e.target.value } }))
-                }
+                onChange={(e) => updateDraft(faq.id, { ...draft, answer: e.target.value })}
               />
             </label>
 
@@ -116,7 +133,7 @@ export function FaqReviewList({
                 onClick={() => updateFaq(faq.id, { question: draft.question, answer: draft.answer })}
                 className="rounded-md border border-neutral-300 px-3 py-1.5 hover:bg-neutral-50 disabled:opacity-50"
               >
-                内容を保存
+                {pending === faq.id ? "保存中..." : justSavedId === faq.id ? "保存済み" : "内容を保存"}
               </button>
               <button
                 type="button"

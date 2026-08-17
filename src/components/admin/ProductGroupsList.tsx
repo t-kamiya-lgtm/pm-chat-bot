@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
+import { Toast } from "@/components/admin/Toast";
 
 export interface ProductGroupRow {
   id: string;
@@ -15,12 +16,11 @@ export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGro
   const [pending, setPending] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   function startEdit(group: ProductGroupRow) {
     setEditingId(group.id);
     setEditValue(group.name);
-    setError(null);
   }
 
   async function handleRename(group: ProductGroupRow) {
@@ -40,10 +40,14 @@ export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGro
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setEditingId(null);
+    setToast({ message: "アイテム名を変更しました", type: "success" });
     router.refresh();
   }
 
@@ -54,7 +58,7 @@ export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGro
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({ message: `削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
       return;
     }
     router.refresh();
@@ -62,7 +66,7 @@ export function ProductGroupsList({ initialGroups }: { initialGroups: ProductGro
 
   return (
     <div className="space-y-3">
-      {error && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {initialGroups.map((group) => (
         <div
           key={group.id}

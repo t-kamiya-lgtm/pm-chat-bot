@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   Coupon,
@@ -16,6 +16,9 @@ import type {
 import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio } from "@/lib/video-embed";
 import { contrastTextColor, effectiveTextColor, type TextColorOverride } from "@/lib/color";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
+import { Toast } from "@/components/admin/Toast";
+
+type ToastState = { message: string; type: "success" | "error" } | null;
 
 const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   checkbox: "チェックボックス(複数選択)",
@@ -1054,16 +1057,14 @@ export function ScenarioEditor({
   coupon: initialCoupon,
 }: Props) {
   const router = useRouter();
+  const [toast, setToast] = useState<ToastState>(null);
   const [publishing, setPublishing] = useState(false);
   const [editingScenarioName, setEditingScenarioName] = useState(false);
   const [scenarioNameDraft, setScenarioNameDraft] = useState(scenario.name);
-  const [scenarioNameError, setScenarioNameError] = useState<string | null>(null);
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugDraft, setSlugDraft] = useState(scenario.slug ?? "");
-  const [slugError, setSlugError] = useState<string | null>(null);
   const [editingOrderCode, setEditingOrderCode] = useState(false);
   const [orderCodeDraft, setOrderCodeDraft] = useState(scenario.orderCode ?? "");
-  const [orderCodeError, setOrderCodeError] = useState<string | null>(null);
   const [display, setDisplay] = useState<DisplaySettings>({
     chatBackgroundColor: scenario.chatBackgroundColor,
     menuBackgroundColor: scenario.menuBackgroundColor,
@@ -1080,10 +1081,39 @@ export function ScenarioEditor({
   });
   const [adTagDraft, setAdTagDraft] = useState(scenario.adTag ?? "");
   const [adTagSaving, setAdTagSaving] = useState(false);
+  const [adTagSaved, setAdTagSaved] = useState(false);
+  const adTagSkipResetRef = useRef(true);
+  useEffect(() => {
+    if (adTagSkipResetRef.current) {
+      adTagSkipResetRef.current = false;
+      return;
+    }
+    setAdTagSaved(false);
+  }, [adTagDraft]);
+
   const [conversionTagDraft, setConversionTagDraft] = useState(scenario.conversionTag ?? "");
   const [conversionTagSaving, setConversionTagSaving] = useState(false);
+  const [conversionTagSaved, setConversionTagSaved] = useState(false);
+  const conversionTagSkipResetRef = useRef(true);
+  useEffect(() => {
+    if (conversionTagSkipResetRef.current) {
+      conversionTagSkipResetRef.current = false;
+      return;
+    }
+    setConversionTagSaved(false);
+  }, [conversionTagDraft]);
+
   const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
+  const [popupIconUrlSaved, setPopupIconUrlSaved] = useState(false);
+  const popupIconUrlSkipResetRef = useRef(true);
+  useEffect(() => {
+    if (popupIconUrlSkipResetRef.current) {
+      popupIconUrlSkipResetRef.current = false;
+      return;
+    }
+    setPopupIconUrlSaved(false);
+  }, [popupIconUrlDraft]);
   const [popupPosition, setPopupPositionState] = useState<"bottom-right" | "bottom-left">(
     scenario.popupPosition ?? "bottom-right",
   );
@@ -1101,6 +1131,15 @@ export function ScenarioEditor({
     minOrderAmount: initialCoupon?.minOrderAmount ? String(initialCoupon.minOrderAmount) : "",
   });
   const [couponSaving, setCouponSaving] = useState(false);
+  const [couponSaved, setCouponSaved] = useState(false);
+  const couponSkipResetRef = useRef(true);
+  useEffect(() => {
+    if (couponSkipResetRef.current) {
+      couponSkipResetRef.current = false;
+      return;
+    }
+    setCouponSaved(false);
+  }, [couponForm]);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
   const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
@@ -1138,7 +1177,6 @@ export function ScenarioEditor({
   const [newNodeDefaultNext, setNewNodeDefaultNext] = useState("");
   const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
   const [newNodeMemo, setNewNodeMemo] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [reorderPending, setReorderPending] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [menuItems, setMenuItems] = useState<ScenarioMenuItem[]>(initialMenuItems);
@@ -1146,7 +1184,6 @@ export function ScenarioEditor({
   const [newMenuActionType, setNewMenuActionType] = useState<MenuItemActionType>("node");
   const [newMenuTargetNodeId, setNewMenuTargetNodeId] = useState("");
   const [newMenuUrl, setNewMenuUrl] = useState("");
-  const [menuError, setMenuError] = useState<string | null>(null);
   const [menuPending, setMenuPending] = useState<string | null>(null);
   const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
   const [editMenuLabel, setEditMenuLabel] = useState("");
@@ -1169,12 +1206,20 @@ export function ScenarioEditor({
 
   async function togglePublish() {
     setPublishing(true);
-    await fetch(`/api/scenarios/${scenario.id}`, {
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status: scenario.status === "published" ? "draft" : "published" }),
     });
     setPublishing(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: `公開状態の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
+      return;
+    }
     router.refresh();
   }
 
@@ -1192,10 +1237,14 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setScenarioNameError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setEditingScenarioName(false);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
@@ -1214,10 +1263,14 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setSlugError(`公開用URLの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `公開用URLの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setEditingSlug(false);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
@@ -1236,16 +1289,20 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setOrderCodeError(`識別コードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `識別コードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setEditingOrderCode(false);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
   /**
    * 表示設定(色・ヘッダー)はその場で見た目に反映してから裏でPATCHする(router.refreshを待たない)。
-   * 保存に失敗した場合のみ、失敗したことをアラートで知らせる(元の値には戻さない=次の操作で再送すれば直る)。
+   * 保存に失敗した場合のみ、失敗したことをトースト表示で知らせる(元の値には戻さない=次の操作で再送すれば直る)。
    */
   async function patchDisplaySettings(payload: Record<string, unknown>) {
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
@@ -1255,7 +1312,10 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`表示設定の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `表示設定の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
     }
   }
 
@@ -1303,9 +1363,14 @@ export function ScenarioEditor({
     setAdTagSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`広告タグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `広告タグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
+    setAdTagSaved(true);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
@@ -1319,9 +1384,14 @@ export function ScenarioEditor({
     setConversionTagSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`コンバージョンタグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `コンバージョンタグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
+    setConversionTagSaved(true);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
@@ -1335,9 +1405,14 @@ export function ScenarioEditor({
     setPopupIconUrlSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`アイコン画像の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `アイコン画像の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
+    setPopupIconUrlSaved(true);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
@@ -1353,7 +1428,7 @@ export function ScenarioEditor({
 
   async function handleSaveCoupon() {
     if (!couponForm.name.trim() || !couponForm.discountValue) {
-      window.alert("名称と割引額を入力してください");
+      setToast({ message: "名称と割引額を入力してください", type: "error" });
       return;
     }
     setCouponSaving(true);
@@ -1380,7 +1455,10 @@ export function ScenarioEditor({
     setCouponSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`クーポンの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `クーポンの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     const { coupon: saved } = await res.json();
@@ -1401,6 +1479,8 @@ export function ScenarioEditor({
       createdAt: saved.created_at,
       updatedAt: saved.updated_at,
     });
+    setCouponSaved(true);
+    setToast({ message: "保存しました", type: "success" });
   }
 
   async function handleToggleCouponActive() {
@@ -1413,17 +1493,26 @@ export function ScenarioEditor({
     });
     setCouponSaving(false);
     if (!res.ok) {
-      window.alert("更新に失敗しました");
+      setToast({ message: "更新に失敗しました", type: "error" });
       return;
     }
     setCoupon({ ...coupon, isActive: !coupon.isActive });
+    setToast({ message: "更新しました", type: "success" });
   }
 
   async function handleDeleteCoupon() {
     if (!coupon) return;
     setCouponSaving(true);
-    await fetch(`/api/coupons/${coupon.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/coupons/${coupon.id}`, { method: "DELETE" });
     setCouponSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: `削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
+      return;
+    }
     setCoupon(null);
     setCouponForm({
       name: "",
@@ -1434,22 +1523,22 @@ export function ScenarioEditor({
       maxUses: "",
       minOrderAmount: "",
     });
+    setToast({ message: "削除しました", type: "success" });
   }
 
   async function handleAddMenuItem(event: React.FormEvent) {
     event.preventDefault();
-    setMenuError(null);
 
     if (!newMenuLabel.trim()) {
-      setMenuError("ボタンのラベルを入力してください");
+      setToast({ message: "ボタンのラベルを入力してください", type: "error" });
       return;
     }
     if (newMenuActionType === "node" && !newMenuTargetNodeId) {
-      setMenuError("ジャンプ先のノードを選択してください");
+      setToast({ message: "ジャンプ先のノードを選択してください", type: "error" });
       return;
     }
     if (newMenuActionType === "url" && !newMenuUrl.trim()) {
-      setMenuError("URLを入力してください");
+      setToast({ message: "URLを入力してください", type: "error" });
       return;
     }
 
@@ -1465,7 +1554,7 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setMenuError(`追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({ message: `追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
       return;
     }
     const { menuItem } = await res.json();
@@ -1484,6 +1573,7 @@ export function ScenarioEditor({
     setNewMenuLabel("");
     setNewMenuTargetNodeId("");
     setNewMenuUrl("");
+    setToast({ message: "追加しました", type: "success" });
   }
 
   async function handleDeleteMenuItem(item: ScenarioMenuItem) {
@@ -1492,7 +1582,7 @@ export function ScenarioEditor({
     setMenuPending(null);
 
     if (!res.ok) {
-      window.alert("削除に失敗しました");
+      setToast({ message: "削除に失敗しました", type: "error" });
       return;
     }
     setMenuItems((prev) => prev.filter((m) => m.id !== item.id));
@@ -1509,7 +1599,7 @@ export function ScenarioEditor({
     setMenuItems(next);
 
     setMenuPending(current.id);
-    await Promise.all([
+    const [resA, resB] = await Promise.all([
       fetch(`/api/scenarios/${scenario.id}/menu-items/${current.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -1522,6 +1612,9 @@ export function ScenarioEditor({
       }),
     ]);
     setMenuPending(null);
+    if (!resA.ok || !resB.ok) {
+      setToast({ message: "並び替えに失敗しました", type: "error" });
+    }
   }
 
   function startEditingMenuItem(item: ScenarioMenuItem) {
@@ -1530,7 +1623,6 @@ export function ScenarioEditor({
     setEditMenuActionType(item.actionType);
     setEditMenuTargetNodeId(item.targetNodeId ?? "");
     setEditMenuUrl(item.url ?? "");
-    setMenuError(null);
   }
 
   /** 固定メニュー項目の変更をその場でPATCHし、成功したらローカル状態も更新する(自動保存)。 */
@@ -1542,7 +1634,10 @@ export function ScenarioEditor({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`固定メニューの更新に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `固定メニューの更新に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     const { menuItem } = await res.json();
@@ -1590,7 +1685,7 @@ export function ScenarioEditor({
     const res = await fetch(`/api/scenarios/${scenario.id}`, { method: "DELETE" });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      window.alert(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({ message: `削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
       return;
     }
     router.push("/admin/scenarios");
@@ -1598,14 +1693,13 @@ export function ScenarioEditor({
 
   async function handleAddNode(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
 
     let content: Record<string, unknown>;
     let nextNodeMap: Record<string, string> = {};
 
     if (usesProductPicker(newNodeType)) {
       if (newNodeProductIds.length === 0) {
-        setError("品番を1つ以上選択してください");
+        setToast({ message: "品番を1つ以上選択してください", type: "error" });
         return;
       }
       content =
@@ -1633,7 +1727,7 @@ export function ScenarioEditor({
       }
     } else if (newNodeType === "message") {
       if (!newNodeText.trim()) {
-        setError("メッセージ本文を入力してください");
+        setToast({ message: "メッセージ本文を入力してください", type: "error" });
         return;
       }
       content = {
@@ -1643,15 +1737,15 @@ export function ScenarioEditor({
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     } else if (newNodeType === "choice") {
       if (!newNodeChoiceText.trim()) {
-        setError("質問文を入力してください");
+        setToast({ message: "質問文を入力してください", type: "error" });
         return;
       }
       if (newNodeOptions.length === 0) {
-        setError("選択肢を1つ以上追加してください");
+        setToast({ message: "選択肢を1つ以上追加してください", type: "error" });
         return;
       }
       if (newNodeOptions.some((o) => !o.label.trim() || !o.value.trim())) {
-        setError("選択肢の表示ラベル・内部値を入力してください");
+        setToast({ message: "選択肢の表示ラベル・内部値を入力してください", type: "error" });
         return;
       }
       content = {
@@ -1663,7 +1757,7 @@ export function ScenarioEditor({
     } else if (newNodeType === "image") {
       const urls = newNodeImageUrls.map((u) => u.trim()).filter(Boolean);
       if (urls.length === 0) {
-        setError("画像URLを入力してください");
+        setToast({ message: "画像URLを入力してください", type: "error" });
         return;
       }
       content = {
@@ -1674,7 +1768,7 @@ export function ScenarioEditor({
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     } else if (newNodeType === "video") {
       if (!newNodeVideoUrl.trim()) {
-        setError("動画URLを入力してください");
+        setToast({ message: "動画URLを入力してください", type: "error" });
         return;
       }
       content = {
@@ -1685,11 +1779,11 @@ export function ScenarioEditor({
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     } else {
       if (newNodeSurveyQuestions.length === 0) {
-        setError("質問を1つ以上追加してください");
+        setToast({ message: "質問を1つ以上追加してください", type: "error" });
         return;
       }
       if (newNodeSurveyQuestions.some((q) => !q.label.trim())) {
-        setError("質問文を入力してください");
+        setToast({ message: "質問文を入力してください", type: "error" });
         return;
       }
       if (
@@ -1699,7 +1793,10 @@ export function ScenarioEditor({
             (q.options ?? []).map((o) => o.trim()).filter(Boolean).length === 0,
         )
       ) {
-        setError("チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください");
+        setToast({
+          message: "チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください",
+          type: "error",
+        });
         return;
       }
       content = {
@@ -1722,7 +1819,10 @@ export function ScenarioEditor({
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`ノードの追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `ノードの追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
 
@@ -1758,11 +1858,20 @@ export function ScenarioEditor({
     setNewNodeDefaultNext("");
     setNewNodeIsEntry(false);
     setNewNodeMemo("");
+    setToast({ message: "ノードを追加しました", type: "success" });
     router.refresh();
   }
 
   async function handleDeleteNode(nodeId: string) {
-    await fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, { method: "DELETE" });
+    const res = await fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: `削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
+      return;
+    }
     router.refresh();
   }
 
@@ -1801,7 +1910,7 @@ export function ScenarioEditor({
       }
     }
 
-    await Promise.all(
+    const results = await Promise.all(
       Array.from(patches.entries()).map(([nodeId, patch]) =>
         fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, {
           method: "PATCH",
@@ -1811,6 +1920,9 @@ export function ScenarioEditor({
       ),
     );
     setReorderPending(null);
+    if (results.some((r) => !r.ok)) {
+      setToast({ message: "並び替えに失敗しました", type: "error" });
+    }
     router.refresh();
   }
 
@@ -1824,6 +1936,7 @@ export function ScenarioEditor({
 
   return (
     <div>
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         {editingScenarioName ? (
           <div className="flex flex-1 flex-wrap items-center gap-2">
@@ -1845,13 +1958,11 @@ export function ScenarioEditor({
               onClick={() => {
                 setEditingScenarioName(false);
                 setScenarioNameDraft(scenario.name);
-                setScenarioNameError(null);
               }}
               className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
             >
               キャンセル
             </button>
-            {scenarioNameError && <p className="w-full text-xs text-red-600">{scenarioNameError}</p>}
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -1860,7 +1971,6 @@ export function ScenarioEditor({
               type="button"
               onClick={() => {
                 setScenarioNameDraft(scenario.name);
-                setScenarioNameError(null);
                 setEditingScenarioName(true);
               }}
               className="text-sm text-blue-600 hover:underline"
@@ -1921,13 +2031,11 @@ export function ScenarioEditor({
               onClick={() => {
                 setEditingSlug(false);
                 setSlugDraft(scenario.slug ?? "");
-                setSlugError(null);
               }}
               className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
             >
               キャンセル
             </button>
-            {slugError && <p className="w-full text-xs text-red-600">{slugError}</p>}
           </>
         ) : (
           <>
@@ -1951,7 +2059,6 @@ export function ScenarioEditor({
               type="button"
               onClick={() => {
                 setSlugDraft(scenario.slug ?? "");
-                setSlugError(null);
                 setEditingSlug(true);
               }}
               className="text-blue-600 hover:underline"
@@ -1984,13 +2091,11 @@ export function ScenarioEditor({
               onClick={() => {
                 setEditingOrderCode(false);
                 setOrderCodeDraft(scenario.orderCode ?? "");
-                setOrderCodeError(null);
               }}
               className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
             >
               キャンセル
             </button>
-            {orderCodeError && <p className="w-full text-xs text-red-600">{orderCodeError}</p>}
           </>
         ) : (
           <>
@@ -2002,7 +2107,6 @@ export function ScenarioEditor({
               type="button"
               onClick={() => {
                 setOrderCodeDraft(scenario.orderCode ?? "");
-                setOrderCodeError(null);
                 setEditingOrderCode(true);
               }}
               className="text-blue-600 hover:underline"
@@ -2077,6 +2181,7 @@ export function ScenarioEditor({
                 products={products}
                 nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
                 onDelete={() => handleDeleteNode(node.id)}
+                showToast={setToast}
               />
             </div>
           </div>
@@ -2090,7 +2195,6 @@ export function ScenarioEditor({
 
       <form onSubmit={handleAddNode} className="max-w-xl space-y-4 border-t border-neutral-200 pt-6">
         <h2 className="text-lg font-medium">ノードを追加</h2>
-        {error && <p className="text-sm text-red-600">{error}</p>}
 
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">ノード種別</span>
@@ -2582,8 +2686,6 @@ export function ScenarioEditor({
           </div>
         )}
 
-        {menuError && <p className="text-xs text-red-600">{menuError}</p>}
-
         <form onSubmit={handleAddMenuItem} className="flex flex-wrap items-end gap-2">
           <label className="block">
             <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
@@ -2666,7 +2768,7 @@ export function ScenarioEditor({
               disabled={popupIconUrlSaving}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {popupIconUrlSaving ? "保存中..." : "保存"}
+              {popupIconUrlSaving ? "保存中..." : popupIconUrlSaved ? "保存済み" : "保存"}
             </button>
           </div>
         </label>
@@ -2797,7 +2899,7 @@ export function ScenarioEditor({
               disabled={couponSaving}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {couponSaving ? "保存中..." : coupon ? "更新する" : "作成する"}
+              {couponSaving ? "保存中..." : couponSaved ? "保存済み" : coupon ? "更新する" : "作成する"}
             </button>
             {coupon && (
               <>
@@ -2942,7 +3044,7 @@ export function ScenarioEditor({
             disabled={adTagSaving}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {adTagSaving ? "保存中..." : "保存"}
+            {adTagSaving ? "保存中..." : adTagSaved ? "保存済み" : "保存"}
           </button>
         </div>
 
@@ -2969,7 +3071,7 @@ export function ScenarioEditor({
             disabled={conversionTagSaving}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {conversionTagSaving ? "保存中..." : "保存"}
+            {conversionTagSaving ? "保存中..." : conversionTagSaved ? "保存済み" : "保存"}
           </button>
         </div>
       </Accordion>
@@ -2985,6 +3087,7 @@ function NodeCard({
   isFirst,
   onMakeEntry,
   onDelete,
+  showToast,
 }: {
   scenarioId: string;
   node: ScenarioNode;
@@ -2993,6 +3096,7 @@ function NodeCard({
   isFirst: boolean;
   onMakeEntry: () => void;
   onDelete: () => void;
+  showToast: (toast: { message: string; type: "success" | "error" }) => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -3055,7 +3159,6 @@ function NodeCard({
     })),
   );
   const [defaultNext, setDefaultNext] = useState(node.nextNodeMap.default ?? "");
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   function startEditing() {
@@ -3092,18 +3195,16 @@ function NodeCard({
       })),
     );
     setDefaultNext(node.nextNodeMap.default ?? "");
-    setError(null);
     setEditing(true);
   }
 
   async function handleSave() {
-    setError(null);
     let content: Record<string, unknown>;
     let nextNodeMap: Record<string, string> = {};
 
     if (usesProductPicker(node.type)) {
       if (productIds.length === 0) {
-        setError("品番を1つ以上選択してください");
+        showToast({ message: "品番を1つ以上選択してください", type: "error" });
         return;
       }
       content = node.type === "product" ? { productIds } : { productId: productIds[0] };
@@ -3130,22 +3231,22 @@ function NodeCard({
       }
     } else if (node.type === "message") {
       if (!text.trim()) {
-        setError("メッセージ本文を入力してください");
+        showToast({ message: "メッセージ本文を入力してください", type: "error" });
         return;
       }
       content = { text: text.trim(), ...(imageUrl.trim() && { imageUrl: imageUrl.trim() }) };
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else if (node.type === "choice") {
       if (!text.trim()) {
-        setError("質問文を入力してください");
+        showToast({ message: "質問文を入力してください", type: "error" });
         return;
       }
       if (options.length === 0) {
-        setError("選択肢を1つ以上追加してください");
+        showToast({ message: "選択肢を1つ以上追加してください", type: "error" });
         return;
       }
       if (options.some((o) => !o.label.trim() || !o.value.trim())) {
-        setError("選択肢の表示ラベル・内部値を入力してください");
+        showToast({ message: "選択肢の表示ラベル・内部値を入力してください", type: "error" });
         return;
       }
       content = {
@@ -3157,7 +3258,7 @@ function NodeCard({
     } else if (node.type === "image") {
       const urls = imageUrls.map((u) => u.trim()).filter(Boolean);
       if (urls.length === 0) {
-        setError("画像URLを入力してください");
+        showToast({ message: "画像URLを入力してください", type: "error" });
         return;
       }
       content = {
@@ -3168,7 +3269,7 @@ function NodeCard({
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else if (node.type === "video") {
       if (!videoUrl.trim()) {
-        setError("動画URLを入力してください");
+        showToast({ message: "動画URLを入力してください", type: "error" });
         return;
       }
       content = {
@@ -3179,11 +3280,11 @@ function NodeCard({
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else {
       if (surveyQuestions.length === 0) {
-        setError("質問を1つ以上追加してください");
+        showToast({ message: "質問を1つ以上追加してください", type: "error" });
         return;
       }
       if (surveyQuestions.some((q) => !q.label.trim())) {
-        setError("質問文を入力してください");
+        showToast({ message: "質問文を入力してください", type: "error" });
         return;
       }
       if (
@@ -3193,7 +3294,10 @@ function NodeCard({
             (q.options ?? []).map((o) => o.trim()).filter(Boolean).length === 0,
         )
       ) {
-        setError("チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください");
+        showToast({
+          message: "チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください",
+          type: "error",
+        });
         return;
       }
       content = {
@@ -3213,10 +3317,14 @@ function NodeCard({
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`更新に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      showToast({
+        message: `更新に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setEditing(false);
+    showToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
@@ -3250,8 +3358,6 @@ function NodeCard({
 
       {editing ? (
         <div className="space-y-2">
-          {error && <p className="text-xs text-red-600">{error}</p>}
-
           <label className="block text-xs">
             <span className="mb-1 block text-neutral-500">
               メモ(任意・管理用。チャットボット画面には表示されません)

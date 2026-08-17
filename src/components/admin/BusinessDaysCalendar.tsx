@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { isJapaneseHoliday } from "@/lib/japanese-holidays";
+import { Toast } from "@/components/admin/Toast";
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -20,11 +21,10 @@ export function BusinessDaysCalendar({
     Object.fromEntries(initialClosedDates.map((d) => [d.date, d.reason])),
   );
   const [pending, setPending] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  function showToast(message: string) {
-    setToast(message);
-    setTimeout(() => setToast(null), 2000);
+  function showToast(message: string, type: "success" | "error" = "success") {
+    setToast({ message, type });
   }
 
   const weeks = useMemo(() => {
@@ -51,7 +51,7 @@ export function BusinessDaysCalendar({
         });
         showToast("自動保存しました");
       } else {
-        showToast("保存に失敗しました");
+        showToast("保存に失敗しました", "error");
       }
     } else {
       const res = await fetch("/api/business-closed-dates", {
@@ -63,7 +63,7 @@ export function BusinessDaysCalendar({
         setClosedDates((prev) => ({ ...prev, [dateKey]: null }));
         showToast("自動保存しました");
       } else {
-        showToast("保存に失敗しました");
+        showToast("保存に失敗しました", "error");
       }
     }
     setPending(null);
@@ -78,11 +78,7 @@ export function BusinessDaysCalendar({
 
   return (
     <div className="relative max-w-2xl">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 rounded-md bg-neutral-900 px-4 py-2 text-sm text-white shadow-lg">
-          {toast}
-        </div>
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"

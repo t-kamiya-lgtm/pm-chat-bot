@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 
 export interface LeadRow {
   id: string;
@@ -22,6 +23,7 @@ type ContactField = "contactedPhone" | "contactedEmail" | "contactedSms";
 export function LeadsTable({ leads }: { leads: LeadRow[] }) {
   const router = useRouter();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function toggleContact(id: string, field: ContactField, value: boolean) {
     setUpdatingId(id);
@@ -31,11 +33,16 @@ export function LeadsTable({ leads }: { leads: LeadRow[] }) {
       body: JSON.stringify({ [field]: value }),
     });
     setUpdatingId(null);
-    if (res.ok) router.refresh();
+    if (res.ok) {
+      router.refresh();
+    } else {
+      setToast({ message: "対応状況の更新に失敗しました", type: "error" });
+    }
   }
 
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <table className="w-full min-w-[900px] text-sm">
         <thead className="bg-neutral-50 text-left text-neutral-500">
           <tr>
