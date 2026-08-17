@@ -160,40 +160,13 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   if (isSubscription && subscriptionRow) {
     const periodDay = SUBSCRIPTION_INTERVAL_DAYS[subscriptionRow.interval];
     const nextPeriod = subscriptionRow.next_billing_date ?? toDateString(order.created_at as string);
+    // order/create に periodical_order を埋め込む場合、顧客・金額・住所等はorder側の値がそのまま
+    // 使われるため指定できない(指定するとエラーになる)。周期情報のみを指定する。
     record.periodical_order = {
       periodical_order_id: -1,
-      ec_periodical_order_id: order.id,
-      ec_periodical_order_id_branch: 0,
-      customer_id: 0,
-      total_periodical_times: 1,
-      order_name01: customer.name,
-      order_email: customer.email,
-      order_tel: customer.phone ?? "",
-      order_zip: address?.postalCode ?? "",
-      order_pref: address?.prefecture ?? "",
-      order_addr01: formatAddressLine(address),
-      order_addr02: address?.line2 ?? "",
-      subtotal,
-      discount,
-      deliv_id: delivId,
-      deliv_fee: shippingFee,
-      charge: paymentFee,
-      use_point_flg: "0",
-      tax: productTax,
-      payment_total: total,
-      payment_id: paymentId,
-      total,
-      total_notax: subtotal - productTax,
-      total_tax: productTax,
-      deliv_fee_notax: shippingFee,
-      charge_notax: paymentFee,
       period_type: "date",
       period_day: periodDay,
       next_period: nextPeriod,
-      real_next_period: nextPeriod,
-      periodical_status: "0",
-      application_date: toDateString(order.created_at as string),
-      order_root: ORDER_ROOT,
     };
   }
 
