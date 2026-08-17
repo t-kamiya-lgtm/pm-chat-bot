@@ -10,6 +10,7 @@ import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 import { generateOrderNumber } from "@/lib/order-number";
 import { resolveApplicableCoupon, recordCouponUsage } from "@/lib/coupons";
+import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 
 /**
  * 後払い(スコアあと払い)・代金引換の注文受付。
@@ -125,11 +126,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (orderType === "subscription") {
+  if (orderType === "subscription" && subscriptionInterval) {
+    const nextBillingDate = new Date();
+    nextBillingDate.setDate(nextBillingDate.getDate() + SUBSCRIPTION_INTERVAL_DAYS[subscriptionInterval]);
     await supabase.from("subscriptions").insert({
       order_id: order.id,
       interval: subscriptionInterval,
       status: "active",
+      next_billing_date: nextBillingDate.toISOString().slice(0, 10),
     });
   }
 
