@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toast } from "@/components/admin/Toast";
 import type { Address, SubscriptionInterval } from "@/lib/types";
@@ -219,6 +219,16 @@ function SubscriptionEditPanel({
   const [saving, setSaving] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const skipResetRef = useRef(true);
+
+  useEffect(() => {
+    if (skipResetRef.current) {
+      skipResetRef.current = false;
+      return;
+    }
+    setJustSaved(false);
+  }, [postalCode, prefecture, city, line1, line2, recipientName, recipientPhone, deliveryTimeSlot, subscriptionInterval]);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -240,6 +250,7 @@ function SubscriptionEditPanel({
 
     setSaving(false);
     if (res.ok) {
+      setJustSaved(true);
       setToast({ message: "保存しました", type: "success" });
       onSaved();
     } else {
@@ -334,7 +345,7 @@ function SubscriptionEditPanel({
           disabled={saving}
           className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
         >
-          {saving ? "保存中..." : "保存する"}
+          {saving ? "保存中..." : justSaved ? "保存済み" : "保存する"}
         </button>
         <button
           type="button"

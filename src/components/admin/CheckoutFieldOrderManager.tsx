@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 import {
   ADDRESS_FIELD_KEYS,
   ADDRESS_KEY_SET,
@@ -48,18 +49,25 @@ export function CheckoutFieldOrderManager({ initialOrder }: { initialOrder: Chec
   const router = useRouter();
   const [order, setOrder] = useState<CheckoutFieldKey[]>(initialOrder);
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const groups = buildDisplayGroups(order);
 
   async function saveOrder(next: CheckoutFieldKey[]) {
+    const previous = order;
     setOrder(next);
     setSaving(true);
-    await fetch("/api/checkout-fields", {
+    const res = await fetch("/api/checkout-fields", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ order: next }),
     });
     setSaving(false);
+    if (!res.ok) {
+      setOrder(previous);
+      setToast({ message: "表示順の保存に失敗しました", type: "error" });
+      return;
+    }
     router.refresh();
   }
 
@@ -73,6 +81,7 @@ export function CheckoutFieldOrderManager({ initialOrder }: { initialOrder: Chec
 
   return (
     <div className="max-w-md space-y-2">
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {groups.map((group, index) => (
         <div
           key={group.id}

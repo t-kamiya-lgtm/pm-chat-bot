@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 
 export function NewFaqForm({
   productGroupId,
@@ -15,12 +16,12 @@ export function NewFaqForm({
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
+    setToast(null);
 
     const res = await fetch("/api/faqs", {
       method: "POST",
@@ -35,12 +36,17 @@ export function NewFaqForm({
 
     setSubmitting(false);
     if (!res.ok) {
-      setError("QAの登録に失敗しました");
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "QAの登録に失敗しました",
+        type: "error",
+      });
       return;
     }
     setQuestion("");
     setAnswer("");
     setCategoryId("");
+    setToast({ message: "QAを登録しました", type: "success" });
     router.refresh();
   }
 
@@ -50,7 +56,7 @@ export function NewFaqForm({
       className="space-y-3 rounded-lg border border-dashed border-neutral-300 p-4"
     >
       <h3 className="text-sm font-medium">QAを手動で登録</h3>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {categories.length > 0 && (
         <label className="block text-sm">

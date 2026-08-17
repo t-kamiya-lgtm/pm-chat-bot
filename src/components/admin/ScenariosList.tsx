@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
+import { Toast } from "@/components/admin/Toast";
 
 export interface ScenarioRow {
   id: string;
@@ -18,7 +19,7 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
   const [pending, setPending] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function move(index: number, direction: -1 | 1) {
     const targetIndex = index + direction;
@@ -31,7 +32,7 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
     setScenarios(next);
 
     setPending(current.id);
-    await Promise.all([
+    const [resA, resB] = await Promise.all([
       fetch(`/api/scenarios/${current.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -44,13 +45,17 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
       }),
     ]);
     setPending(null);
+    if (!resA.ok || !resB.ok) {
+      setScenarios(scenarios);
+      setToast({ message: "並び順の変更に失敗しました", type: "error" });
+      return;
+    }
     router.refresh();
   }
 
   function startEdit(scenario: ScenarioRow) {
     setEditingId(scenario.id);
     setEditValue(scenario.name);
-    setError(null);
   }
 
   async function handleRename(scenario: ScenarioRow) {
@@ -70,11 +75,15 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setScenarios((prev) => prev.map((s) => (s.id === scenario.id ? { ...s, name } : s)));
     setEditingId(null);
+    setToast({ message: "シナリオ名を変更しました", type: "success" });
     router.refresh();
   }
 
@@ -85,7 +94,7 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({ message: `削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
       return;
     }
     setScenarios((prev) => prev.filter((s) => s.id !== scenario.id));
@@ -94,7 +103,7 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
 
   return (
     <div className="space-y-3">
-      {error && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {scenarios.map((scenario, index) => (
         <div
           key={scenario.id}

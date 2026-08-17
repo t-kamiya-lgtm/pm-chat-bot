@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
+import { Toast } from "@/components/admin/Toast";
 
 export interface BrandRow {
   id: string;
@@ -16,12 +17,11 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
   const [pending, setPending] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   function startEdit(brand: BrandRow) {
     setEditingId(brand.id);
     setEditValue(brand.name);
-    setError(null);
   }
 
   async function handleRename(brand: BrandRow) {
@@ -41,10 +41,14 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     setEditingId(null);
+    setToast({ message: "ブランド名を変更しました", type: "success" });
     router.refresh();
   }
 
@@ -55,7 +59,7 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({ message: `削除に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
       return;
     }
     router.refresh();
@@ -63,7 +67,7 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
 
   return (
     <div className="space-y-3">
-      {error && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {initialBrands.map((brand) => (
         <div key={brand.id} className="rounded-lg border border-neutral-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

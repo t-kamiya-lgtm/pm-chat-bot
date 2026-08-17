@@ -2,20 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 
 export function NewProductGroupButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim()) return;
 
     setCreating(true);
-    setError(null);
+    setToast(null);
     const res = await fetch("/api/product-groups", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -25,7 +26,10 @@ export function NewProductGroupButton() {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(`アイテムの登録に失敗しました: ${JSON.stringify(body.error ?? res.status)}`);
+      setToast({
+        message: `アイテムの登録に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
       return;
     }
     const body = await res.json();
@@ -46,7 +50,7 @@ export function NewProductGroupButton() {
 
   return (
     <form onSubmit={handleCreate} className="flex flex-wrap items-center gap-2">
-      {error && <p className="w-full text-xs text-red-600">{error}</p>}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <input
         autoFocus
         value={name}
@@ -66,7 +70,7 @@ export function NewProductGroupButton() {
         onClick={() => {
           setOpen(false);
           setName("");
-          setError(null);
+          setToast(null);
         }}
         className="rounded-md border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
       >
