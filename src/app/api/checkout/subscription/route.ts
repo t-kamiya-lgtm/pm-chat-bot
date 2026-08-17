@@ -86,6 +86,10 @@ export async function POST(request: Request) {
   const addonAmount = addonProduct?.price ?? 0;
 
   const amount = product.price * quantity;
+  // 初回価格が設定されている場合、初回請求のみ値引く(定期のPrice自体は通常価格のまま据え置き、
+  // 2回目以降はStripeが自動でamountをそのまま繰り返し請求する)。
+  const firstTimeDiscountAmount =
+    product.first_time_price !== null ? Math.max(0, amount - product.first_time_price * quantity) : 0;
   // 定期支払いの単価には含めない(アドオンは初回請求のみの一括請求項目として追加する)
   const breakdown = calculateTotal(amount, product.shipping_fee, 0);
 
@@ -145,6 +149,16 @@ export async function POST(request: Request) {
         amount: -appliedCoupon.discountAmount,
         currency: "jpy",
         description: "クーポン割引(初回のみ)",
+      });
+    }
+
+    if (firstTimeDiscountAmount > 0) {
+      // 初回特別価格も同様に、初回請求のみの一括値引き項目として乗せる
+      await stripe.invoiceItems.create({
+        customer: stripeCustomerId,
+        amount: -firstTimeDiscountAmount,
+        currency: "jpy",
+        description: "初回特別価格(初回のみ)",
       });
     }
 
@@ -213,6 +227,7 @@ export async function POST(request: Request) {
       coupon_id: appliedCoupon?.id ?? null,
       coupon_code: appliedCoupon?.code ?? null,
       discount_amount: appliedCoupon?.discountAmount ?? 0,
+      first_time_discount_amount: firstTimeDiscountAmount || null,
       set_selections: setSelections ?? null,
     })
     .select("id")

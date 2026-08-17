@@ -35,6 +35,7 @@ export default async function NewProductPage({
                 memo: "",
                 price: 0,
                 listPrice: null,
+                firstTimePrice: null,
                 priceLabel: "",
                 taxRate: 8,
                 shippingFee: 0,

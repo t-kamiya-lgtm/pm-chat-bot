@@ -71,7 +71,11 @@ export async function POST(request: Request) {
   const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
   const addonAmount = addonProduct?.price ?? 0;
 
-  const amount = product.price * quantity;
+  // 定期購入で初回価格が設定されている場合、この注文(=初回)にはそちらを使う。
+  // 2回目以降はスマレジ側の定期申込(periodical_order)が通常価格で自動継続する。
+  const unitPrice =
+    orderType === "subscription" && product.first_time_price !== null ? product.first_time_price : product.price;
+  const amount = unitPrice * quantity;
   const paymentFee = await getPaymentFee(paymentMethod, orderType);
 
   const supabase = createSupabaseAdminClient();

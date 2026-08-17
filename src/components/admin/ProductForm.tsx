@@ -19,6 +19,7 @@ export interface ProductFormValues {
   memo: string;
   price: number;
   listPrice: number | null;
+  firstTimePrice: number | null;
   priceLabel: string;
   taxRate: 8 | 10;
   shippingFee: number;
@@ -40,6 +41,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     memo: "",
     price: 0,
     listPrice: null,
+    firstTimePrice: null,
     priceLabel: "",
     taxRate: 8,
     shippingFee: 0,
@@ -137,6 +139,10 @@ export function ProductForm({
       memo: values.memo || null,
       price: Number(values.price),
       listPrice: values.listPrice === null ? null : Number(values.listPrice),
+      firstTimePrice:
+        values.orderType === "subscription" && values.firstTimePrice !== null
+          ? Number(values.firstTimePrice)
+          : null,
       priceLabel: values.priceLabel || null,
       taxRate: values.taxRate,
       shippingFee: Number(values.shippingFee),
@@ -462,6 +468,30 @@ export function ProductForm({
                 {INTERVAL_LABELS[interval]}
               </label>
             ))}
+          </div>
+        )}
+        {values.orderType === "subscription" && (
+          <div className="mt-3 pl-6">
+            <Field label="初回価格(任意、2回目以降は通常価格に戻ります)">
+              <input
+                type="number"
+                min={0}
+                value={values.firstTimePrice ?? ""}
+                onChange={(e) =>
+                  setValues((p) => ({
+                    ...p,
+                    firstTimePrice: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="w-40 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                placeholder="未設定(初回も通常価格)"
+              />
+            </Field>
+            {values.firstTimePrice !== null && values.firstTimePrice < values.price && (
+              <p className="mt-1 text-xs text-neutral-500">
+                初回 {values.firstTimePrice.toLocaleString()}円 → 2回目以降 {values.price.toLocaleString()}円
+              </p>
+            )}
           </div>
         )}
       </div>

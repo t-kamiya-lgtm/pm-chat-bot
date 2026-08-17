@@ -20,7 +20,7 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       .eq("id", orderId)
       .is("completion_email_sent_at", null)
       .select(
-        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, customer_id, product_id, billing_cycle_number",
+        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number",
       )
       .maybeSingle();
     if (!order) return;
@@ -32,7 +32,12 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
     if (!customer?.email) return;
 
     const templates = await getEmailTemplates(supabase);
-    const total = order.amount + order.shipping_fee + order.payment_fee - order.discount_amount;
+    const total =
+      order.amount +
+      order.shipping_fee +
+      order.payment_fee -
+      order.discount_amount -
+      (order.first_time_discount_amount ?? 0);
     const vars = {
       customer_name: customer.name ?? "",
       product_name: product?.name ?? "",

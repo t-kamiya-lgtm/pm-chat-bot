@@ -28,6 +28,8 @@ export interface Product {
   memo: string | null;
   price: number;
   listPrice: number | null;
+  /** 定期購入の初回のみ適用する特別価格(任意)。2回目以降はpriceを使う。 */
+  firstTimePrice: number | null;
   priceLabel: string | null;
   taxRate: 8 | 10;
   shippingFee: number;

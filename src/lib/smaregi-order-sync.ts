@@ -84,7 +84,11 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   const shippingAddress = order.shipping_address as ShippingAddress | null;
 
   const quantity = order.quantity as number;
-  const unitPrice = product.price as number;
+  // 定期購入で初回価格が設定されている場合、この注文(=初回)にはそちらを使う。
+  const unitPrice =
+    isSubscription && product.first_time_price !== null
+      ? (product.first_time_price as number)
+      : (product.price as number);
   const productTotal = unitPrice * quantity;
   const taxRate = (product.tax_rate as number) ?? 8;
   const productTax = calcTax(productTotal, taxRate);

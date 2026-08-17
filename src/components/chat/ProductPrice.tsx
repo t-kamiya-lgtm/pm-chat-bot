@@ -9,12 +9,23 @@ export function ProductPrice({ product }: { product: WidgetProduct }) {
   const discountPercent = productDiscountPercent(product);
   const shippingText =
     product.shipping_fee === 0 ? "送料無料" : `送料 ${product.shipping_fee.toLocaleString()}円`;
+  const hasFirstTimePrice =
+    product.order_type === "subscription" &&
+    product.first_time_price !== null &&
+    product.first_time_price < product.price;
 
   if (discountPercent === null) {
     return (
-      <p className="mt-2 text-sm">
-        {product.price.toLocaleString()}円({shippingText})
-      </p>
+      <div className="mt-2">
+        <p className="text-sm">
+          {product.price.toLocaleString()}円({shippingText})
+        </p>
+        {hasFirstTimePrice && (
+          <p className="text-xs text-red-600">
+            初回限定 {product.first_time_price!.toLocaleString()}円(2回目以降 {product.price.toLocaleString()}円)
+          </p>
+        )}
+      </div>
     );
   }
 
@@ -27,6 +38,11 @@ export function ProductPrice({ product }: { product: WidgetProduct }) {
         {product.price_label || "特別"}価格 {product.price.toLocaleString()}円
       </p>
       <p className="text-xs text-neutral-500">{shippingText}</p>
+      {hasFirstTimePrice && (
+        <p className="text-xs text-red-600">
+          初回限定 {product.first_time_price!.toLocaleString()}円(2回目以降 {product.price.toLocaleString()}円)
+        </p>
+      )}
     </div>
   );
 }
