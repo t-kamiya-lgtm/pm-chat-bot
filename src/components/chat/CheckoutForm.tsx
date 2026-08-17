@@ -607,6 +607,7 @@ export function CheckoutForm({
         phone: values.phone.trim() || undefined,
         email: values.email.trim() || undefined,
         productId: activeProduct.id,
+        ...(scenarioId && { scenarioId }),
       }),
     }).catch(() => {});
   }

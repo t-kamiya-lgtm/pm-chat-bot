@@ -741,7 +741,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     fetch("/api/widget/leads", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId, surveyResponses: merged }),
+      body: JSON.stringify({ sessionId, surveyResponses: merged, ...(scenarioId && { scenarioId }) }),
     }).catch(() => {});
   }
 
