@@ -71,11 +71,14 @@ export async function POST(request: Request) {
   const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
   const addonAmount = addonProduct?.price ?? 0;
 
-  // 定期購入で初回価格が設定されている場合、この注文(=初回)にはそちらを使う。
-  // 2回目以降はスマレジ側の定期申込(periodical_order)が通常価格で自動継続する。
-  const unitPrice =
-    orderType === "subscription" && product.first_time_price !== null ? product.first_time_price : product.price;
-  const amount = unitPrice * quantity;
+  // amountは常に通常価格で記録する(Stripeの定期Priceと同様、2回目以降の基準額として使うため)。
+  // 初回価格が設定されている場合は、その差額を「初回のみの一括値引き」として扱う
+  // (スマレジへの連携も、明細は通常価格のまま、値引き額として送る)。
+  const amount = product.price * quantity;
+  const firstTimeDiscountAmount =
+    orderType === "subscription" && product.first_time_price !== null
+      ? Math.max(0, amount - product.first_time_price * quantity)
+      : 0;
   const paymentFee = await getPaymentFee(paymentMethod, orderType);
 
   const supabase = createSupabaseAdminClient();
@@ -88,7 +91,7 @@ export async function POST(request: Request) {
     amount + addonAmount,
     product.shipping_fee,
     paymentFee,
-    appliedCoupon?.discountAmount ?? 0,
+    (appliedCoupon?.discountAmount ?? 0) + firstTimeDiscountAmount,
   );
 
   const customer = await upsertCustomer(customerInput);
@@ -121,6 +124,7 @@ export async function POST(request: Request) {
       coupon_id: appliedCoupon?.id ?? null,
       coupon_code: appliedCoupon?.code ?? null,
       discount_amount: appliedCoupon?.discountAmount ?? 0,
+      first_time_discount_amount: firstTimeDiscountAmount || null,
       set_selections: setSelections ?? null,
     })
     .select("id")

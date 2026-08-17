@@ -96,11 +96,10 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   const shippingAddress = order.shipping_address as ShippingAddress | null;
 
   const quantity = order.quantity as number;
-  // 定期購入で初回価格が設定されている場合、この注文(=初回)にはそちらを使う。
-  const unitPrice =
-    isSubscription && product.first_time_price !== null
-      ? (product.first_time_price as number)
-      : (product.price as number);
+  // 明細の単価は常に通常価格(product.price)を使う。初回特別価格の差額は、
+  // Stripeの初回請求限定の値引きと同じ考え方で、注文全体の値引き額(discount)として扱う
+  // (スマレジの商品マスタ側の設定に影響されず、こちら側だけで完結させるため)。
+  const unitPrice = product.price as number;
   const productTotal = unitPrice * quantity;
   const taxRate = (product.tax_rate as number) ?? 8;
   const productTax = calcTax(productTotal, taxRate);
@@ -112,7 +111,8 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
 
   const shippingFee = order.shipping_fee as number;
   const paymentFee = order.payment_fee as number;
-  const discount = (order.discount_amount as number) ?? 0;
+  const firstTimeDiscount = (order.first_time_discount_amount as number | null) ?? 0;
+  const discount = ((order.discount_amount as number) ?? 0) + firstTimeDiscount;
   const subtotal = productTotal + addonAmount;
   const totalTax = productTax + addonTax;
   const total = Math.max(0, subtotal - discount + shippingFee + paymentFee);
