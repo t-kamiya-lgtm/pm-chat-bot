@@ -22,9 +22,6 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■お支払い金額: {{total_amount}}円
 
 発送準備が整いましたら、改めてご連絡いたします。
-ご不明な点がございましたら、下記のチャットからお気軽にお問い合わせください。
-{{chat_url}}
-
 今後ともよろしくお願いいたします。`,
   renewalSubject: "【定期便】{{product_name}}をお届けします(第{{cycle_number}}回)",
   renewalBody: `{{customer_name}} 様
@@ -34,9 +31,6 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■商品: {{product_name}}
 ■数量: {{quantity}}
 ■お支払い金額: {{total_amount}}円
-
-ご不明な点がございましたら、下記のチャットからお気軽にお問い合わせください。
-{{chat_url}}
 
 今後ともよろしくお願いいたします。`,
   abandonedLeadSubject: "{{customer_name}}様、ご注文の途中ではありませんか?",

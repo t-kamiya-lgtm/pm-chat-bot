@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Toast } from "@/components/admin/Toast";
 import type { ComparePriceType, ProductOrderType, SubscriptionInterval } from "@/lib/types";
 
 const COMPARE_PRICE_TYPE_LABELS: Record<ComparePriceType, string> = {
@@ -87,7 +88,17 @@ export function ProductForm({
     initialValues ?? emptyValues(productGroups[0]?.id),
   );
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const skipResetRef = useRef(true);
+
+  useEffect(() => {
+    if (skipResetRef.current) {
+      skipResetRef.current = false;
+      return;
+    }
+    setJustSaved(false);
+  }, [values]);
 
   const isEdit = Boolean(values.id);
 
@@ -122,27 +133,27 @@ export function ProductForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSubmitting(true);
-    setErrorMessage(null);
+    setToast(null);
 
     if (!values.productGroupId) {
       setSubmitting(false);
-      setErrorMessage("アイテム(親品番)を選択してください");
+      setToast({ message: "アイテム(親品番)を選択してください", type: "error" });
       return;
     }
     if (values.orderType === "subscription" && values.subscriptionIntervals.length === 0) {
       setSubmitting(false);
-      setErrorMessage("定期購入の場合は周期を1つ以上選択してください");
+      setToast({ message: "定期購入の場合は周期を1つ以上選択してください", type: "error" });
       return;
     }
     if (values.isSet) {
       if (!values.setItemCount || values.setItemCount < 1) {
         setSubmitting(false);
-        setErrorMessage("セット構成数を入力してください");
+        setToast({ message: "セット構成数を入力してください", type: "error" });
         return;
       }
       if (values.setOptionProductIds.length === 0) {
         setSubmitting(false);
-        setErrorMessage("選択肢の商品を1つ以上選択してください");
+        setToast({ message: "選択肢の商品を1つ以上選択してください", type: "error" });
         return;
       }
     }
@@ -185,21 +196,28 @@ export function ProductForm({
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setErrorMessage(
-        typeof body.error === "string" ? body.error : JSON.stringify(body.error ?? "登録に失敗しました"),
-      );
+      setToast({
+        message:
+          typeof body.error === "string" ? body.error : JSON.stringify(body.error ?? "登録に失敗しました"),
+        type: "error",
+      });
       return;
     }
 
-    router.push("/admin/products");
+    if (!isEdit) {
+      router.push("/admin/products");
+      router.refresh();
+      return;
+    }
+
+    setJustSaved(true);
+    setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
 
   return (
     <form onSubmit={handleSubmit} className="max-w-xl space-y-5">
-      {errorMessage && (
-        <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{errorMessage}</p>
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <Field label="アイテム(親品番)">
         <select
@@ -603,7 +621,7 @@ export function ProductForm({
           disabled={submitting}
           className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
         >
-          {submitting ? "保存中..." : isEdit ? "更新する" : "登録する"}
+          {submitting ? "保存中..." : justSaved ? "保存済み" : isEdit ? "更新する" : "登録する"}
         </button>
         <button
           type="button"

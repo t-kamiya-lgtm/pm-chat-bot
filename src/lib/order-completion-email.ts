@@ -1,7 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendResendEmail } from "@/lib/email";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
-import { buildChatUrl } from "@/lib/chat-url";
 
 /**
  * 注文確定(初回はfulfillOrder呼び出しと同じタイミング、定期便2回目以降は注文データ生成時)で
@@ -21,15 +20,14 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       .eq("id", orderId)
       .is("completion_email_sent_at", null)
       .select(
-        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, scenario_id, billing_cycle_number",
+        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number",
       )
       .maybeSingle();
     if (!order) return;
 
-    const [{ data: customer }, { data: product }, chatUrl] = await Promise.all([
+    const [{ data: customer }, { data: product }] = await Promise.all([
       supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
       supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
-      buildChatUrl(supabase, order.scenario_id),
     ]);
     if (!customer?.email) return;
 
@@ -47,7 +45,6 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       quantity: String(order.quantity),
       total_amount: total.toLocaleString("ja-JP"),
       cycle_number: String(order.billing_cycle_number),
-      chat_url: chatUrl,
     };
 
     const isRenewal = order.billing_cycle_number > 1;
