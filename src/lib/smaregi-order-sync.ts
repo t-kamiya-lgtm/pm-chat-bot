@@ -128,6 +128,7 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       deliv_id: delivId,
       reserve_type: isSubscription ? "3" : "0",
       order_date: (order.created_at as string).replace("T", " ").slice(0, 19),
+      tax_calc_type: "明細単位",
     },
     shipping: {
       shipping_name01: shippingAddress?.recipientName ?? customer.name,
@@ -141,7 +142,6 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       {
         product_code: (product.smaregi_product_id as string | null) ?? product.id,
         product_name: product.name,
-        detail_kbn: "通常",
         product_quantity: quantity,
         product_tax_flag: "込",
         tax_rule: 2,
