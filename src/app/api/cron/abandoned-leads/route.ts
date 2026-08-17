@@ -17,9 +17,11 @@ function isAuthorized(request: Request): boolean {
 }
 
 /**
- * 外部Cronサービス(例: cron-job.org)から定期的に呼び出す想定のエンドポイント。
+ * Vercel Cron(vercel.jsonのcrons設定、毎時0分に実行)から呼び出されるエンドポイント。
  * 入力途中で離脱し、1時間以上更新のないリードへリマインドメールを送る。
- * CRON_SECRET(ヘッダー "Authorization: Bearer <secret>" またはクエリ "?secret=")で保護する。
+ * CRON_SECRET環境変数を設定しておくと、Vercelがcron実行時に自動で
+ * "Authorization: Bearer <CRON_SECRET>" ヘッダーを付与するため、それで認証する
+ * (外部Cronサービスから直接叩く場合はクエリ "?secret=" でも可)。
  */
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
@@ -70,13 +72,17 @@ export async function POST(request: Request) {
         unsubscribe_url: `${siteUrl}/unsubscribe?leadId=${lead.id}`,
       };
 
-      await sendResendEmail({
+      const wasSent = await sendResendEmail({
         to: lead.email,
         from,
         subject: renderEmailTemplate(templates.abandonedLeadSubject, vars),
         text: renderEmailTemplate(templates.abandonedLeadBody, vars),
       });
-      sent++;
+      if (wasSent) {
+        sent++;
+        // メールアドレスがあり実際に送信できた場合、アクセスログ上も「メール対応済み」にする
+        await supabase.from("leads").update({ contacted_email: true }).eq("id", lead.id);
+      }
     } catch (err) {
       console.error("[cron/abandoned-leads] failed to send", { leadId: lead.id, err });
     }

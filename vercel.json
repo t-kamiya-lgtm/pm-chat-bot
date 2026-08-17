@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/abandoned-leads",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
