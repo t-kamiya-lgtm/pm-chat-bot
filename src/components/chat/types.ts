@@ -13,6 +13,10 @@ export interface WidgetProduct {
   price: number;
   list_price: number | null;
   first_time_price: number | null;
+  compare_price_type: "none" | "list_price" | "unit_total" | "custom";
+  unit_total_price: number | null;
+  custom_compare_label: string | null;
+  custom_compare_price: number | null;
   price_label: string | null;
   shipping_fee: number;
   is_mail_deliverable: boolean;

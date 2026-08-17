@@ -10,6 +10,7 @@ export interface AppUser {
 
 export type SubscriptionInterval = "biweekly" | "monthly" | "bimonthly" | "test_3day";
 export type ProductOrderType = "one_time" | "subscription";
+export type ComparePriceType = "none" | "list_price" | "unit_total" | "custom";
 
 /** 商品種類(親品番)。QA・仕様情報はこちらに紐づく。 */
 export interface ProductGroup {
@@ -30,6 +31,14 @@ export interface Product {
   listPrice: number | null;
   /** 定期購入の初回のみ適用する特別価格(任意)。2回目以降はpriceを使う。 */
   firstTimePrice: number | null;
+  /** 二重価格表記(打消線)で使う比較価格のラベル種別。 */
+  comparePriceType: ComparePriceType;
+  /** compareType="unit_total"のときの、手入力の単品合計価格。 */
+  unitTotalPrice: number | null;
+  /** compareType="custom"のときの、自由入力ラベル文言。 */
+  customCompareLabel: string | null;
+  /** compareType="custom"のときの、自由入力の比較価格。 */
+  customComparePrice: number | null;
   priceLabel: string | null;
   taxRate: 8 | 10;
   shippingFee: number;
