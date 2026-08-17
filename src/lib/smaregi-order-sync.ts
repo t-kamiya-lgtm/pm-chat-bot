@@ -41,6 +41,12 @@ function toDateString(iso: string): string {
   return iso.slice(0, 10);
 }
 
+/** DB保存(UTC)の日時を日本時間(JST, UTC+9)の"YYYY-MM-DD HH:mm:ss"形式に変換する。 */
+function toJstDateTime(iso: string): string {
+  const jst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().replace("T", " ").slice(0, 19);
+}
+
 /** 代引き・後払いの注文をスマレジ受注APIへ連携する。Stripe決済の注文には使わない。 */
 export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   const supabase = createSupabaseAdminClient();
@@ -128,7 +134,7 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       payment_status: "0",
       deliv_id: delivId,
       reserve_type: isSubscription ? "3" : "0",
-      order_date: (order.created_at as string).replace("T", " ").slice(0, 19),
+      order_date: toJstDateTime(order.created_at as string),
       tax_calc_type: "明細単位",
     },
     shipping: {
