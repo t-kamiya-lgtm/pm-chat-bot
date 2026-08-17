@@ -92,6 +92,11 @@ const BACKGROUND_COLOR_PALETTE = [
 ];
 
 const DEFAULT_BACKGROUND_COLOR = "#FFFFFF";
+// 各項目が未設定(null)のとき、実際のチャット画面(ChatWidget/MessageBubble)側で使われている
+// 本当のデフォルト色。編集画面のプレビュー・色選択UIも、これに合わせて表示する必要がある。
+const DEFAULT_CHAT_BACKGROUND_COLOR = "#FEFCE8"; // Tailwind yellow-50 (bg-yellow-50)
+const DEFAULT_MESSAGE_BACKGROUND_COLOR = "#F5F5F4";
+const DEFAULT_USER_MESSAGE_BACKGROUND_COLOR = "#171717";
 
 /**
  * 横スクロール1列に、現在の色・#カラーコード直接入力・パレット一覧を並べた色選択UI。
@@ -103,6 +108,7 @@ function ColorSwatchStrip({
   onChange,
   textColor,
   onTextColorChange,
+  defaultColor = DEFAULT_BACKGROUND_COLOR,
 }: {
   label: string;
   value: string | null;
@@ -110,20 +116,22 @@ function ColorSwatchStrip({
   /** 指定すると、現在の色の下に「自動/白/黒」のテキスト色切り替えを表示する。 */
   textColor?: TextColorOverride;
   onTextColorChange?: (color: TextColorOverride) => void;
+  /** 未設定(null)時に実際のチャット画面で使われる本当のデフォルト色。項目ごとに異なる。 */
+  defaultColor?: string;
 }) {
-  const effective = value ?? DEFAULT_BACKGROUND_COLOR;
+  const effective = value ?? defaultColor;
   const autoTextColor = contrastTextColor(effective);
   const [hexInput, setHexInput] = useState(effective);
 
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(() => {
-      if (!cancelled) setHexInput(value ?? DEFAULT_BACKGROUND_COLOR);
+      if (!cancelled) setHexInput(value ?? defaultColor);
     });
     return () => {
       cancelled = true;
     };
-  }, [value]);
+  }, [value, defaultColor]);
 
   function commitHex() {
     const v = hexInput.trim();
@@ -246,7 +254,7 @@ function DisplayPreview({
     >
       <div
         className="flex h-full flex-col text-left"
-        style={{ backgroundColor: display.chatBackgroundColor ?? DEFAULT_BACKGROUND_COLOR }}
+        style={{ backgroundColor: display.chatBackgroundColor ?? DEFAULT_CHAT_BACKGROUND_COLOR }}
       >
         {display.headerMode === "image" && display.headerImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -2414,6 +2422,7 @@ export function ScenarioEditor({
               label="チャット画面全体の背景色"
               value={display.chatBackgroundColor}
               onChange={(color) => setColorField("chatBackgroundColor", color)}
+              defaultColor={DEFAULT_CHAT_BACKGROUND_COLOR}
             />
             <ColorSwatchStrip
               label="メッセージの背景色(Bot側)"
@@ -2421,6 +2430,7 @@ export function ScenarioEditor({
               onChange={(color) => setColorField("messageBackgroundColor", color)}
               textColor={display.messageTextColor}
               onTextColorChange={(color) => setTextColorField("messageTextColor", color)}
+              defaultColor={DEFAULT_MESSAGE_BACKGROUND_COLOR}
             />
             <ColorSwatchStrip
               label="メッセージの背景色(ユーザー側)"
@@ -2428,6 +2438,7 @@ export function ScenarioEditor({
               onChange={(color) => setColorField("userMessageBackgroundColor", color)}
               textColor={display.userMessageTextColor}
               onTextColorChange={(color) => setTextColorField("userMessageTextColor", color)}
+              defaultColor={DEFAULT_USER_MESSAGE_BACKGROUND_COLOR}
             />
             <ColorSwatchStrip
               label="固定メニューの背景色"
