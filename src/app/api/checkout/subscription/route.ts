@@ -84,6 +84,12 @@ export async function POST(request: Request) {
 
   const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
   const addonAmount = addonProduct?.price ?? 0;
+  // アドオン商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
+  // メインと同じ周期のもう1つの定期便として同時に申し込む(お届け周期を揃えることで、
+  // Stripe側は1つのSubscriptionに2つの定期Priceを乗せるだけで済み、決済確認も1回で完結する)。
+  const addonIsSubscription =
+    addonProduct?.order_type === "subscription" &&
+    addonProduct.subscription_intervals.includes(subscriptionInterval);
 
   const amount = product.price * quantity;
   // 初回価格が設定されている場合、初回請求のみ値引く(定期のPrice自体は通常価格のまま据え置き、
@@ -132,7 +138,18 @@ export async function POST(request: Request) {
       product_data: { name: product.name },
     });
 
-    if (addonProduct) {
+    const subscriptionItems: { price: string; quantity: number }[] = [{ price: price.id, quantity }];
+
+    if (addonProduct && addonIsSubscription) {
+      // アドオンも定期便として、メインと同じ周期のPriceをもう1つ追加する(同一Subscription内)。
+      const addonPrice = await stripe.prices.create({
+        currency: "jpy",
+        unit_amount: addonAmount,
+        recurring: { interval, interval_count: intervalCount },
+        product_data: { name: addonProduct.name },
+      });
+      subscriptionItems.push({ price: addonPrice.id, quantity: 1 });
+    } else if (addonProduct) {
       // 初回請求のみの一括請求項目として、次に作成するsubscriptionの最初のinvoiceに自動で乗る
       await stripe.invoiceItems.create({
         customer: stripeCustomerId,
@@ -164,7 +181,7 @@ export async function POST(request: Request) {
 
     subscription = await stripe.subscriptions.create({
       customer: stripeCustomerId,
-      items: [{ price: price.id, quantity }],
+      items: subscriptionItems,
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.confirmation_secret"],
@@ -219,6 +236,7 @@ export async function POST(request: Request) {
       agreed_terms_at: new Date().toISOString(),
       addon_product_id: addonProduct?.id ?? null,
       addon_amount: addonProduct ? addonAmount : null,
+      is_addon_subscription: Boolean(addonProduct && addonIsSubscription),
       shipping_address: shippingAddress ?? null,
       survey_responses: surveyResponses ?? null,
       utm_source: utmSource ?? null,

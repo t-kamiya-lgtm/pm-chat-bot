@@ -356,6 +356,12 @@ export function CheckoutForm({
   const [couponChecking, setCouponChecking] = useState(false);
   const addonAmountForCoupon = addonSelected && crossSellProduct ? crossSellProduct.price : 0;
   const couponSubtotal = activeProduct.price * quantity + addonAmountForCoupon;
+  // クロスセル商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
+  // 同じ周期のもう1つの定期便として同時申込になる(サーバー側の判定と揃える)。
+  const addonIsSubscription =
+    orderType === "subscription" &&
+    crossSellProduct?.order_type === "subscription" &&
+    crossSellProduct.subscription_intervals.includes(subscriptionInterval);
 
   async function checkCoupon(code: string) {
     setCouponChecking(true);
@@ -1404,7 +1410,15 @@ export function CheckoutForm({
                   <p className="font-medium text-sky-800">
                     {truncateOfferComment(crossSellComment || `${crossSellProduct.name} も一緒にいかがですか？`)}
                   </p>
-                  <p className="mt-1 text-sky-700">{crossSellProduct.price.toLocaleString()}円</p>
+                  <p className="mt-1 text-sky-700">
+                    {crossSellProduct.price.toLocaleString()}円
+                    {addonIsSubscription && `(${INTERVAL_LABELS[subscriptionInterval]}のお届け)`}
+                  </p>
+                  {addonIsSubscription && (
+                    <p className="mt-0.5 text-xs text-sky-600">
+                      こちらもメインの商品と同じ周期で定期的にお届け・ご請求します。
+                    </p>
+                  )}
                   {addonSelected ? (
                     <button
                       type="button"
@@ -1548,7 +1562,11 @@ export function CheckoutForm({
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
-          addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
+          addonLabel={
+            crossSellProduct
+              ? `${addonIsSubscription ? "定期便として追加" : "追加商品"}(${crossSellProduct.name})`
+              : undefined
+          }
           discountAmount={couponDiscount}
           firstTimeUnitPrice={
             orderType === "subscription" && activeProduct.first_time_price !== null
@@ -1872,7 +1890,11 @@ export function CheckoutForm({
           paymentFee={paymentFee}
           paymentFeeLabel={paymentMethod === "cod" ? "代引手数料" : "後払い手数料"}
           addonAmount={addonSelected && crossSellProduct ? crossSellProduct.price : undefined}
-          addonLabel={crossSellProduct ? `追加商品(${crossSellProduct.name})` : undefined}
+          addonLabel={
+            crossSellProduct
+              ? `${addonIsSubscription ? "定期便として追加" : "追加商品"}(${crossSellProduct.name})`
+              : undefined
+          }
           discountAmount={couponDiscount}
           firstTimeUnitPrice={
             orderType === "subscription" && activeProduct.first_time_price !== null
