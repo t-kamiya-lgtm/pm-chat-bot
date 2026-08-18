@@ -196,8 +196,9 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
               product_total: addonAmount,
               tax_rate: addonTaxRate,
               product_tax: addonTax,
-              // アドオンはメインが定期でも常に単発の追加購入品として扱う。
-              product_reg_flag: "商品",
+              // アドオン自体もメインと同じ周期の定期便として同時申込された場合は、
+              // 同じperiodical_order(注文単位で1つ)に一緒に乗る「定期」明細として扱う。
+              product_reg_flag: order.is_addon_subscription ? "定期" : "商品",
             },
           ]
         : []),

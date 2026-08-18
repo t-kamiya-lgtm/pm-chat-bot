@@ -70,6 +70,13 @@ export async function POST(request: Request) {
 
   const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
   const addonAmount = addonProduct?.price ?? 0;
+  // アドオン商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
+  // メインと同じ周期のもう1つの定期便として同時に申し込む。
+  const addonIsSubscription =
+    orderType === "subscription" &&
+    !!subscriptionInterval &&
+    addonProduct?.order_type === "subscription" &&
+    addonProduct.subscription_intervals.includes(subscriptionInterval);
 
   // amountは常に通常価格で記録する(Stripeの定期Priceと同様、2回目以降の基準額として使うため)。
   // 初回価格が設定されている場合は、その差額を「初回のみの一括値引き」として扱う
@@ -116,6 +123,7 @@ export async function POST(request: Request) {
       agreed_terms_at: new Date().toISOString(),
       addon_product_id: addonProduct?.id ?? null,
       addon_amount: addonProduct ? addonAmount : null,
+      is_addon_subscription: Boolean(addonProduct && addonIsSubscription),
       shipping_address: shippingAddress ?? null,
       survey_responses: surveyResponses ?? null,
       utm_source: utmSource ?? null,

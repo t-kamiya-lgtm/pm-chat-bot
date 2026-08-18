@@ -67,6 +67,13 @@ export async function createSubscriptionRenewalOrder(params: {
         shipping_address: original.shipping_address,
         parent_order_id: original.id,
         billing_cycle_number: nextCycleNumber,
+        // アドオンが定期便として同時申込されている場合のみ、2回目以降の注文にも引き継ぐ
+        // (単発アドオンは初回のみの一括請求だったため、従来通りここではコピーしない)。
+        ...(original.is_addon_subscription && {
+          addon_product_id: original.addon_product_id,
+          addon_amount: original.addon_amount,
+          is_addon_subscription: true,
+        }),
       })
       .select("id")
       .single();
