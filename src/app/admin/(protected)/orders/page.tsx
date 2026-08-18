@@ -32,6 +32,7 @@ export default async function AdminOrdersPage({
   if (filters.dateTo) currentQuery.set("dateTo", filters.dateTo);
   if (filters.orderType) currentQuery.set("orderType", filters.orderType);
   if (filters.importStatus) currentQuery.set("importStatus", filters.importStatus);
+  if (filters.canceledFilter !== "include") currentQuery.set("canceledFilter", filters.canceledFilter);
 
   const exportQuery = new URLSearchParams(currentQuery);
   if (filters.showAll) exportQuery.set("showAll", "1");
@@ -80,6 +81,14 @@ export default async function AdminOrdersPage({
             <option value="not_imported">未取り込み</option>
             <option value="import_error">取込みエラー</option>
             <option value="excluded">対象外</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-neutral-500">キャンセル</span>
+          <select name="canceledFilter" defaultValue={filters.canceledFilter} className="input">
+            <option value="include">すべて</option>
+            <option value="exclude">キャンセル済みを除く</option>
+            <option value="only">キャンセル済みのみ</option>
           </select>
         </label>
         <button

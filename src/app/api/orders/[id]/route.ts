@@ -3,9 +3,14 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 
-const updateSchema = z.object({
-  importStatus: z.enum(["imported", "on_hold", "not_imported", "import_error", "excluded"]),
-});
+const updateSchema = z
+  .object({
+    importStatus: z.enum(["imported", "on_hold", "not_imported", "import_error", "excluded"]).optional(),
+    canceled: z.boolean().optional(),
+  })
+  .refine((data) => data.importStatus !== undefined || data.canceled !== undefined, {
+    message: "importStatus または canceled のいずれかを指定してください",
+  });
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -24,8 +29,13 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const { data, error } = await supabase
     .from("orders")
     .update({
-      import_status: parsed.data.importStatus,
-      import_status_updated_at: new Date().toISOString(),
+      ...(parsed.data.importStatus !== undefined && {
+        import_status: parsed.data.importStatus,
+        import_status_updated_at: new Date().toISOString(),
+      }),
+      ...(parsed.data.canceled !== undefined && {
+        canceled_at: parsed.data.canceled ? new Date().toISOString() : null,
+      }),
     })
     .eq("id", id)
     .select("*")

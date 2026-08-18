@@ -44,6 +44,7 @@ export interface OrderRow {
   set_selections: { id: string; name: string }[] | null;
   import_status: ImportStatus;
   billing_cycle_number: number;
+  canceled_at: string | null;
   customers: { name: string; email: string } | null;
   products: { name: string } | null;
 }
@@ -115,6 +116,19 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
     }
   }
 
+  async function toggleCanceled(id: string, canceled: boolean) {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ canceled }),
+    });
+    if (res.ok) {
+      router.refresh();
+    } else {
+      setToast({ message: "キャンセル状態の更新に失敗しました", type: "error" });
+    }
+  }
+
   return (
     <div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
@@ -167,6 +181,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
               <th className="px-4 py-2">アンケート</th>
               <th className="px-4 py-2">セット内訳</th>
               <th className="px-4 py-2">取り込み</th>
+              <th className="px-4 py-2">キャンセル</th>
             </tr>
           </thead>
           <tbody>
@@ -200,7 +215,14 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <td className="px-4 py-2">
                     {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
                   </td>
-                  <td className="px-4 py-2">{STATUS_LABELS[order.status]}</td>
+                  <td className="px-4 py-2">
+                    {STATUS_LABELS[order.status]}
+                    {order.canceled_at && (
+                      <span className="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">
+                        キャンセル済み
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     {formatDeliveryDate(order.delivery_date)} {order.delivery_time_slot ?? ""}
                   </td>
@@ -238,12 +260,25 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                       ))}
                     </select>
                   </td>
+                  <td className="px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleCanceled(order.id, !order.canceled_at)}
+                      className={
+                        order.canceled_at
+                          ? "rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+                          : "rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                      }
+                    >
+                      {order.canceled_at ? "キャンセルを取り消す" : "キャンセルにする"}
+                    </button>
+                  </td>
                 </tr>
               );
             })}
             {!orders.length && (
               <tr>
-                <td colSpan={14} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={15} className="px-4 py-6 text-center text-neutral-400">
                   注文はまだありません
                 </td>
               </tr>
