@@ -332,6 +332,17 @@ function productLabel(product: PickableProduct) {
   return `${product.name}(${ORDER_TYPE_LABELS[product.orderType] ?? product.orderType} ・ ${product.price.toLocaleString()}円)`;
 }
 
+/**
+ * 対象商品が単品の場合、定期対応品はクロスセル候補から除外する。
+ * 単品×定期クロスセルは、クロスセル側の定期申込・2回目以降の注文を作れないため組み合わせ自体を禁止する
+ * (対象商品が定期の場合は、同一周期の定期同時申込として対応済みなので制限しない)。
+ */
+function crossSellCandidates(products: PickableProduct[], mainProductId: string | undefined): PickableProduct[] {
+  const mainProduct = products.find((p) => p.id === mainProductId);
+  if (mainProduct && mainProduct.orderType === "subscription") return products;
+  return products.filter((p) => p.orderType !== "subscription");
+}
+
 /** product/checkout/product_qaノードは商品IDをJSONで手打ちする代わりに品番選択で設定する。 */
 function usesProductPicker(type: ScenarioNodeType) {
   return type === "product" || type === "checkout" || type === "product_qa";
@@ -1756,6 +1767,18 @@ export function ScenarioEditor({
       content =
         newNodeType === "product" ? { productIds: newNodeProductIds } : { productId: newNodeProductIds[0] };
       if (newNodeType === "checkout") {
+        const mainProduct = products.find((p) => p.id === newNodeProductIds[0]);
+        const crossSellProduct = products.find((p) => p.id === newNodeCrossSellProductId);
+        if (
+          crossSellProduct?.orderType === "subscription" &&
+          mainProduct?.orderType !== "subscription"
+        ) {
+          setToast({
+            message: "対象商品が単品のため、定期対応品はクロスセルに設定できません",
+            type: "error",
+          });
+          return;
+        }
         content = {
           ...content,
           ...(newNodeUpsellProductId && { upsellProductId: newNodeUpsellProductId }),
@@ -2326,10 +2349,18 @@ export function ScenarioEditor({
             </label>
             <OptionalProductSelect
               label="クロスセル商品(任意・「カートに追加する」ボタンで追加提案)"
-              products={products}
+              products={crossSellCandidates(products, newNodeProductIds[0])}
               value={newNodeCrossSellProductId}
               onChange={setNewNodeCrossSellProductId}
             />
+            {(() => {
+              const mainProduct = products.find((p) => p.id === newNodeProductIds[0]);
+              return mainProduct && mainProduct.orderType !== "subscription" ? (
+                <p className="text-xs text-neutral-400">
+                  対象商品が単品のため、定期対応品はクロスセルに選べません(2回目以降の注文を作成できないため)。
+                </p>
+              ) : null;
+            })()}
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形1:1推奨)</span>
               <input
@@ -3260,6 +3291,18 @@ function NodeCard({
       }
       content = node.type === "product" ? { productIds } : { productId: productIds[0] };
       if (node.type === "checkout") {
+        const mainProduct = products.find((p) => p.id === productIds[0]);
+        const crossSellProduct = products.find((p) => p.id === crossSellProductId);
+        if (
+          crossSellProduct?.orderType === "subscription" &&
+          mainProduct?.orderType !== "subscription"
+        ) {
+          showToast({
+            message: "対象商品が単品のため、定期対応品はクロスセルに設定できません",
+            type: "error",
+          });
+          return;
+        }
         content = {
           ...content,
           ...(upsellProductId && { upsellProductId }),
@@ -3479,11 +3522,19 @@ function NodeCard({
               </label>
               <OptionalProductSelect
                 label="クロスセル商品(任意)"
-                products={products}
+                products={crossSellCandidates(products, productIds[0])}
                 value={crossSellProductId}
                 onChange={setCrossSellProductId}
                 compact
               />
+              {(() => {
+                const mainProduct = products.find((p) => p.id === productIds[0]);
+                return mainProduct && mainProduct.orderType !== "subscription" ? (
+                  <p className="text-xs text-neutral-400">
+                    対象商品が単品のため、定期対応品はクロスセルに選べません(2回目以降の注文を作成できないため)。
+                  </p>
+                ) : null;
+              })()}
               <label className="block text-xs">
                 <span className="mb-1 block text-neutral-500">クロスセル画像URL(任意・正方形1:1推奨)</span>
                 <input
