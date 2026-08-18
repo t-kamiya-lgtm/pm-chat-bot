@@ -44,8 +44,11 @@ export function ProductPrice({ product }: { product: WidgetProduct }) {
       )}
       {hasFirstTimePrice ? (
         <>
-          <p className={showCompare ? "text-xs text-neutral-500 line-through" : "text-sm text-neutral-600"}>
-            {priceLabel}価格 {product.price.toLocaleString()}円
+          <p className={showCompare ? "text-xs text-neutral-500" : "text-sm text-neutral-600"}>
+            {priceLabel}価格{" "}
+            <span className={showCompare ? "line-through" : undefined}>
+              {product.price.toLocaleString()}円
+            </span>
           </p>
           <p className="text-lg leading-tight font-bold text-red-600">
             初回限定 {product.first_time_price!.toLocaleString()}円
