@@ -36,7 +36,6 @@ interface CustomerRow {
   id: string;
   customer_number: number;
   name: string;
-  smaregi_synced_at: string | null;
   orders: OrderRow[] | null;
 }
 
@@ -46,7 +45,7 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
   const { data, error } = await supabase
     .from("customers")
     .select(
-      "id, customer_number, name, smaregi_synced_at, orders(id, type, payment_method, amount, created_at, parent_order_id, products!orders_product_id_fkey(name, smaregi_product_id), subscriptions(status, next_billing_date))",
+      "id, customer_number, name, orders(id, type, payment_method, amount, created_at, parent_order_id, products!orders_product_id_fkey(name, smaregi_product_id), subscriptions(status, next_billing_date))",
     )
     .not("customer_number", "is", null)
     .order("customer_number", { ascending: false });
@@ -55,6 +54,22 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
 
   const customers = (data ?? []) as unknown as CustomerRow[];
   const q = filters.q?.trim().toLowerCase() || "";
+
+  // customers.smaregi_synced_at は連携実装前のプレースホルダーで常にnullのため、
+  // 実際にスマレジへ連携済みかどうかは smaregi_sync_logs(status='ok') の実績で判定する。
+  const allOrderIds = customers.flatMap((c) => (c.orders ?? []).map((o) => o.id));
+  const syncedOrderIds = new Set<string>();
+  if (allOrderIds.length > 0) {
+    const { data: syncLogs, error: syncLogsError } = await supabase
+      .from("smaregi_sync_logs")
+      .select("order_id")
+      .eq("status", "ok")
+      .in("order_id", allOrderIds);
+    if (syncLogsError) throw new Error(syncLogsError.message);
+    for (const log of syncLogs ?? []) {
+      if (log.order_id) syncedOrderIds.add(log.order_id as string);
+    }
+  }
 
   const rows = customers.map((customer) => {
     const orders = customer.orders ?? [];
@@ -89,7 +104,7 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
         totalSubscriptionAmount,
         nextShippingDate: parentSubscriptionOrder?.subscriptions?.[0]?.next_billing_date ?? null,
       } satisfies CustomerSummary,
-      smaregiSynced: Boolean(customer.smaregi_synced_at),
+      smaregiSynced: orders.some((o) => syncedOrderIds.has(o.id)),
       searchHaystack,
     };
   });
