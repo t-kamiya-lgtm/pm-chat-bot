@@ -26,6 +26,7 @@ export function AmountBreakdown({
     subtotal + shippingFee + paymentFee + (addonAmount ?? 0) - (discountAmount ?? 0),
   );
   const hasFirstTimePrice = firstTimeUnitPrice !== undefined && firstTimeUnitPrice < amount;
+  const firstTimeDiscountAmount = hasFirstTimePrice ? (amount - firstTimeUnitPrice!) * quantity : 0;
   const firstTimeTotal = hasFirstTimePrice
     ? Math.max(
         0,
@@ -40,6 +41,12 @@ export function AmountBreakdown({
       )}
       <Row label="送料" value={shippingFee} note={shippingFee === 0 ? "送料無料" : undefined} />
       {paymentFee > 0 && <Row label={paymentFeeLabel ?? "決済手数料"} value={paymentFee} note="税込" />}
+      {hasFirstTimePrice && (
+        <div className="flex justify-between text-red-600">
+          <span>初回特別割引</span>
+          <span>-{firstTimeDiscountAmount.toLocaleString()}円</span>
+        </div>
+      )}
       {discountAmount !== undefined && discountAmount > 0 && (
         <div className="flex justify-between text-red-600">
           <span>クーポン割引</span>

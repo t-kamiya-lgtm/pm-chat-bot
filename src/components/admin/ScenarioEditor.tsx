@@ -699,6 +699,7 @@ function ImageUrlListEditor({
   );
 }
 
+/** アップセル・クロスセルの品番選択。対象商品の選択と揃え、アイテム→品番の二段階で選ばせる(任意設定可)。 */
 function OptionalProductSelect({
   products,
   value,
@@ -712,21 +713,71 @@ function OptionalProductSelect({
   label: string;
   compact?: boolean;
 }) {
+  const groups = Array.from(
+    new Map(
+      products.map((p) => [
+        p.productGroupId ?? UNGROUPED_KEY,
+        { id: p.productGroupId ?? UNGROUPED_KEY, name: p.productGroupName ?? "未分類" },
+      ]),
+    ).values(),
+  );
+
+  const groupIdForValue = (id: string) => {
+    const selected = products.find((p) => p.id === id);
+    return selected ? (selected.productGroupId ?? UNGROUPED_KEY) : undefined;
+  };
+
+  const [selectedGroupId, setSelectedGroupId] = useState(() => groupIdForValue(value) ?? (groups[0]?.id ?? ""));
+
+  // valueが外部から変わった(編集フォームを開き直した等)場合のみ、選択中のアイテムを追従させる。
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    const groupId = groupIdForValue(value);
+    if (groupId) setSelectedGroupId(groupId);
+  }
+
+  const labelClass = `mb-1 block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"}`;
+
+  if (products.length === 0) {
+    return (
+      <div className={compact ? "text-xs" : "text-sm"}>
+        <span className={labelClass}>{label}</span>
+        <p className="text-xs text-amber-700">商品が登録されていません。</p>
+      </div>
+    );
+  }
+
+  const productsInGroup = products.filter((p) => (p.productGroupId ?? UNGROUPED_KEY) === selectedGroupId);
+
   return (
-    <label className={`block ${compact ? "text-xs" : "text-sm"}`}>
-      <span className={`mb-1 block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"}`}>
-        {label}
-      </span>
-      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">設定しない</option>
-        {products.map((product) => (
-          <option key={product.id} value={product.id}>
-            {product.productGroupName ? `${product.productGroupName} / ` : ""}
-            {productLabel(product)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className={compact ? "text-xs" : "text-sm"}>
+      <span className={labelClass}>{label}</span>
+      <div className="flex gap-2">
+        <select
+          className="input"
+          value={selectedGroupId}
+          onChange={(e) => {
+            setSelectedGroupId(e.target.value);
+            onChange("");
+          }}
+        >
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+        <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">設定しない</option>
+          {productsInGroup.map((product) => (
+            <option key={product.id} value={product.id}>
+              {productLabel(product)}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
   );
 }
 

@@ -1339,7 +1339,7 @@ export function CheckoutForm({
           <div className="space-y-2">
             {upsellProduct &&
               (activeProduct.id === upsellProduct.id ? (
-                <div className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
                   {upsellImageUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
@@ -1372,7 +1372,7 @@ export function CheckoutForm({
                   </div>
                 </div>
               ) : (
-                <div className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
                   {upsellImageUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
@@ -1397,7 +1397,7 @@ export function CheckoutForm({
                 </div>
               ))}
             {crossSellProduct && (
-              <div className="flex gap-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
+              <div className="flex items-start gap-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
                 {crossSellImageUrl && (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
