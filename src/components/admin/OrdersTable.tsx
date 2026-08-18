@@ -188,7 +188,14 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
             {orders.map((order) => {
               const surveyText = formatSurveyResponses(order.survey_responses);
               return (
-                <tr key={order.id} className="border-t border-neutral-100">
+                <tr
+                  key={order.id}
+                  className={
+                    order.canceled_at
+                      ? "border-t border-neutral-100 bg-neutral-100 text-neutral-400"
+                      : "border-t border-neutral-100"
+                  }
+                >
                   <td className="px-4 py-2">
                     <input
                       type="checkbox"
@@ -218,7 +225,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <td className="px-4 py-2">
                     {STATUS_LABELS[order.status]}
                     {order.canceled_at && (
-                      <span className="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">
+                      <span className="ml-1 rounded bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
                         キャンセル済み
                       </span>
                     )}

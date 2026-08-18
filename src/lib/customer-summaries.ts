@@ -36,6 +36,8 @@ interface CustomerRow {
   id: string;
   customer_number: number;
   name: string;
+  email: string | null;
+  phone: string | null;
   orders: OrderRow[] | null;
 }
 
@@ -45,7 +47,7 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
   const { data, error } = await supabase
     .from("customers")
     .select(
-      "id, customer_number, name, orders(id, type, payment_method, amount, created_at, parent_order_id, products!orders_product_id_fkey(name, smaregi_product_id), subscriptions(status, next_billing_date))",
+      "id, customer_number, name, email, phone, orders(id, type, payment_method, amount, created_at, parent_order_id, products!orders_product_id_fkey(name, smaregi_product_id), subscriptions(status, next_billing_date))",
     )
     .not("customer_number", "is", null)
     .order("customer_number", { ascending: false });
@@ -87,9 +89,10 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
     const totalSubscriptionAmount = subscriptionOrders.reduce((sum, o) => sum + o.amount, 0);
     const latestOrder = [...orders].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
 
-    const searchHaystack = orders
+    const productHaystack = orders
       .map((o) => `${o.products?.name ?? ""} ${o.products?.smaregi_product_id ?? ""}`)
-      .join(" ")
+      .join(" ");
+    const searchHaystack = `${customer.name} ${customer.email ?? ""} ${customer.phone ?? ""} ${productHaystack}`
       .toLowerCase();
 
     return {
