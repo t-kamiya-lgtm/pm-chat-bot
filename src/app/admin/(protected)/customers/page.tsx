@@ -54,7 +54,9 @@ export default async function AdminCustomersPage({
         className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
       >
         <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">商品コード・商品名で絞り込み</span>
+          <span className="mb-1 block text-xs text-neutral-500">
+            顧客名・メールアドレス・電話番号・商品コード・商品名で絞り込み
+          </span>
           <input type="text" name="q" defaultValue={q} placeholder="部分一致" className="input" />
         </label>
 
