@@ -189,6 +189,30 @@
 
     document.body.appendChild(container);
     document.body.appendChild(button);
+
+    // LP内の任意の要素(画像・ボタン等)に data-pm-chatbot-open 属性を付けておくと、
+    // クリックでこのポップアップを開ける。既存のフローティングボタンに加えて使う想定。
+    // 例: <img src="..." data-pm-chatbot-open>
+    document.addEventListener("click", function (event) {
+      var trigger = event.target.closest && event.target.closest("[data-pm-chatbot-open]");
+      if (!trigger) return;
+      event.preventDefault();
+      setOpen(true);
+    });
+
+    // onclick属性やJSから直接開閉したい場合向けの公開API。
+    // 例: <img src="..." onclick="window.PMChatbot.open()">
+    window.PMChatbot = {
+      open: function () {
+        setOpen(true);
+      },
+      close: function () {
+        setOpen(false);
+      },
+      toggle: function () {
+        setOpen(!isOpen);
+      },
+    };
   }
 
   var configUrl =

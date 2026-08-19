@@ -2930,6 +2930,19 @@ export function ScenarioEditor({
             </label>
           </div>
         </div>
+        <div>
+          <h4 className="mb-1 text-xs font-semibold text-neutral-600">
+            LP内の画像等をクリックしてポップアップを開く(フローティングボタンと併用)
+          </h4>
+          <p className="mb-2 text-xs text-neutral-500">
+            埋め込みタグの「ポップアップ表示」を設置したページ内であれば、下記のコードをLP内の好きな場所に
+            そのまま貼り付けるだけで、フローティングボタンに加えてその画像クリックでもポップアップが開くようになります。
+          </p>
+          <EmbedSnippet
+            label="LP内画像の例"
+            code={`<img src="${popupIconUrlDraft.trim() || "アイコン画像URL"}" data-pm-chatbot-open style="cursor:pointer" alt="チャットで相談する" />`}
+          />
+        </div>
       </Accordion>
 
       <Accordion title="クーポン設定">
