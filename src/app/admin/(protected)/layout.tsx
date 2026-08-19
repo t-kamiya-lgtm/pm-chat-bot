@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen bg-neutral-50">
       <IdleLogout />
       <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 py-4">
           <Link href="/admin" className="font-semibold hover:text-neutral-700">
             チャットボット決済システム 管理画面
           </Link>
@@ -27,7 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <AdminNav isAdmin={user.role === "admin"} />
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-screen-2xl px-6 py-8">{children}</main>
     </div>
   );
 }
