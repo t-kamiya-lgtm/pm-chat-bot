@@ -287,6 +287,8 @@ interface Props {
   utmCampaign?: string | null;
   couponCodeFieldEnabled?: boolean;
   surveyResponses?: Record<string, string>;
+  /** プレビューモード。決済APIを一切呼び出さず、注文確定操作をその場でシミュレートする。 */
+  previewMode?: boolean;
   onComplete: (result: {
     ok: boolean;
     items: GreetingItem[];
@@ -326,6 +328,7 @@ export function CheckoutForm({
   utmCampaign,
   couponCodeFieldEnabled,
   surveyResponses,
+  previewMode,
   onComplete,
   onBack,
 }: Props) {
@@ -602,6 +605,7 @@ export function CheckoutForm({
   }, [shippingValues.postalCode, shipToDifferentAddress]);
 
   function captureLead() {
+    if (previewMode) return;
     const hasAny = values.name.trim() || values.phone.trim() || values.email.trim();
     if (!hasAny) return;
     fetch("/api/widget/leads", {
@@ -770,6 +774,7 @@ export function CheckoutForm({
   useEffect(() => {
     if (
       !(
+        !previewMode &&
         stage === "agreement" &&
         paymentMethod === "stripe" &&
         agreedTerms &&
@@ -790,7 +795,17 @@ export function CheckoutForm({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, paymentMethod, agreedTerms, agreedPrivacy, clientSecret, preparingPayment, paymentPrepFailed]);
+  }, [previewMode, stage, paymentMethod, agreedTerms, agreedPrivacy, clientSecret, preparingPayment, paymentPrepFailed]);
+
+  /** プレビューモードでの「注文を確定する」。決済APIを一切呼ばず、その場で完了扱いにする。 */
+  function handlePreviewComplete() {
+    onComplete({
+      ok: true,
+      items: [
+        { type: "text", text: "(プレビュー)お支払いが完了しました。※プレビューのため実際の注文は作成されていません。" },
+      ],
+    });
+  }
 
   async function submitOrder() {
     if (!agreedTerms || !agreedPrivacy) {
@@ -1678,7 +1693,21 @@ export function CheckoutForm({
           </div>
         </div>
 
-        {paymentMethod === "stripe" ? (
+        {previewMode ? (
+          <>
+            <p className="rounded bg-amber-50 p-2 text-xs text-amber-700">
+              プレビューモードのため、実際の決済・注文データの作成は行われません。
+            </p>
+            <button
+              type="button"
+              onClick={handlePreviewComplete}
+              disabled={!canSubmit}
+              className="w-full rounded-md bg-neutral-900 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-50"
+            >
+              この内容で注文を確定する(プレビュー)
+            </button>
+          </>
+        ) : paymentMethod === "stripe" ? (
           !canSubmit ? (
             <p className="text-center text-xs text-neutral-400">
               上記に同意いただくと、お支払い情報の入力へ進みます

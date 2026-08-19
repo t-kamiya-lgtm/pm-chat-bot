@@ -245,7 +245,7 @@ function DisplayPreview({
   display: DisplaySettings;
 }) {
   function openWidget() {
-    const url = slug ? `/widget/${slug}` : `/widget?scenarioId=${scenarioId}&preview=1`;
+    const url = slug ? `/widget/${slug}?preview=1` : `/widget?scenarioId=${scenarioId}&preview=1`;
     window.open(url, "_blank");
   }
 

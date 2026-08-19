@@ -99,6 +99,8 @@ const QA_TARGET_PREFIX = "qa:";
 export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
+  /** プレビュー表示かどうか(共有された非公開プレビューURLでも決済が実行されないようにする)。 */
+  const isPreviewMode = searchParams.get("preview") === "1";
   const utmSource = searchParams.get("utm_source");
   const utmMedium = searchParams.get("utm_medium");
   const utmCampaign = searchParams.get("utm_campaign");
@@ -912,6 +914,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         "--user-message-fg": effectiveTextColor(userMessageBackgroundColor ?? "#171717", userMessageTextColor),
       } as CSSProperties}
     >
+      {isPreviewMode && (
+        <div className="shrink-0 bg-amber-500 py-1 text-center text-xs font-semibold text-white">
+          プレビューモード(実際の決済・注文データは作成されません)
+        </div>
+      )}
       {headerSettings.mode === "image" && headerSettings.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={headerSettings.imageUrl} alt="" className="w-full shrink-0 object-cover" />
@@ -1076,6 +1083,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   utmCampaign={utmCampaign}
                   couponCodeFieldEnabled={couponCodeFieldEnabled}
                   surveyResponses={surveyAnswers}
+                  previewMode={isPreviewMode}
                   onComplete={(result) => handleCheckoutComplete(item, result)}
                   onBack={() => handleCheckoutBack(item)}
                 />
