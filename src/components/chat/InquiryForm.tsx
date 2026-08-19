@@ -4,9 +4,11 @@ import { useState } from "react";
 
 export function InquiryForm({
   productName,
+  scenarioId,
   onSent,
 }: {
   productName?: string;
+  scenarioId?: string;
   onSent: () => void;
 }) {
   const [name, setName] = useState("");
@@ -24,7 +26,7 @@ export function InquiryForm({
     const res = await fetch("/api/inquiries", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, email, message, productName, chatUrl }),
+      body: JSON.stringify({ name, email, message, productName, chatUrl, scenarioId }),
     });
 
     setSubmitting(false);

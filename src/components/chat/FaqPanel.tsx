@@ -18,10 +18,12 @@ interface FaqCategory {
 export function FaqPanel({
   productId,
   productName,
+  scenarioId,
   onProceed,
 }: {
   productId: string;
   productName?: string;
+  scenarioId?: string;
   /**
    * 設定されている場合、「購入へ進む」ボタンを表示する。パネル自体は他のメッセージと同様に
    * スレッドに残り続け、購入へ進んだ後も操作(カテゴリ・質問の開閉)ができる。
@@ -49,7 +51,7 @@ export function FaqPanel({
           お問い合わせを受け付けました。担当者よりご連絡いたします。
         </p>
       ) : showInquiry ? (
-        <InquiryForm productName={productName} onSent={() => setInquirySent(true)} />
+        <InquiryForm productName={productName} scenarioId={scenarioId} onSent={() => setInquirySent(true)} />
       ) : (
         <div className="flex flex-col gap-2">
           {categories.map((category) => {

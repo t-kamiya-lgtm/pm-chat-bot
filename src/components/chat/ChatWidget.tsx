@@ -1020,6 +1020,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   key={item.id}
                   productId={item.productId}
                   productName={productsById[item.productId]?.name}
+                  scenarioId={scenarioId}
                   onProceed={item.nextNodeId && !item.proceeded ? () => handleFaqProceed(item) : undefined}
                 />
               );
