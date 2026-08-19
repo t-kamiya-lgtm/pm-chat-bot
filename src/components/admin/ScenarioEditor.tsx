@@ -1165,6 +1165,18 @@ export function ScenarioEditor({
     setConversionTagSaved(false);
   }, [conversionTagDraft]);
 
+  const [emailFromAddressDraft, setEmailFromAddressDraft] = useState(scenario.emailFromAddress ?? "");
+  const [emailFromAddressSaving, setEmailFromAddressSaving] = useState(false);
+  const [emailFromAddressSaved, setEmailFromAddressSaved] = useState(false);
+  const emailFromAddressSkipResetRef = useRef(true);
+  useEffect(() => {
+    if (emailFromAddressSkipResetRef.current) {
+      emailFromAddressSkipResetRef.current = false;
+      return;
+    }
+    setEmailFromAddressSaved(false);
+  }, [emailFromAddressDraft]);
+
   const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
   const [popupIconUrlSaved, setPopupIconUrlSaved] = useState(false);
@@ -1453,6 +1465,27 @@ export function ScenarioEditor({
       return;
     }
     setConversionTagSaved(true);
+    setToast({ message: "保存しました", type: "success" });
+    router.refresh();
+  }
+
+  async function handleSaveEmailFromAddress() {
+    setEmailFromAddressSaving(true);
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ emailFromAddress: emailFromAddressDraft.trim() || null }),
+    });
+    setEmailFromAddressSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: `送信元アドレスの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
+      return;
+    }
+    setEmailFromAddressSaved(true);
     setToast({ message: "保存しました", type: "success" });
     router.refresh();
   }
@@ -3105,6 +3138,30 @@ export function ScenarioEditor({
               埋め込みタグを発行するには、上の「専用URLを発行する」からこのシナリオの公開URLを設定してください。
             </p>
           )}
+        </div>
+
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">自動メールの送信元アドレス</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            注文完了・定期便・離脱リマインドの自動メールを送る際の送信元アドレスです。未設定の場合は共通のアドレスを使います。
+            複数ブランドで使い分ける場合はブランドごとにここで設定してください。
+            送信元に使うドメインは、事前にResend側でSPF/DKIM等のドメイン認証が完了している必要があります。
+          </p>
+          <input
+            type="text"
+            value={emailFromAddressDraft}
+            onChange={(e) => setEmailFromAddressDraft(e.target.value)}
+            placeholder="ブランドA 注文受付 <order@brand-a.example.com>"
+            className="input mb-2 w-full"
+          />
+          <button
+            type="button"
+            onClick={handleSaveEmailFromAddress}
+            disabled={emailFromAddressSaving}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {emailFromAddressSaving ? "保存中..." : emailFromAddressSaved ? "保存済み" : "保存"}
+          </button>
         </div>
 
         <div className="rounded-lg border border-neutral-200 p-4">

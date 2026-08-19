@@ -117,6 +117,7 @@ export default async function ScenarioEditorPage({
           headerTextColor: scenario.header_text_color,
           adTag: scenario.ad_tag,
           conversionTag: scenario.conversion_tag,
+          emailFromAddress: scenario.email_from_address,
           popupIconUrl: scenario.popup_icon_url,
           popupPosition: scenario.popup_position,
           couponCodeFieldEnabled: scenario.coupon_code_field_enabled,

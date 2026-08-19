@@ -51,6 +51,7 @@ const updateSchema = z.object({
   menuTextColor: z.enum(["white", "black"]).nullable().optional(),
   adTag: z.string().nullable().optional(),
   conversionTag: z.string().nullable().optional(),
+  emailFromAddress: z.string().nullable().optional(),
   popupIconUrl: z.string().nullable().optional(),
   popupPosition: z.enum(["bottom-right", "bottom-left"]).nullable().optional(),
   couponCodeFieldEnabled: z.boolean().optional(),
@@ -120,6 +121,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.menuTextColor !== undefined && { menu_text_color: input.menuTextColor }),
       ...(input.adTag !== undefined && { ad_tag: input.adTag }),
       ...(input.conversionTag !== undefined && { conversion_tag: input.conversionTag }),
+      ...(input.emailFromAddress !== undefined && { email_from_address: input.emailFromAddress }),
       ...(input.popupIconUrl !== undefined && { popup_icon_url: input.popupIconUrl }),
       ...(input.popupPosition !== undefined && { popup_position: input.popupPosition }),
       ...(input.couponCodeFieldEnabled !== undefined && {

@@ -20,14 +20,17 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       .eq("id", orderId)
       .is("completion_email_sent_at", null)
       .select(
-        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number",
+        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number, scenario_id",
       )
       .maybeSingle();
     if (!order) return;
 
-    const [{ data: customer }, { data: product }] = await Promise.all([
+    const [{ data: customer }, { data: product }, { data: scenario }] = await Promise.all([
       supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
       supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
+      order.scenario_id
+        ? supabase.from("scenarios").select("email_from_address").eq("id", order.scenario_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     if (!customer?.email) return;
 
@@ -51,7 +54,7 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
 
     await sendResendEmail({
       to: customer.email,
-      from: process.env.ORDER_EMAIL_FROM ?? "chatbot@example.com",
+      from: scenario?.email_from_address || process.env.ORDER_EMAIL_FROM || "chatbot@example.com",
       subject: renderEmailTemplate(isRenewal ? templates.renewalSubject : templates.orderCompletionSubject, vars),
       text: renderEmailTemplate(isRenewal ? templates.renewalBody : templates.orderCompletionBody, vars),
     });

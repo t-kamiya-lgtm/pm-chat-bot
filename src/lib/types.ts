@@ -121,6 +121,7 @@ export interface Scenario {
   headerTextColor: "white" | "black" | null;
   adTag: string | null;
   conversionTag: string | null;
+  emailFromAddress: string | null;
   popupIconUrl: string | null;
   popupPosition: "bottom-right" | "bottom-left" | null;
   couponCodeFieldEnabled: boolean;
