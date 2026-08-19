@@ -125,5 +125,18 @@ export async function GET(request: Request) {
     .order("display_order");
   if (menuItemsError) return NextResponse.json({ error: menuItemsError.message }, { status: 500 });
 
-  return NextResponse.json({ scenario, nodes, products, menuItems: menuItems ?? [] });
+  // クーポン表示ノードは、シナリオの自動適用クーポン(scenario_auto)の告知内容をそのまま表示する
+  let coupon: Record<string, unknown> | null = null;
+  if ((nodes ?? []).some((n) => n.type === "coupon")) {
+    const { data, error } = await supabase
+      .from("coupons")
+      .select("code, name, discount_type, discount_value, image_url, promo_message, is_active")
+      .eq("scenario_id", scenario.id)
+      .eq("type", "scenario_auto")
+      .maybeSingle();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    coupon = data && data.is_active ? data : null;
+  }
+
+  return NextResponse.json({ scenario, nodes, products, menuItems: menuItems ?? [], coupon });
 }

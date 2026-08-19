@@ -32,7 +32,7 @@ export interface WidgetProduct {
 export interface WidgetScenarioNode {
   id: string;
   scenario_id: string;
-  type: "message" | "choice" | "product" | "checkout" | "product_qa" | "image" | "survey" | "video";
+  type: "message" | "choice" | "product" | "checkout" | "product_qa" | "image" | "survey" | "video" | "coupon";
   content: Record<string, unknown>;
   next_node_map: Record<string, string>;
   is_entry: boolean;

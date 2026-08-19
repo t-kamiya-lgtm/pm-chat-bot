@@ -37,6 +37,8 @@ function mapCouponRow(row: Record<string, unknown>): Coupon {
     usedCount: row.used_count as number,
     minOrderAmount: (row.min_order_amount as number | null) ?? null,
     isActive: row.is_active as boolean,
+    imageUrl: (row.image_url as string | null) ?? null,
+    promoMessage: (row.promo_message as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

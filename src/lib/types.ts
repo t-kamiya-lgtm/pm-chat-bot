@@ -151,7 +151,8 @@ export type ScenarioNodeType =
   | "product_qa"
   | "image"
   | "survey"
-  | "video";
+  | "video"
+  | "coupon";
 
 export type SurveyAnswerType = "checkbox" | "radio" | "date" | "text_short" | "text_long";
 
@@ -248,6 +249,10 @@ export interface Coupon {
   usedCount: number;
   minOrderAmount: number | null;
   isActive: boolean;
+  /** クーポン表示ノードで使う告知画像(正方形または4:3横長推奨)。 */
+  imageUrl: string | null;
+  /** クーポン表示ノードで使う訴求メッセージ(例: 「お得なクーポンがあります」)。 */
+  promoMessage: string | null;
   createdAt: string;
   updatedAt: string;
 }

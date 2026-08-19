@@ -37,6 +37,7 @@ const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   image: "画像表示",
   video: "動画表示",
   survey: "アンケート",
+  coupon: "クーポン表示",
 };
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
@@ -430,6 +431,8 @@ function nodeSummary(node: ScenarioNode, products: PickableProduct[]): string {
       return `動画表示: ${truncate((node.content.caption as string) || (node.content.videoUrl as string) || "")}`;
     case "survey":
       return `アンケート: ${((node.content.questions as SurveyQuestion[] | undefined) ?? []).length}件の質問`;
+    case "coupon":
+      return "クーポン表示(このシナリオの自動適用クーポンを表示)";
     default:
       return node.type;
   }
@@ -1203,6 +1206,8 @@ export function ScenarioEditor({
     endsAt: initialCoupon?.endsAt ? initialCoupon.endsAt.slice(0, 10) : "",
     maxUses: initialCoupon?.maxUses ? String(initialCoupon.maxUses) : "",
     minOrderAmount: initialCoupon?.minOrderAmount ? String(initialCoupon.minOrderAmount) : "",
+    imageUrl: initialCoupon?.imageUrl ?? "",
+    promoMessage: initialCoupon?.promoMessage ?? "",
   });
   const [couponSaving, setCouponSaving] = useState(false);
   const [couponSaved, setCouponSaved] = useState(false);
@@ -1535,6 +1540,8 @@ export function ScenarioEditor({
       endsAt: couponForm.endsAt ? new Date(couponForm.endsAt).toISOString() : null,
       maxUses: couponForm.maxUses ? Number(couponForm.maxUses) : null,
       minOrderAmount: couponForm.minOrderAmount ? Number(couponForm.minOrderAmount) : null,
+      imageUrl: couponForm.imageUrl.trim() || null,
+      promoMessage: couponForm.promoMessage.trim() || null,
     };
     const res = coupon
       ? await fetch(`/api/coupons/${coupon.id}`, {
@@ -1571,6 +1578,8 @@ export function ScenarioEditor({
       usedCount: saved.used_count,
       minOrderAmount: saved.min_order_amount,
       isActive: saved.is_active,
+      imageUrl: saved.image_url,
+      promoMessage: saved.promo_message,
       createdAt: saved.created_at,
       updatedAt: saved.updated_at,
     });
@@ -1617,6 +1626,8 @@ export function ScenarioEditor({
       endsAt: "",
       maxUses: "",
       minOrderAmount: "",
+      imageUrl: "",
+      promoMessage: "",
     });
     setToast({ message: "削除しました", type: "success" });
   }
@@ -1883,6 +1894,9 @@ export function ScenarioEditor({
         aspectRatio: newNodeVideoAspectRatio,
         ...(newNodeVideoCaption.trim() && { caption: newNodeVideoCaption.trim() }),
       };
+      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
+    } else if (newNodeType === "coupon") {
+      content = {};
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     } else {
       if (newNodeSurveyQuestions.length === 0) {
@@ -2535,6 +2549,14 @@ export function ScenarioEditor({
           </>
         )}
 
+        {newNodeType === "coupon" && (
+          <p className="rounded-md bg-neutral-50 p-3 text-xs text-neutral-600">
+            {coupon
+              ? `このシナリオの自動適用クーポン(${coupon.name})の告知画像・メッセージが、このノードの位置で表示されます。内容は「表示設定」内の「クーポン設定」から編集してください。`
+              : "このシナリオにはまだ自動適用クーポンが設定されていません。「表示設定」内の「クーポン設定」から作成すると、このノードで告知が表示されるようになります。"}
+          </p>
+        )}
+
         <NextNodeSelect
           label={newNodeType === "choice" ? "どの選択肢にも一致しない場合に進むノード(任意)" : "次に進むノード"}
           nodeOptions={nodeOptions}
@@ -3007,6 +3029,33 @@ export function ScenarioEditor({
               />
             </label>
           </div>
+          <div className="mt-3">
+            <h4 className="mb-1 text-xs font-semibold text-neutral-600">クーポン表示ノード用の告知内容(任意)</h4>
+            <p className="mb-2 text-xs text-neutral-500">
+              チャットフローに「クーポン表示」ノードを配置すると、ここで設定した画像・メッセージが
+              「お得なクーポンがあります」のように表示されます。推奨比率: 正方形(1:1)または4:3横長。
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <label className="block grow text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">告知画像URL</span>
+                <input
+                  className="input w-full"
+                  value={couponForm.imageUrl}
+                  onChange={(e) => setCouponForm((p) => ({ ...p, imageUrl: e.target.value }))}
+                  placeholder="https://example.com/coupon.jpg"
+                />
+              </label>
+              <label className="block grow text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">訴求メッセージ</span>
+                <input
+                  className="input w-full"
+                  value={couponForm.promoMessage}
+                  onChange={(e) => setCouponForm((p) => ({ ...p, promoMessage: e.target.value }))}
+                  placeholder="お得なクーポンがあります"
+                />
+              </label>
+            </div>
+          </div>
           <div className="mt-3 flex items-center gap-3">
             <button
               type="button"
@@ -3429,6 +3478,9 @@ function NodeCard({
         ...(videoCaption.trim() && { caption: videoCaption.trim() }),
       };
       if (defaultNext) nextNodeMap = { default: defaultNext };
+    } else if (node.type === "coupon") {
+      content = {};
+      if (defaultNext) nextNodeMap = { default: defaultNext };
     } else {
       if (surveyQuestions.length === 0) {
         showToast({ message: "質問を1つ以上追加してください", type: "error" });
@@ -3728,6 +3780,13 @@ function NodeCard({
             </>
           )}
 
+          {node.type === "coupon" && (
+            <p className="rounded-md bg-neutral-50 p-3 text-xs text-neutral-600">
+              このシナリオの自動適用クーポンの告知画像・メッセージが、このノードの位置で表示されます。
+              内容は「表示設定」内の「クーポン設定」から編集してください。
+            </p>
+          )}
+
           <NextNodeSelect
             label={node.type === "choice" ? "どの選択肢にも一致しない場合に進むノード(任意)" : "次に進むノード"}
             nodeOptions={nodeOptions}
@@ -3855,6 +3914,10 @@ function NodeCard({
                 "(質問未設定)"
               )}
             </div>
+          ) : node.type === "coupon" ? (
+            <p className="rounded bg-neutral-50 p-2 text-xs text-neutral-500">
+              このシナリオの自動適用クーポンの告知画像・メッセージを表示します
+            </p>
           ) : (
             <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
               {truncate(text, 40) || "(未設定)"}
