@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ImportStatus } from "@/lib/order-filters";
 import { Toast } from "@/components/admin/Toast";
@@ -26,6 +26,65 @@ const IMPORT_STATUS_LABELS: Record<ImportStatus, string> = {
   import_error: "取込みエラー",
   excluded: "対象外",
 };
+
+/** 列幅はPC(横に広い画面)での閲覧を前提に、ドラッグでの調整・記憶ができるようにしている。 */
+const COLUMN_KEYS = [
+  "select",
+  "orderNumber",
+  "datetime",
+  "customer",
+  "product",
+  "quantity",
+  "type",
+  "paymentMethod",
+  "amount",
+  "status",
+  "deliveryDateTime",
+  "survey",
+  "setSelections",
+  "importStatus",
+  "cancel",
+] as const;
+type ColumnKey = (typeof COLUMN_KEYS)[number];
+
+const COLUMN_LABELS: Record<ColumnKey, string> = {
+  select: "",
+  orderNumber: "注文番号",
+  datetime: "日時",
+  customer: "顧客",
+  product: "商品",
+  quantity: "数量",
+  type: "種別",
+  paymentMethod: "支払い方法",
+  amount: "金額",
+  status: "状態",
+  deliveryDateTime: "お届け希望日時",
+  survey: "アンケート",
+  setSelections: "セット内訳",
+  importStatus: "取り込み",
+  cancel: "キャンセル",
+};
+
+const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
+  select: 40,
+  orderNumber: 140,
+  datetime: 150,
+  customer: 110,
+  product: 180,
+  quantity: 55,
+  type: 100,
+  paymentMethod: 140,
+  amount: 90,
+  status: 140,
+  deliveryDateTime: 150,
+  survey: 90,
+  setSelections: 90,
+  importStatus: 120,
+  cancel: 150,
+};
+
+const MIN_COLUMN_WIDTH = 40;
+const COLUMN_WIDTHS_STORAGE_KEY = "admin-orders-table-column-widths";
 
 export interface OrderRow {
   id: string;
@@ -61,12 +120,82 @@ function formatSurveyResponses(value: Record<string, string> | null) {
     .join("\n");
 }
 
+/** 列見出しの右端をドラッグして、その列の幅を調整するハンドル。調整結果はonResizeで都度通知する。 */
+function ColumnResizeHandle({
+  columnKey,
+  onResize,
+}: {
+  columnKey: ColumnKey;
+  onResize: (columnKey: ColumnKey, deltaX: number) => void;
+}) {
+  function handleMouseDown(event: React.MouseEvent) {
+    event.preventDefault();
+    const startX = event.clientX;
+    let lastX = startX;
+
+    function handleMouseMove(moveEvent: MouseEvent) {
+      const deltaX = moveEvent.clientX - lastX;
+      lastX = moveEvent.clientX;
+      onResize(columnKey, deltaX);
+    }
+    function handleMouseUp() {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none hover:bg-neutral-300"
+    />
+  );
+}
+
 export function OrdersTable({ orders }: { orders: OrderRow[] }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<ImportStatus>("imported");
   const [applying, setApplying] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS);
+  const saveWidthsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 前回このブラウザで調整した列幅があれば復元する(マウント後に読み込むことでSSRとの表示差分を避ける)。
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      try {
+        const saved = window.localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY);
+        if (!saved) return;
+        const parsed = JSON.parse(saved) as Partial<Record<ColumnKey, number>>;
+        setColumnWidths((prev) => ({ ...prev, ...parsed }));
+      } catch {
+        // 保存値が壊れている場合はデフォルト幅のまま表示する
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleColumnResize(columnKey: ColumnKey, deltaX: number) {
+    setColumnWidths((prev) => {
+      const next = { ...prev, [columnKey]: Math.max(MIN_COLUMN_WIDTH, prev[columnKey] + deltaX) };
+      if (saveWidthsTimeoutRef.current) clearTimeout(saveWidthsTimeoutRef.current);
+      saveWidthsTimeoutRef.current = setTimeout(() => {
+        try {
+          window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // localStorageが使えない場合は保存をあきらめる(表示自体には影響しない)
+        }
+      }, 300);
+      return next;
+    });
+  }
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -157,31 +286,31 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
         </div>
       )}
 
+      <p className="mb-2 text-xs text-neutral-400">列見出しの右端をドラッグすると列の幅を調整できます(次回も同じ幅で表示されます)</p>
+
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="text-sm" style={{ tableLayout: "fixed", width: "max-content" }}>
+          <colgroup>
+            {COLUMN_KEYS.map((key) => (
+              <col key={key} style={{ width: columnWidths[key] }} />
+            ))}
+          </colgroup>
           <thead className="bg-neutral-50 text-left text-neutral-500">
             <tr>
-              <th className="px-4 py-2">
-                <input
-                  type="checkbox"
-                  checked={orders.length > 0 && selected.size === orders.length}
-                  onChange={toggleAll}
-                />
-              </th>
-              <th className="px-4 py-2">注文番号</th>
-              <th className="px-4 py-2">日時</th>
-              <th className="px-4 py-2">顧客</th>
-              <th className="px-4 py-2">商品</th>
-              <th className="px-4 py-2">数量</th>
-              <th className="px-4 py-2">種別</th>
-              <th className="px-4 py-2">支払い方法</th>
-              <th className="px-4 py-2">金額</th>
-              <th className="px-4 py-2">状態</th>
-              <th className="px-4 py-2">お届け希望日時</th>
-              <th className="px-4 py-2">アンケート</th>
-              <th className="px-4 py-2">セット内訳</th>
-              <th className="px-4 py-2">取り込み</th>
-              <th className="px-4 py-2">キャンセル</th>
+              {COLUMN_KEYS.map((key) => (
+                <th key={key} className="relative px-4 py-2 select-none">
+                  {key === "select" ? (
+                    <input
+                      type="checkbox"
+                      checked={orders.length > 0 && selected.size === orders.length}
+                      onChange={toggleAll}
+                    />
+                  ) : (
+                    COLUMN_LABELS[key]
+                  )}
+                  <ColumnResizeHandle columnKey={key} onResize={handleColumnResize} />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -207,7 +336,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <td className="px-4 py-2 whitespace-nowrap">
                     {new Date(order.created_at).toLocaleString("ja-JP")}
                   </td>
-                  <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
+                  <td className="px-4 py-2 truncate">{order.customers?.name ?? "-"}</td>
                   <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
                   <td className="px-4 py-2">{order.quantity}</td>
                   <td className="px-4 py-2">
@@ -219,7 +348,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
                   </td>
                   <td className="px-4 py-2">
@@ -258,7 +387,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                     <select
                       value={order.import_status}
                       onChange={(e) => updateOne(order.id, e.target.value as ImportStatus)}
-                      className="rounded-md border border-neutral-300 px-2 py-1 text-xs"
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs"
                     >
                       {(Object.keys(IMPORT_STATUS_LABELS) as ImportStatus[]).map((key) => (
                         <option key={key} value={key}>
@@ -273,8 +402,8 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                       onClick={() => toggleCanceled(order.id, !order.canceled_at)}
                       className={
                         order.canceled_at
-                          ? "rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
-                          : "rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                          ? "w-full rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+                          : "w-full rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
                       }
                     >
                       {order.canceled_at ? "キャンセルを取り消す" : "キャンセルにする"}
@@ -285,7 +414,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
             })}
             {!orders.length && (
               <tr>
-                <td colSpan={15} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={COLUMN_KEYS.length} className="px-4 py-6 text-center text-neutral-400">
                   注文はまだありません
                 </td>
               </tr>
