@@ -16,6 +16,8 @@ const couponUpdateSchema = z.object({
   maxUses: z.number().int().min(1).nullable().optional(),
   minOrderAmount: z.number().int().min(0).nullable().optional(),
   isActive: z.boolean().optional(),
+  imageUrl: z.string().nullable().optional(),
+  promoMessage: z.string().nullable().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -58,6 +60,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.maxUses !== undefined && { max_uses: input.maxUses }),
       ...(input.minOrderAmount !== undefined && { min_order_amount: input.minOrderAmount }),
       ...(input.isActive !== undefined && { is_active: input.isActive }),
+      ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
+      ...(input.promoMessage !== undefined && { promo_message: input.promoMessage }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

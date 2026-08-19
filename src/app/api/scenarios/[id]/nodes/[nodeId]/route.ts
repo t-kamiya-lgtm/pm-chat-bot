@@ -6,7 +6,7 @@ import { autoWireCheckoutNode } from "@/lib/scenario-auto-wire";
 
 const nodeUpdateSchema = z.object({
   type: z
-    .enum(["message", "choice", "product", "checkout", "product_qa", "image", "survey", "video"])
+    .enum(["message", "choice", "product", "checkout", "product_qa", "image", "survey", "video", "coupon"])
     .optional(),
   content: z.record(z.string(), z.unknown()).optional(),
   nextNodeMap: z.record(z.string(), z.string()).optional(),

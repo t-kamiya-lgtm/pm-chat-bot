@@ -16,6 +16,7 @@ import { SurveyForm } from "@/components/chat/SurveyForm";
 import { effectiveTextColor } from "@/lib/color";
 import { ImageCarousel } from "@/components/chat/ImageCarousel";
 import { VideoPlayer } from "@/components/chat/VideoPlayer";
+import { CouponCard } from "@/components/chat/CouponCard";
 
 interface GreetingItem {
   type: "image" | "text";
@@ -28,6 +29,14 @@ type TimelineItem =
   | { id: string; kind: "bot-text"; text: string; imageUrl?: string; linkUrl?: string }
   | { id: string; kind: "image-carousel"; imageUrls: string[]; linkUrl?: string; caption?: string }
   | { id: string; kind: "video"; url: string; aspectRatio?: string; caption?: string }
+  | {
+      id: string;
+      kind: "coupon";
+      imageUrl: string | null;
+      message: string;
+      discountLabel: string;
+      code: string | null;
+    }
   | { id: string; kind: "user-text"; text: string }
   | {
       id: string;
@@ -90,6 +99,8 @@ const QA_TARGET_PREFIX = "qa:";
 export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const searchParams = useSearchParams();
   const previewScenarioId = searchParams.get("scenarioId");
+  /** プレビュー表示かどうか(共有された非公開プレビューURLでも決済が実行されないようにする)。 */
+  const isPreviewMode = searchParams.get("preview") === "1";
   const utmSource = searchParams.get("utm_source");
   const utmMedium = searchParams.get("utm_medium");
   const utmCampaign = searchParams.get("utm_campaign");
@@ -123,6 +134,15 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     conversionTagRef.current = conversionTag;
   }, [conversionTag]);
   const [couponCodeFieldEnabled, setCouponCodeFieldEnabled] = useState(true);
+  /** クーポン表示ノードで使う、シナリオの自動適用クーポンの告知内容。advance()内から参照するためref化する。 */
+  const couponRef = useRef<{
+    code: string | null;
+    name: string;
+    discountType: "percent" | "fixed";
+    discountValue: number;
+    imageUrl: string | null;
+    promoMessage: string | null;
+  } | null>(null);
   // dangerouslySetInnerHTMLで挿入した<script>はブラウザ仕様により実行されないため、
   // 管理者が設定した広告計測タグ(GA4/Metaピクセル等)は要素を組み立て直してDOMに追加する
   useEffect(() => {
@@ -327,6 +347,14 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
           menuItems?: WidgetMenuItem[];
+          coupon?: {
+            code: string | null;
+            name: string;
+            discount_type: "percent" | "fixed";
+            discount_value: number;
+            image_url: string | null;
+            promo_message: string | null;
+          } | null;
         }>;
       }),
     ])
@@ -348,6 +376,16 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setAdTag(scenarioBody.scenario?.ad_tag ?? null);
         setConversionTag(scenarioBody.scenario?.conversion_tag ?? null);
         setCouponCodeFieldEnabled(scenarioBody.scenario?.coupon_code_field_enabled ?? true);
+        couponRef.current = scenarioBody.coupon
+          ? {
+              code: scenarioBody.coupon.code,
+              name: scenarioBody.coupon.name,
+              discountType: scenarioBody.coupon.discount_type,
+              discountValue: scenarioBody.coupon.discount_value,
+              imageUrl: scenarioBody.coupon.image_url,
+              promoMessage: scenarioBody.coupon.promo_message,
+            }
+          : null;
         fetch("/api/widget/access-log", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -494,6 +532,27 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
               url: content.videoUrl!,
               aspectRatio: content.aspectRatio,
               caption: content.caption,
+            },
+          ]);
+        }
+        const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
+        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
+        break;
+      }
+      case "coupon": {
+        const active = couponRef.current;
+        if (active) {
+          const discountLabel =
+            active.discountType === "percent" ? `${active.discountValue}%OFF` : `${active.discountValue}円引き`;
+          setTimeline((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              kind: "coupon",
+              imageUrl: active.imageUrl,
+              message: active.promoMessage || "お得なクーポンがあります",
+              discountLabel,
+              code: active.code,
             },
           ]);
         }
@@ -855,6 +914,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         "--user-message-fg": effectiveTextColor(userMessageBackgroundColor ?? "#171717", userMessageTextColor),
       } as CSSProperties}
     >
+      {isPreviewMode && (
+        <div className="shrink-0 bg-amber-500 py-1 text-center text-xs font-semibold text-white">
+          プレビューモード(実際の決済・注文データは作成されません)
+        </div>
+      )}
       {headerSettings.mode === "image" && headerSettings.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={headerSettings.imageUrl} alt="" className="w-full shrink-0 object-cover" />
@@ -904,6 +968,16 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             case "video":
               return (
                 <VideoPlayer key={item.id} url={item.url} aspectRatio={item.aspectRatio} caption={item.caption} />
+              );
+            case "coupon":
+              return (
+                <CouponCard
+                  key={item.id}
+                  imageUrl={item.imageUrl}
+                  message={item.message}
+                  discountLabel={item.discountLabel}
+                  code={item.code}
+                />
               );
             case "user-text":
               return <MessageBubble key={item.id} message={{ id: item.id, from: "user", kind: "text", text: item.text }} />;
@@ -1009,6 +1083,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
                   utmCampaign={utmCampaign}
                   couponCodeFieldEnabled={couponCodeFieldEnabled}
                   surveyResponses={surveyAnswers}
+                  previewMode={isPreviewMode}
                   onComplete={(result) => handleCheckoutComplete(item, result)}
                   onBack={() => handleCheckoutBack(item)}
                 />
