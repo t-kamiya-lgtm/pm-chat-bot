@@ -3181,6 +3181,20 @@ export function ScenarioEditor({
                 上記のタグが自動でチャットボット側に引き継ぎ、実績ダッシュボードで広告別に集計できます。
                 LPを複数持つ場合は、LPごとにutm_campaign(またはutm_content)を分けて発行してください。
               </p>
+              <div>
+                <h4 className="mb-1 text-xs font-semibold text-neutral-600">
+                  LP内の画像等をクリックしてポップアップを開く(ポップアップ表示と併用)
+                </h4>
+                <p className="mb-2 text-xs text-neutral-500">
+                  上の「ポップアップ表示」タグを設置したページ内であれば、任意の画像やボタンに
+                  <code className="mx-1 rounded bg-neutral-100 px-1">data-pm-chatbot-open</code>
+                  属性を付けるだけで、クリック時に同じポップアップが開くようになります(フローティングボタンは残ったまま、追加の入口として使えます)。
+                </p>
+                <EmbedSnippet
+                  label="LP内画像の例"
+                  code={`<img src="LP内の画像URL" data-pm-chatbot-open style="cursor:pointer" alt="チャットで相談する" />`}
+                />
+              </div>
             </div>
           ) : (
             <p className="text-sm text-neutral-500">
