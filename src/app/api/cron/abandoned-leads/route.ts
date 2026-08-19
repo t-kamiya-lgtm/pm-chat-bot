@@ -47,9 +47,22 @@ export async function POST(request: Request) {
   }
 
   const templates = await getEmailTemplates(supabase);
-  const from = process.env.ORDER_EMAIL_FROM ?? "chatbot@example.com";
+  const defaultFrom = process.env.ORDER_EMAIL_FROM ?? "chatbot@example.com";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   let sent = 0;
+
+  // シナリオ(ブランド)ごとに送信元アドレスが設定されていれば、共通アドレスより優先して使う
+  const scenarioIds = Array.from(new Set(leads.map((l) => l.scenario_id).filter((id): id is string => Boolean(id))));
+  const scenarioFromById = new Map<string, string | null>();
+  if (scenarioIds.length > 0) {
+    const { data: scenarios } = await supabase
+      .from("scenarios")
+      .select("id, email_from_address")
+      .in("id", scenarioIds);
+    for (const s of scenarios ?? []) {
+      scenarioFromById.set(s.id, s.email_from_address);
+    }
+  }
 
   for (const lead of leads) {
     // 複数のCron実行が重なっても二重送信しないよう、送信前に自分だけが処理対象であることを確定させる
@@ -82,6 +95,7 @@ export async function POST(request: Request) {
         unsubscribe_url: `${siteUrl}/unsubscribe?leadId=${lead.id}`,
       };
 
+      const from = (lead.scenario_id && scenarioFromById.get(lead.scenario_id)) || defaultFrom;
       const wasSent = await sendResendEmail({
         to: lead.email,
         from,
