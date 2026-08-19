@@ -7,6 +7,8 @@ export interface EmailTemplates {
   renewalBody: string;
   abandonedLeadSubject: string;
   abandonedLeadBody: string;
+  inquiryAutoReplySubject: string;
+  inquiryAutoReplyBody: string;
 }
 
 /** DBの行が空(未設定)の場合に使う初期テンプレート。 */
@@ -46,6 +48,16 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ---
 本メールの配信停止をご希望の場合は、以下のリンクからお手続きください。
 {{unsubscribe_url}}`,
+  inquiryAutoReplySubject: "【自動返信】お問い合わせを受け付けました",
+  inquiryAutoReplyBody: `{{customer_name}} 様
+
+この度はお問い合わせいただき、誠にありがとうございます。
+以下の内容で承りました。担当者より改めてご連絡いたしますので、今しばらくお待ちください。
+
+■お問い合わせ内容
+{{message}}
+
+※本メールは自動返信です。このメールへの返信はできません。`,
 };
 
 /** "{{key}}" 形式のプレースホルダーを対応する値に置き換える。 */
@@ -65,5 +77,7 @@ export async function getEmailTemplates(
     renewalBody: data?.renewal_body || DEFAULT_EMAIL_TEMPLATES.renewalBody,
     abandonedLeadSubject: data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
     abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
+    inquiryAutoReplySubject: data?.inquiry_auto_reply_subject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
+    inquiryAutoReplyBody: data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
   };
 }

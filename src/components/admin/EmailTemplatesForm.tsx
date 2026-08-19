@@ -10,6 +10,8 @@ export function EmailTemplatesForm({
   initialRenewalBody,
   initialAbandonedLeadSubject,
   initialAbandonedLeadBody,
+  initialInquiryAutoReplySubject,
+  initialInquiryAutoReplyBody,
 }: {
   initialOrderCompletionSubject: string;
   initialOrderCompletionBody: string;
@@ -17,6 +19,8 @@ export function EmailTemplatesForm({
   initialRenewalBody: string;
   initialAbandonedLeadSubject: string;
   initialAbandonedLeadBody: string;
+  initialInquiryAutoReplySubject: string;
+  initialInquiryAutoReplyBody: string;
 }) {
   const [orderCompletionSubject, setOrderCompletionSubject] = useState(initialOrderCompletionSubject);
   const [orderCompletionBody, setOrderCompletionBody] = useState(initialOrderCompletionBody);
@@ -24,6 +28,8 @@ export function EmailTemplatesForm({
   const [renewalBody, setRenewalBody] = useState(initialRenewalBody);
   const [abandonedLeadSubject, setAbandonedLeadSubject] = useState(initialAbandonedLeadSubject);
   const [abandonedLeadBody, setAbandonedLeadBody] = useState(initialAbandonedLeadBody);
+  const [inquiryAutoReplySubject, setInquiryAutoReplySubject] = useState(initialInquiryAutoReplySubject);
+  const [inquiryAutoReplyBody, setInquiryAutoReplyBody] = useState(initialInquiryAutoReplyBody);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -42,6 +48,8 @@ export function EmailTemplatesForm({
     renewalBody,
     abandonedLeadSubject,
     abandonedLeadBody,
+    inquiryAutoReplySubject,
+    inquiryAutoReplyBody,
   ]);
 
   async function handleSave(event: React.FormEvent) {
@@ -59,6 +67,8 @@ export function EmailTemplatesForm({
         renewalBody,
         abandonedLeadSubject,
         abandonedLeadBody,
+        inquiryAutoReplySubject,
+        inquiryAutoReplyBody,
       }),
     });
 
@@ -153,6 +163,35 @@ export function EmailTemplatesForm({
             rows={10}
             value={abandonedLeadBody}
             onChange={(e) => setAbandonedLeadBody(e.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="space-y-3 rounded-md border border-neutral-200 p-4">
+        <div>
+          <p className="text-sm font-medium text-neutral-700">問い合わせ受付の自動返信メール</p>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            チャット内の「その他のご質問」フォームからお客様が問い合わせを送信した際、お客様へ自動で送信されます
+            (社内担当者への通知メールとは別です)。差し込み項目:
+            {" "}
+            {"{{customer_name}} {{message}}"}
+          </p>
+        </div>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-neutral-700">件名</span>
+          <input
+            className="input"
+            value={inquiryAutoReplySubject}
+            onChange={(e) => setInquiryAutoReplySubject(e.target.value)}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-neutral-700">本文</span>
+          <textarea
+            className="input font-mono"
+            rows={10}
+            value={inquiryAutoReplyBody}
+            onChange={(e) => setInquiryAutoReplyBody(e.target.value)}
           />
         </label>
       </div>

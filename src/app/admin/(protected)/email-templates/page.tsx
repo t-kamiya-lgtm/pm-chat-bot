@@ -25,6 +25,12 @@ export default async function EmailTemplatesPage() {
           data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject
         }
         initialAbandonedLeadBody={data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody}
+        initialInquiryAutoReplySubject={
+          data?.inquiry_auto_reply_subject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject
+        }
+        initialInquiryAutoReplyBody={
+          data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody
+        }
       />
     </div>
   );
