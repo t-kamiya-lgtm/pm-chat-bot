@@ -249,13 +249,18 @@ function DisplayPreview({
     window.open(url, "_blank");
   }
 
+  function openPcPreview() {
+    window.open(`/demo.html?scenarioId=${scenarioId}`, "_blank");
+  }
+
   return (
-    <button
-      type="button"
-      onClick={openWidget}
-      title="クリックして実際のチャット画面を確認"
-      className="block h-[280px] w-[158px] shrink-0 overflow-hidden rounded-xl border border-neutral-300 shadow-sm"
-    >
+    <div className="shrink-0 space-y-2">
+      <button
+        type="button"
+        onClick={openWidget}
+        title="クリックして実際のチャット画面を確認"
+        className="block h-[280px] w-[158px] overflow-hidden rounded-xl border border-neutral-300 shadow-sm"
+      >
       <div
         className="flex h-full flex-col text-left"
         style={{ backgroundColor: display.chatBackgroundColor ?? DEFAULT_CHAT_BACKGROUND_COLOR }}
@@ -307,7 +312,16 @@ function DisplayPreview({
           固定メニュー
         </div>
       </div>
-    </button>
+      </button>
+      <button
+        type="button"
+        onClick={openPcPreview}
+        title="サイトに埋め込んだ想定のPC画面プレビューを開く"
+        className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+      >
+        PCプレビュー
+      </button>
+    </div>
   );
 }
 

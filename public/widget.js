@@ -11,6 +11,11 @@
   // ブランド・商品専用のシナリオを表示したい場合は、シナリオ管理画面で発行したURLの識別子を指定する
   // 例: <script src="..." data-scenario="brand-a"></script>
   var scenarioSlug = currentScript && currentScript.getAttribute("data-scenario");
+  // 管理画面の「PCプレビュー」用: 専用URL(スラッグ)未発行の下書きシナリオも、IDで直接指定して確認できる
+  var scenarioId = currentScript && currentScript.getAttribute("data-scenario-id");
+  // プレビューモード。決済まで進めても実際の注文・課金・メール送信は発生しない
+  // 例: <script src="..." data-preview="1"></script>
+  var previewMode = (currentScript && currentScript.getAttribute("data-preview")) === "1";
 
   // 広告のリンク先URL(このページ自体のURL)に付与されたUTMパラメータを、そのままウィジェットに引き継ぐ。
   // これにより実績ダッシュボードで、どの広告経由のアクセス・購入かを集計できる。
@@ -25,9 +30,14 @@
     }
   });
 
-  var iframeSrc = origin + (scenarioSlug ? "/widget/" + encodeURIComponent(scenarioSlug) : "/widget");
+  var iframeSrc = scenarioId
+    ? origin + "/widget?scenarioId=" + encodeURIComponent(scenarioId) + "&preview=1"
+    : origin + (scenarioSlug ? "/widget/" + encodeURIComponent(scenarioSlug) : "/widget");
+  if (!scenarioId && previewMode) {
+    iframeSrc += "?preview=1";
+  }
   if (hasUtm) {
-    iframeSrc += "?" + utmParams.toString();
+    iframeSrc += (iframeSrc.indexOf("?") > -1 ? "&" : "?") + utmParams.toString();
   }
 
   // 購入完了時のコンバージョンタグ(Google広告のコンバージョンタグ等)。
@@ -216,7 +226,13 @@
   }
 
   var configUrl =
-    origin + "/api/widget/scenario" + (scenarioSlug ? "?slug=" + encodeURIComponent(scenarioSlug) : "");
+    origin +
+    "/api/widget/scenario" +
+    (scenarioId
+      ? "?id=" + encodeURIComponent(scenarioId) + "&preview=1"
+      : scenarioSlug
+        ? "?slug=" + encodeURIComponent(scenarioSlug)
+        : "");
   fetch(configUrl)
     .then(function (res) {
       return res.ok ? res.json() : {};
