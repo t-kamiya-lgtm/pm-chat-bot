@@ -332,11 +332,9 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                       onChange={() => toggleOne(order.id)}
                     />
                   </td>
-                  <td className="px-4 py-2 font-mono whitespace-nowrap">{order.order_number ?? "-"}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {new Date(order.created_at).toLocaleString("ja-JP")}
-                  </td>
-                  <td className="px-4 py-2 truncate">{order.customers?.name ?? "-"}</td>
+                  <td className="px-4 py-2 font-mono break-all">{order.order_number ?? "-"}</td>
+                  <td className="px-4 py-2">{new Date(order.created_at).toLocaleString("ja-JP")}</td>
+                  <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
                   <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
                   <td className="px-4 py-2">{order.quantity}</td>
                   <td className="px-4 py-2">
@@ -348,7 +346,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">
+                  <td className="px-4 py-2">
                     {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
                   </td>
                   <td className="px-4 py-2">
@@ -359,7 +357,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap">
+                  <td className="px-4 py-2">
                     {formatDeliveryDate(order.delivery_date)} {order.delivery_time_slot ?? ""}
                   </td>
                   <td className="px-4 py-2">
