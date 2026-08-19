@@ -3114,13 +3114,22 @@ export function ScenarioEditor({
           </p>
           {scenario.slug ? (
             <div className="space-y-4">
-              <EmbedSnippet
-                label="ポップアップ表示(サイトの隅にボタンを追加)"
-                code={`<script src="${origin}/widget.js" data-widget-origin="${origin}" data-scenario="${scenario.slug}"></script>`}
-              />
-              <EmbedSnippet
-                label="直接埋め込み(ページ全体・LPに設置)"
-                code={`<iframe id="pmchat-${scenario.slug}" src="${origin}/widget/${scenario.slug}" style="width:100%;height:100%;border:none" allow="payment"></iframe>
+              <div>
+                <EmbedSnippet
+                  label="ポップアップ表示(サイトの隅にボタンを追加)"
+                  code={`<script src="${origin}/widget.js" data-widget-origin="${origin}" data-scenario="${scenario.slug}"></script>`}
+                />
+                <p className="mt-1 text-xs text-neutral-500">
+                  設置場所: ページ内のどこに置いても動作しますが、表示速度への影響を避けるため
+                  <code className="mx-1 rounded bg-neutral-100 px-1">{"</body>"}</code>
+                  タグの直前(本文の一番最後)への設置を推奨します。全ページ共通のフッター・テンプレートに1回入れておけば、
+                  そのページすべてに反映されます。
+                </p>
+              </div>
+              <div>
+                <EmbedSnippet
+                  label="直接埋め込み(ページ全体・LPに設置)"
+                  code={`<iframe id="pmchat-${scenario.slug}" src="${origin}/widget/${scenario.slug}" style="width:100%;height:100%;border:none" allow="payment"></iframe>
 <script>
 (function () {
   var params = new URLSearchParams(window.location.search);
@@ -3188,7 +3197,12 @@ export function ScenarioEditor({
   });
 })();
 </script>`}
-              />
+                />
+                <p className="mt-1 text-xs text-neutral-500">
+                  設置場所: チャットを表示したい位置(LP本文内の、実際にチャット画面を見せたい場所)に、
+                  そのまま貼り付けてください。ポップアップとは異なり、貼り付けた場所にチャット画面自体が表示されます。
+                </p>
+              </div>
               <p className="text-xs text-neutral-500">
                 広告(Google広告・Meta広告等)のリンク先URLにutm_source・utm_medium・utm_campaignを付与しておくと、
                 上記のタグが自動でチャットボット側に引き継ぎ、実績ダッシュボードで広告別に集計できます。
