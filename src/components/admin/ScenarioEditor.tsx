@@ -249,10 +249,6 @@ function DisplayPreview({
     window.open(url, "_blank");
   }
 
-  function openPcPreview() {
-    window.open(`/demo.html?scenarioId=${scenarioId}`, "_blank");
-  }
-
   return (
     <div className="shrink-0 space-y-2">
       <button
@@ -312,14 +308,6 @@ function DisplayPreview({
           固定メニュー
         </div>
       </div>
-      </button>
-      <button
-        type="button"
-        onClick={openPcPreview}
-        title="サイトに埋め込んだ想定のPC画面プレビューを開く"
-        className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
-      >
-        PCプレビュー
       </button>
     </div>
   );
@@ -2187,6 +2175,15 @@ export function ScenarioEditor({
             className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
           >
             プレビュー
+          </a>
+          <a
+            href={`/demo.html?scenarioId=${scenario.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="サイトに埋め込んだ想定のPC画面プレビューを開く"
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+          >
+            PCプレビュー
           </a>
           <button
             type="button"
