@@ -13,6 +13,10 @@ const updateSchema = z.object({
   abandonedLeadBody: z.string().optional(),
   inquiryAutoReplySubject: z.string().optional(),
   inquiryAutoReplyBody: z.string().optional(),
+  cancellationSubject: z.string().optional(),
+  cancellationBody: z.string().optional(),
+  shipmentCompleteSubject: z.string().optional(),
+  shipmentCompleteBody: z.string().optional(),
 });
 
 /** 管理画面用: 注文完了メール・離脱者リマインドメールの件名・本文テンプレート(全商品共通)。 */
@@ -33,6 +37,10 @@ export async function GET() {
     abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
     inquiryAutoReplySubject: data?.inquiry_auto_reply_subject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
     inquiryAutoReplyBody: data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
+    cancellationSubject: data?.cancellation_subject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject,
+    cancellationBody: data?.cancellation_body || DEFAULT_EMAIL_TEMPLATES.cancellationBody,
+    shipmentCompleteSubject: data?.shipment_complete_subject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject,
+    shipmentCompleteBody: data?.shipment_complete_body || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody,
   });
 }
 
@@ -63,6 +71,12 @@ export async function PATCH(request: Request) {
         inquiry_auto_reply_subject: input.inquiryAutoReplySubject,
       }),
       ...(input.inquiryAutoReplyBody !== undefined && { inquiry_auto_reply_body: input.inquiryAutoReplyBody }),
+      ...(input.cancellationSubject !== undefined && { cancellation_subject: input.cancellationSubject }),
+      ...(input.cancellationBody !== undefined && { cancellation_body: input.cancellationBody }),
+      ...(input.shipmentCompleteSubject !== undefined && {
+        shipment_complete_subject: input.shipmentCompleteSubject,
+      }),
+      ...(input.shipmentCompleteBody !== undefined && { shipment_complete_body: input.shipmentCompleteBody }),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "id" },

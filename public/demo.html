@@ -34,7 +34,24 @@
       <p>
         右上の「×」ボタン、またはもう一度ボタンを押すことでポップアップを閉じ、このページに戻ります。
       </p>
+      <p>
+        <strong>このページはプレビューモードです。</strong>
+        決済確認まで進めても、実際の注文・課金・メール送信は一切発生しません。
+      </p>
     </main>
-    <script src="/widget.js"></script>
+    <script>
+      (function () {
+        // ?scenarioId=xxx を付けて開くと、そのシナリオ専用の内容で確認できる(下書き可)。
+        // 未指定の場合は、公開中の先頭シナリオが表示される。どちらの場合もプレビューモード(data-preview="1")で読み込むため、
+        // 決済まで進めても実データは作成されない。
+        var params = new URLSearchParams(window.location.search);
+        var scenarioId = params.get("scenarioId");
+        var script = document.createElement("script");
+        script.src = "/widget.js";
+        if (scenarioId) script.setAttribute("data-scenario-id", scenarioId);
+        script.setAttribute("data-preview", "1");
+        document.body.appendChild(script);
+      })();
+    </script>
   </body>
 </html>

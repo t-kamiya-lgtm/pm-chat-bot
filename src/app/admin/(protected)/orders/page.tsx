@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { readOrderFilters, applyOrderFilters } from "@/lib/order-filters";
 import { OrdersTable } from "@/components/admin/OrdersTable";
+import { ShipmentImportForm } from "@/components/admin/ShipmentImportForm";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,6 @@ export default async function AdminOrdersPage({
   if (filters.dateTo) currentQuery.set("dateTo", filters.dateTo);
   if (filters.orderType) currentQuery.set("orderType", filters.orderType);
   if (filters.importStatus) currentQuery.set("importStatus", filters.importStatus);
-  if (filters.canceledFilter !== "include") currentQuery.set("canceledFilter", filters.canceledFilter);
 
   const exportQuery = new URLSearchParams(currentQuery);
   if (filters.showAll) exportQuery.set("showAll", "1");
@@ -44,12 +44,15 @@ export default async function AdminOrdersPage({
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">注文</h1>
-        <a
-          href={`/api/orders/export?${exportQuery.toString()}`}
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
-        >
-          この絞り込み結果をCSV出力
-        </a>
+        <div className="flex items-start gap-2">
+          <ShipmentImportForm />
+          <a
+            href={`/api/orders/export?${exportQuery.toString()}`}
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+          >
+            この絞り込み結果をCSV出力
+          </a>
+        </div>
       </div>
 
       <form
@@ -73,7 +76,7 @@ export default async function AdminOrdersPage({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">取り込みステータス</span>
+          <span className="mb-1 block text-xs text-neutral-500">受注ステータス</span>
           <select name="importStatus" defaultValue={filters.importStatus ?? ""} className="input">
             <option value="">すべて</option>
             <option value="imported">取り込み済み</option>
@@ -81,14 +84,8 @@ export default async function AdminOrdersPage({
             <option value="not_imported">未取り込み</option>
             <option value="import_error">取込みエラー</option>
             <option value="excluded">対象外</option>
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">キャンセル</span>
-          <select name="canceledFilter" defaultValue={filters.canceledFilter} className="input">
-            <option value="include">すべて</option>
-            <option value="exclude">キャンセル済みを除く</option>
-            <option value="only">キャンセル済みのみ</option>
+            <option value="shipped">出荷済</option>
+            <option value="canceled">キャンセル</option>
           </select>
         </label>
         <button

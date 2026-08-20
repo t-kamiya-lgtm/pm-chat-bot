@@ -55,11 +55,8 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (order && order.type === "one_time" && order.status !== "paid") {
-        // Stripe側で自動的に決済・記録が完結するため、取り込みステータスも自動で完了扱いにする
-        await supabase
-          .from("orders")
-          .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
-          .eq("id", order.id);
+        // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、受注ステータスは変更しない(未取込みのまま)
+        await supabase.from("orders").update({ status: "paid" }).eq("id", order.id);
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
         await assignCustomerNumberIfNeeded(order.customer_id);
@@ -95,10 +92,8 @@ export async function POST(request: Request) {
         // 2回目以降の周期課金: チャットシステム内に今回分の注文データを新規生成する
         await createSubscriptionRenewalOrder({ stripeSubscriptionId: subscriptionId, invoiceId: invoice.id });
       } else if (order.status !== "paid") {
-        await supabase
-          .from("orders")
-          .update({ status: "paid", import_status: "imported", import_status_updated_at: new Date().toISOString() })
-          .eq("id", order.id);
+        // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、受注ステータスは変更しない(未取込みのまま)
+        await supabase.from("orders").update({ status: "paid" }).eq("id", order.id);
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
         await assignCustomerNumberIfNeeded(order.customer_id);

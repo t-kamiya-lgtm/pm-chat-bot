@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendResendEmail } from "@/lib/email";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
+import { resolveScenarioFrom } from "@/lib/scenario-email";
 
 /**
  * 注文確定(初回はfulfillOrder呼び出しと同じタイミング、定期便2回目以降は注文データ生成時)で
@@ -29,7 +30,11 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
       supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
       order.scenario_id
-        ? supabase.from("scenarios").select("email_from_address").eq("id", order.scenario_id).maybeSingle()
+        ? supabase
+            .from("scenarios")
+            .select("email_from_address, order_confirmation_from")
+            .eq("id", order.scenario_id)
+            .maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
     if (!customer?.email) return;
@@ -54,7 +59,7 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
 
     await sendResendEmail({
       to: customer.email,
-      from: scenario?.email_from_address || process.env.ORDER_EMAIL_FROM || "chatbot@example.com",
+      from: resolveScenarioFrom(scenario, "order_confirmation_from"),
       subject: renderEmailTemplate(isRenewal ? templates.renewalSubject : templates.orderCompletionSubject, vars),
       text: renderEmailTemplate(isRenewal ? templates.renewalBody : templates.orderCompletionBody, vars),
     });

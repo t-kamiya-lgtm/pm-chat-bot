@@ -9,11 +9,13 @@ export interface InquiryInput {
   message: string;
   productName?: string;
   chatUrl?: string;
+  /** 受領アドレス。シナリオごとの設定があればそちらを優先し、未設定時は共通の環境変数を使う。 */
+  receiveEmail?: string;
 }
 
 export async function sendInquiryNotification(input: InquiryInput): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.INQUIRY_NOTIFICATION_EMAIL;
+  const to = input.receiveEmail || process.env.INQUIRY_NOTIFICATION_EMAIL;
 
   if (!apiKey || !to) {
     console.log("[inquiry] notification email not configured, logging instead:", input);

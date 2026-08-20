@@ -57,8 +57,7 @@ export async function createSubscriptionRenewalOrder(params: {
         shipping_fee: original.shipping_fee,
         payment_fee: original.payment_fee,
         status: "paid",
-        import_status: "imported",
-        import_status_updated_at: new Date().toISOString(),
+        // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、未取込みのまま生成する
         stripe_subscription_id: params.stripeSubscriptionId,
         stripe_payment_intent_id: params.invoiceId,
         delivery_date: original.delivery_date,

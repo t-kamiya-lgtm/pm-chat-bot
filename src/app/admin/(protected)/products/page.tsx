@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ProductsTable, type ProductRow } from "@/components/admin/ProductsTable";
+import { sanitizeSubscriptionIntervals } from "@/lib/subscription-intervals";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function AdminProductsPage({
     price: product.price,
     shippingFee: product.shipping_fee,
     orderType: product.order_type,
-    subscriptionIntervals: product.subscription_intervals ?? [],
+    subscriptionIntervals: sanitizeSubscriptionIntervals(product.subscription_intervals),
     smaregiProductId: product.smaregi_product_id,
     productGroupName: (product.product_groups as { name: string } | null)?.name ?? null,
     isActive: product.is_active ?? true,

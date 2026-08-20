@@ -21,7 +21,7 @@ export const shippingAddressSchema = addressSchema.extend({
   recipientPhone: z.string().min(1),
 });
 
-export const subscriptionIntervalSchema = z.enum(["biweekly", "monthly", "bimonthly", "test_3day"]);
+export const subscriptionIntervalSchema = z.enum(["biweekly", "monthly", "bimonthly"]);
 
 export const checkoutBaseSchema = z.object({
   productId: z.string().uuid(),

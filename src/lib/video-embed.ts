@@ -63,6 +63,35 @@ export async function detectAspectRatio(url: string): Promise<string> {
 }
 
 /**
+ * ノード一覧の折りたたみ表示用サムネイルURL。YouTubeはIDから静的なサムネイルURLを導出できるが、
+ * Vimeo・直接ファイルURLには同様の仕組みがないため取得できない(nullを返す)。
+ */
+export function getVideoThumbnailUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (parsed.pathname === "/watch") {
+        const id = parsed.searchParams.get("v");
+        if (id) return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+      }
+      const shortsMatch = parsed.pathname.match(/^\/shorts\/([^/]+)/);
+      if (shortsMatch) return `https://img.youtube.com/vi/${shortsMatch[1]}/hqdefault.jpg`;
+      const embedMatch = parsed.pathname.match(/^\/embed\/([^/]+)/);
+      if (embedMatch) return `https://img.youtube.com/vi/${embedMatch[1]}/hqdefault.jpg`;
+    }
+    if (host === "youtu.be") {
+      const id = parsed.pathname.slice(1);
+      if (id) return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+    }
+  } catch {
+    // 不正なURLはサムネイル対象外として扱う
+  }
+  return null;
+}
+
+/**
  * YouTube/Vimeoの各種URL形式を埋め込み再生用URLに変換する。
  * それ以外のURLは直接の動画ファイル(mp4等)として<video>タグでインライン再生する。
  */

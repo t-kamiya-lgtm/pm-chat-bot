@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ProductForm } from "@/components/admin/ProductForm";
+import { sanitizeSubscriptionIntervals } from "@/lib/subscription-intervals";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export default async function EditProductPage({
           imageUrls: product.image_urls?.length ? product.image_urls : product.image_url ? [product.image_url] : [],
           smaregiProductId: product.smaregi_product_id ?? "",
           orderType: product.order_type,
-          subscriptionIntervals: product.subscription_intervals ?? [],
+          subscriptionIntervals: sanitizeSubscriptionIntervals(product.subscription_intervals),
           isSet: product.is_set ?? false,
           setItemCount: product.set_item_count ?? null,
           setOptionProductIds: (setOptions ?? []).map((o) => o.option_product_id),

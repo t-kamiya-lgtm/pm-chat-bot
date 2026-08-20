@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sanitizeSubscriptionIntervals } from "@/lib/subscription-intervals";
 
 /**
  * チャットウィジェット用の公開エンドポイント(認証不要)。
@@ -91,7 +92,10 @@ export async function GET(request: Request) {
   if (productIds.length > 0) {
     const { data, error } = await supabase.from("products").select("*").in("id", productIds);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    products = data ?? [];
+    products = (data ?? []).map((p) => ({
+      ...p,
+      subscription_intervals: sanitizeSubscriptionIntervals(p.subscription_intervals),
+    }));
   }
 
   // セット品(構成数の分だけ内訳を選ばせる商品)の選択肢を、対象商品にまとめて付与する

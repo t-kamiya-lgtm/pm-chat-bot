@@ -31,6 +31,14 @@ export default async function EmailTemplatesPage() {
         initialInquiryAutoReplyBody={
           data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody
         }
+        initialCancellationSubject={data?.cancellation_subject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject}
+        initialCancellationBody={data?.cancellation_body || DEFAULT_EMAIL_TEMPLATES.cancellationBody}
+        initialShipmentCompleteSubject={
+          data?.shipment_complete_subject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject
+        }
+        initialShipmentCompleteBody={
+          data?.shipment_complete_body || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody
+        }
       />
     </div>
   );

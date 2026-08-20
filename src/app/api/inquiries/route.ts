@@ -3,6 +3,7 @@ import { z } from "zod";
 import { sendInquiryNotification, sendResendEmail } from "@/lib/email";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
+import { resolveScenarioFrom, resolveInquiryReceiveEmail } from "@/lib/scenario-email";
 
 const inquirySchema = z.object({
   name: z.string().min(1),
@@ -25,20 +26,26 @@ export async function POST(request: Request) {
   }
   const { scenarioId, ...notificationInput } = parsed.data;
 
-  await sendInquiryNotification(notificationInput);
+  const supabase = createSupabaseAdminClient();
+  const { data: scenario } = scenarioId
+    ? await supabase
+        .from("scenarios")
+        .select("email_from_address, inquiry_receive_email, inquiry_auto_reply_from")
+        .eq("id", scenarioId)
+        .maybeSingle()
+    : { data: null };
+
+  await sendInquiryNotification({
+    ...notificationInput,
+    receiveEmail: resolveInquiryReceiveEmail(scenario),
+  });
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const [templates, scenario] = await Promise.all([
-      getEmailTemplates(supabase),
-      scenarioId
-        ? supabase.from("scenarios").select("email_from_address").eq("id", scenarioId).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+    const templates = await getEmailTemplates(supabase);
     const vars = { customer_name: parsed.data.name, message: parsed.data.message };
     await sendResendEmail({
       to: parsed.data.email,
-      from: scenario.data?.email_from_address || process.env.ORDER_EMAIL_FROM || "chatbot@example.com",
+      from: resolveScenarioFrom(scenario, "inquiry_auto_reply_from"),
       subject: renderEmailTemplate(templates.inquiryAutoReplySubject, vars),
       text: renderEmailTemplate(templates.inquiryAutoReplyBody, vars),
     });

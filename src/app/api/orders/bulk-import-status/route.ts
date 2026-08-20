@@ -2,10 +2,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { sendCancellationEmail } from "@/lib/order-status-emails";
 
 const bulkUpdateSchema = z.object({
   orderIds: z.array(z.string().uuid()).min(1),
-  importStatus: z.enum(["imported", "on_hold", "not_imported", "import_error", "excluded"]),
+  importStatus: z.enum([
+    "imported",
+    "on_hold",
+    "not_imported",
+    "import_error",
+    "excluded",
+    "shipped",
+    "canceled",
+  ]),
 });
 
 /** 選択した複数注文の取り込みステータスを一括で変更する。 */
@@ -29,5 +38,10 @@ export async function POST(request: Request) {
     .in("id", parsed.data.orderIds);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (parsed.data.importStatus === "canceled") {
+    await Promise.all(parsed.data.orderIds.map((orderId) => sendCancellationEmail(orderId)));
+  }
+
   return NextResponse.json({ ok: true, updated: parsed.data.orderIds.length });
 }

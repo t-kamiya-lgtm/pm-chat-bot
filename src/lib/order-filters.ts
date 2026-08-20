@@ -1,4 +1,11 @@
-export type ImportStatus = "imported" | "on_hold" | "not_imported" | "import_error" | "excluded";
+export type ImportStatus =
+  | "imported"
+  | "on_hold"
+  | "not_imported"
+  | "import_error"
+  | "excluded"
+  | "shipped"
+  | "canceled";
 
 const IMPORT_STATUSES: ImportStatus[] = [
   "imported",
@@ -6,16 +13,15 @@ const IMPORT_STATUSES: ImportStatus[] = [
   "not_imported",
   "import_error",
   "excluded",
+  "shipped",
+  "canceled",
 ];
-
-export type CanceledFilter = "exclude" | "include" | "only";
 
 export interface OrderFilterParams {
   dateFrom?: string;
   dateTo?: string;
   orderType?: "one_time" | "subscription";
   importStatus?: ImportStatus;
-  canceledFilter: CanceledFilter;
   showAll: boolean;
 }
 
@@ -32,18 +38,14 @@ export function readOrderFilters(getParam: (key: string) => string | null | unde
     ? (importStatusRaw as ImportStatus)
     : undefined;
 
-  const canceledFilterRaw = getParam("canceledFilter");
-  const canceledFilter: CanceledFilter =
-    canceledFilterRaw === "exclude" || canceledFilterRaw === "only" ? canceledFilterRaw : "include";
-
   const showAll = getParam("showAll") === "1";
 
-  return { dateFrom, dateTo, orderType, importStatus, canceledFilter, showAll };
+  return { dateFrom, dateTo, orderType, importStatus, showAll };
 }
 
 /** Supabaseのクエリビルダーに、注文一覧の絞り込み条件を適用する。 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyOrderFilters<T extends { gte: any; lte: any; eq: any; is: any; not: any }>(
+export function applyOrderFilters<T extends { gte: any; lte: any; eq: any }>(
   query: T,
   filters: OrderFilterParams,
 ): T {
@@ -52,7 +54,5 @@ export function applyOrderFilters<T extends { gte: any; lte: any; eq: any; is: a
   if (filters.dateTo) q = q.lte("created_at", `${filters.dateTo}T23:59:59`);
   if (filters.orderType) q = q.eq("type", filters.orderType);
   if (filters.importStatus) q = q.eq("import_status", filters.importStatus);
-  if (filters.canceledFilter === "exclude") q = q.is("canceled_at", null);
-  if (filters.canceledFilter === "only") q = q.not("canceled_at", "is", null);
   return q;
 }
