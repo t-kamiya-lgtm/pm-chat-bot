@@ -9,7 +9,6 @@ export const SUBSCRIPTION_INTERVAL_STRIPE_MAP: Record<
   biweekly: { interval: "week", intervalCount: 2 },
   monthly: { interval: "month", intervalCount: 1 },
   bimonthly: { interval: "month", intervalCount: 2 },
-  test_3day: { interval: "day", intervalCount: 3 },
 };
 
 /**
@@ -20,5 +19,15 @@ export const SUBSCRIPTION_INTERVAL_DAYS: Record<SubscriptionInterval, number> = 
   biweekly: 14,
   monthly: 30,
   bimonthly: 60,
-  test_3day: 3,
 };
+
+const VALID_SUBSCRIPTION_INTERVALS: readonly string[] = Object.keys(SUBSCRIPTION_INTERVAL_DAYS);
+
+/**
+ * DBのsubscription_intervalsには、廃止済みの値(例: かつてのテスト用「3日ごと」)が
+ * 過去データとして残っている可能性があるため、読み込み時に現在有効な値だけへ絞り込む。
+ */
+export function sanitizeSubscriptionIntervals(values: unknown): SubscriptionInterval[] {
+  if (!Array.isArray(values)) return [];
+  return values.filter((v): v is SubscriptionInterval => VALID_SUBSCRIPTION_INTERVALS.includes(v as string));
+}

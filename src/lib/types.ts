@@ -8,7 +8,7 @@ export interface AppUser {
   createdAt: string;
 }
 
-export type SubscriptionInterval = "biweekly" | "monthly" | "bimonthly" | "test_3day";
+export type SubscriptionInterval = "biweekly" | "monthly" | "bimonthly";
 export type ProductOrderType = "one_time" | "subscription";
 export type ComparePriceType = "none" | "list_price" | "unit_total" | "custom";
 
