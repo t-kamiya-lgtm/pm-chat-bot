@@ -13,7 +13,7 @@ import type {
   SurveyAnswerType,
   SurveyQuestion,
 } from "@/lib/types";
-import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio } from "@/lib/video-embed";
+import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio, getVideoThumbnailUrl } from "@/lib/video-embed";
 import { contrastTextColor, effectiveTextColor, type TextColorOverride } from "@/lib/color";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
@@ -2020,8 +2020,6 @@ export function ScenarioEditor({
     reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
 
-    setReorderPending(moved.id);
-
     const patches = new Map<string, { displayOrder?: number; nextNodeMap?: Record<string, string> }>();
     reordered.forEach((node, i) => {
       if (node.displayOrder !== i) patches.set(node.id, { displayOrder: i });
@@ -2044,6 +2042,28 @@ export function ScenarioEditor({
         });
       }
     }
+
+    // 並び替え後に、いずれかのノードの次ノードリンクが自分と同じか、より手前の位置のノードを
+    // 指してしまう(=チャットの流れが逆戻りする)場合は、紐付けが壊れるため並び替え自体を中止する
+    const newIndexById = new Map(reordered.map((n, i) => [n.id, i]));
+    const breaksLinkage = reordered.some((node, i) => {
+      const effectiveNextNodeMap = patches.get(node.id)?.nextNodeMap ?? node.nextNodeMap;
+      return Object.values(effectiveNextNodeMap).some((targetId) => {
+        if (!targetId || targetId.startsWith(QA_TARGET_PREFIX)) return false;
+        const targetIndex = newIndexById.get(targetId);
+        return targetIndex !== undefined && targetIndex <= i;
+      });
+    });
+    if (breaksLinkage) {
+      setToast({
+        message:
+          "この並び替えを行うと、次のノードへの紐付けが手前のノードへ戻ってしまうため中止しました。先に紐付け先を変更してから並び替えてください。",
+        type: "error",
+      });
+      return;
+    }
+
+    setReorderPending(moved.id);
 
     const results = await Promise.all(
       Array.from(patches.entries()).map(([nodeId, patch]) =>
@@ -3588,18 +3608,6 @@ function NodeCard({
           <ConfirmButton label="削除" onConfirm={onDelete} />
         </div>
       </div>
-      <div className="mb-2 flex items-center gap-2 text-xs text-neutral-500">
-        <span>ノードID:</span>
-        <code className="select-all rounded bg-neutral-100 px-1.5 py-0.5">{node.id}</code>
-        <button
-          type="button"
-          onClick={() => navigator.clipboard.writeText(node.id)}
-          className="text-blue-600 hover:underline"
-        >
-          コピー
-        </button>
-      </div>
-
       {editing ? (
         <div className="space-y-2">
           <label className="block text-xs">
@@ -3872,7 +3880,28 @@ function NodeCard({
               メモ: {memo}
             </p>
           )}
-          {usesProductPicker(node.type) ? (
+          {node.type === "product" ? (
+            <div className="rounded bg-neutral-50 p-2 text-xs">
+              {productIds.length > 0 ? (
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {productIds.map((id) => {
+                    const product = products.find((p) => p.id === id);
+                    const target =
+                      nodeOptions.find((n) => n.id === productNextMap[id]) ??
+                      nodeOptions.find((n) => n.id === defaultNext);
+                    return (
+                      <li key={id}>
+                        {product ? productLabel(product) : "未設定"} →{" "}
+                        {target?.summary ?? "自動: 一覧の次のノードへ進む"}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                "未設定"
+              )}
+            </div>
+          ) : usesProductPicker(node.type) ? (
             <p className="rounded bg-neutral-50 p-2 text-xs">
               {node.type === "product_qa" ? "アイテム" : "品番"}:{" "}
               {node.type === "product_qa"
@@ -3925,9 +3954,23 @@ function NodeCard({
           ) : node.type === "video" ? (
             <div className="rounded bg-neutral-50 p-2 text-xs">
               {videoUrl ? (
-                <p className="break-all text-neutral-600">
-                  {videoUrl} ({videoAspectRatio})
-                </p>
+                <div className="flex items-start gap-2">
+                  {getVideoThumbnailUrl(videoUrl) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={getVideoThumbnailUrl(videoUrl)!}
+                      alt=""
+                      className="h-16 w-28 shrink-0 rounded border border-neutral-200 object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-16 w-28 shrink-0 items-center justify-center rounded border border-neutral-200 bg-neutral-100 text-neutral-400">
+                      ▶
+                    </span>
+                  )}
+                  <p className="break-all text-neutral-600">
+                    {videoUrl} ({videoAspectRatio})
+                  </p>
+                </div>
               ) : (
                 "(未設定)"
               )}
@@ -3969,35 +4012,27 @@ function NodeCard({
               )}
             </div>
           )}
-          <p className="mt-1 rounded bg-neutral-50 p-2 text-xs text-neutral-500">
-            次のノード:{" "}
-            {node.type === "choice"
-              ? options
-                  .map((o) => {
-                    if (o.qaProductId) {
-                      const groupName =
-                        products.find((p) => p.id === o.qaProductId)?.productGroupName ?? "未設定";
-                      const after = nodeOptions.find((n) => n.id === o.nextNodeId);
-                      return `${o.label || o.value}→Q&A表示(${groupName})→${after?.summary ?? "自動: 一覧の次のノードへ進む"}`;
-                    }
-                    const target = nodeOptions.find((n) => n.id === o.nextNodeId);
-                    return target ? `${o.label || o.value}→${target.summary}` : null;
-                  })
-                  .filter(Boolean)
-                  .join("、") ||
-                (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")
-              : node.type === "product"
-                ? productIds
-                    .map((id) => {
-                      const target = nodeOptions.find((n) => n.id === productNextMap[id]);
-                      const product = products.find((p) => p.id === id);
-                      return target && product ? `${product.name}→${target.summary}` : null;
+          {node.type !== "product" && (
+            <p className="mt-1 rounded bg-neutral-50 p-2 text-xs text-neutral-500">
+              次のノード:{" "}
+              {node.type === "choice"
+                ? options
+                    .map((o) => {
+                      if (o.qaProductId) {
+                        const groupName =
+                          products.find((p) => p.id === o.qaProductId)?.productGroupName ?? "未設定";
+                        const after = nodeOptions.find((n) => n.id === o.nextNodeId);
+                        return `${o.label || o.value}→Q&A表示(${groupName})→${after?.summary ?? "自動: 一覧の次のノードへ進む"}`;
+                      }
+                      const target = nodeOptions.find((n) => n.id === o.nextNodeId);
+                      return target ? `${o.label || o.value}→${target.summary}` : null;
                     })
                     .filter(Boolean)
                     .join("、") ||
                   (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")
                 : (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")}
-          </p>
+            </p>
+          )}
         </>
       )}
     </div>

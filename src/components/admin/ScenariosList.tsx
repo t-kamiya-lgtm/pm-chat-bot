@@ -20,10 +20,18 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [search, setSearch] = useState("");
+  const [showDrafts, setShowDrafts] = useState(false);
 
-  async function move(index: number, direction: -1 | 1) {
+  const visibleScenarios = scenarios
+    .map((scenario, index) => ({ scenario, no: index + 1 }))
+    .filter(({ scenario }) => showDrafts || scenario.status === "published")
+    .filter(({ scenario }) => scenario.name.toLowerCase().includes(search.trim().toLowerCase()));
+
+  async function move(scenarioId: string, direction: -1 | 1) {
+    const index = scenarios.findIndex((s) => s.id === scenarioId);
     const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= scenarios.length) return;
+    if (index < 0 || targetIndex < 0 || targetIndex >= scenarios.length) return;
 
     const current = scenarios[index];
     const target = scenarios[targetIndex];
@@ -104,24 +112,40 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
   return (
     <div className="space-y-3">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-      {scenarios.map((scenario, index) => (
+
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="シナリオ名で検索"
+          className="input max-w-xs"
+        />
+        <label className="flex items-center gap-1.5 text-sm text-neutral-600">
+          <input type="checkbox" checked={showDrafts} onChange={(e) => setShowDrafts(e.target.checked)} />
+          下書きも表示する
+        </label>
+      </div>
+
+      {visibleScenarios.map(({ scenario, no }) => (
         <div
           key={scenario.id}
           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white p-4 hover:shadow-sm"
         >
+          <span className="mr-1 shrink-0 text-xs text-neutral-400">No.{no}</span>
           <div className="mr-3 flex shrink-0 gap-1">
             <button
               type="button"
-              disabled={pending !== null || index === 0}
-              onClick={() => move(index, -1)}
+              disabled={pending !== null || no === 1}
+              onClick={() => move(scenario.id, -1)}
               className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
             >
               ▲
             </button>
             <button
               type="button"
-              disabled={pending !== null || index === scenarios.length - 1}
-              onClick={() => move(index, 1)}
+              disabled={pending !== null || no === scenarios.length}
+              onClick={() => move(scenario.id, 1)}
               className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
             >
               ▼
@@ -185,9 +209,9 @@ export function ScenariosList({ initialScenarios }: { initialScenarios: Scenario
           )}
         </div>
       ))}
-      {scenarios.length === 0 && (
+      {visibleScenarios.length === 0 && (
         <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
-          シナリオが登録されていません
+          {scenarios.length === 0 ? "シナリオが登録されていません" : "該当するシナリオがありません"}
         </p>
       )}
     </div>

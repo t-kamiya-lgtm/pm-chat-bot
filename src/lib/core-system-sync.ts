@@ -10,9 +10,8 @@ import type { CustomerRow } from "@/lib/customers";
  * すべての注文は支払方法を問わず基幹システムへ取り込む必要があるため、Stripe決済の注文にも適用する。
  */
 export async function submitStripeOrderToCoreSystem(orderId: string): Promise<void> {
+  const supabase = createSupabaseAdminClient();
   try {
-    const supabase = createSupabaseAdminClient();
-
     const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
     if (!order) return;
 
@@ -30,7 +29,7 @@ export async function submitStripeOrderToCoreSystem(orderId: string): Promise<vo
     const customerRow = customer as CustomerRow;
 
     const coreSystem = getCoreSystemAdapter();
-    await coreSystem.submitOrder({
+    const result = await coreSystem.submitOrder({
       orderId: order.id,
       customer: {
         name: customerRow.name,
@@ -50,7 +49,25 @@ export async function submitStripeOrderToCoreSystem(orderId: string): Promise<vo
         : undefined,
       shippingAddress: order.shipping_address ?? undefined,
     });
+    if (!result.accepted) {
+      await markImportError(supabase, orderId);
+    }
   } catch (err) {
     console.error("[core-system-sync] failed to submit stripe order", { orderId, err });
+    await markImportError(supabase, orderId);
   }
+}
+
+/**
+ * 基幹システムへの取り込みに失敗した注文を「取込みエラー」として扱う。
+ * 新規の受注ステータス値は追加せず、既存のimport_errorを流用する
+ * (フルフィルスタッフが管理画面のピンク表示で気づき、手動で取り込みし直す運用)。
+ * 担当者がすでに手動でステータスを進めている場合(not_imported以外)は上書きしない。
+ */
+async function markImportError(supabase: ReturnType<typeof createSupabaseAdminClient>, orderId: string) {
+  await supabase
+    .from("orders")
+    .update({ import_status: "import_error", import_status_updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+    .eq("import_status", "not_imported");
 }

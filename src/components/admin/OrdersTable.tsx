@@ -308,9 +308,11 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                 <tr
                   key={order.id}
                   className={
-                    order.import_status === "canceled"
-                      ? "border-t border-neutral-100 bg-neutral-100 text-neutral-400"
-                      : "border-t border-neutral-100"
+                    order.import_status === "import_error"
+                      ? "border-t border-neutral-100 bg-pink-50"
+                      : order.import_status === "canceled"
+                        ? "border-t border-neutral-100 bg-neutral-100 text-neutral-400"
+                        : "border-t border-neutral-100"
                   }
                 >
                   <td className="px-4 py-2">
