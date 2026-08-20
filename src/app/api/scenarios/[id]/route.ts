@@ -52,6 +52,12 @@ const updateSchema = z.object({
   adTag: z.string().nullable().optional(),
   conversionTag: z.string().nullable().optional(),
   emailFromAddress: z.string().nullable().optional(),
+  inquiryReceiveEmail: z.string().nullable().optional(),
+  inquiryAutoReplyFrom: z.string().nullable().optional(),
+  orderConfirmationFrom: z.string().nullable().optional(),
+  abandonedReminderFrom: z.string().nullable().optional(),
+  cancellationFrom: z.string().nullable().optional(),
+  shipmentCompleteFrom: z.string().nullable().optional(),
   popupIconUrl: z.string().nullable().optional(),
   popupPosition: z.enum(["bottom-right", "bottom-left"]).nullable().optional(),
   couponCodeFieldEnabled: z.boolean().optional(),
@@ -122,6 +128,18 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.adTag !== undefined && { ad_tag: input.adTag }),
       ...(input.conversionTag !== undefined && { conversion_tag: input.conversionTag }),
       ...(input.emailFromAddress !== undefined && { email_from_address: input.emailFromAddress }),
+      ...(input.inquiryReceiveEmail !== undefined && { inquiry_receive_email: input.inquiryReceiveEmail }),
+      ...(input.inquiryAutoReplyFrom !== undefined && { inquiry_auto_reply_from: input.inquiryAutoReplyFrom }),
+      ...(input.orderConfirmationFrom !== undefined && {
+        order_confirmation_from: input.orderConfirmationFrom,
+      }),
+      ...(input.abandonedReminderFrom !== undefined && {
+        abandoned_reminder_from: input.abandonedReminderFrom,
+      }),
+      ...(input.cancellationFrom !== undefined && { cancellation_from: input.cancellationFrom }),
+      ...(input.shipmentCompleteFrom !== undefined && {
+        shipment_complete_from: input.shipmentCompleteFrom,
+      }),
       ...(input.popupIconUrl !== undefined && { popup_icon_url: input.popupIconUrl }),
       ...(input.popupPosition !== undefined && { popup_position: input.popupPosition }),
       ...(input.couponCodeFieldEnabled !== undefined && {

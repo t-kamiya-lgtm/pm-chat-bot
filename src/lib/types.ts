@@ -122,6 +122,12 @@ export interface Scenario {
   adTag: string | null;
   conversionTag: string | null;
   emailFromAddress: string | null;
+  inquiryReceiveEmail: string | null;
+  inquiryAutoReplyFrom: string | null;
+  orderConfirmationFrom: string | null;
+  abandonedReminderFrom: string | null;
+  cancellationFrom: string | null;
+  shipmentCompleteFrom: string | null;
   popupIconUrl: string | null;
   popupPosition: "bottom-right" | "bottom-left" | null;
   couponCodeFieldEnabled: boolean;

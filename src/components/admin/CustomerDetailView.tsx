@@ -131,7 +131,7 @@ export function CustomerDetailView({
                 <th className="px-4 py-2">種別</th>
                 <th className="px-4 py-2">支払方法</th>
                 <th className="px-4 py-2">金額</th>
-                <th className="px-4 py-2">状態</th>
+                <th className="px-4 py-2">決済状況</th>
                 <th className="px-4 py-2">アンケート</th>
               </tr>
             </thead>

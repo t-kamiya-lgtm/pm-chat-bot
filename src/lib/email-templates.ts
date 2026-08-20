@@ -9,6 +9,10 @@ export interface EmailTemplates {
   abandonedLeadBody: string;
   inquiryAutoReplySubject: string;
   inquiryAutoReplyBody: string;
+  cancellationSubject: string;
+  cancellationBody: string;
+  shipmentCompleteSubject: string;
+  shipmentCompleteBody: string;
 }
 
 /** DBの行が空(未設定)の場合に使う初期テンプレート。 */
@@ -58,6 +62,26 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 {{message}}
 
 ※本メールは自動返信です。このメールへの返信はできません。`,
+  cancellationSubject: "【ご注文キャンセルのご連絡】{{product_name}}(注文番号: {{order_number}})",
+  cancellationBody: `{{customer_name}} 様
+
+ご注文（注文番号: {{order_number}}）は、キャンセルとなりましたのでご連絡いたします。
+
+■商品: {{product_name}}
+
+ご不明な点がございましたら、チャットからお気軽にお問い合わせください。`,
+  shipmentCompleteSubject: "【発送のお知らせ】{{product_name}}(注文番号: {{order_number}})",
+  shipmentCompleteBody: `{{customer_name}} 様
+
+ご注文の商品を発送いたしましたのでお知らせいたします。
+
+■ご注文番号: {{order_number}}
+■商品: {{product_name}}
+■出荷日: {{ship_date}}
+■配送業者: {{carrier_name}}
+■お問い合わせ番号: {{tracking_number}}
+
+商品到着まで今しばらくお待ちください。`,
 };
 
 /** "{{key}}" 形式のプレースホルダーを対応する値に置き換える。 */
@@ -79,5 +103,9 @@ export async function getEmailTemplates(
     abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
     inquiryAutoReplySubject: data?.inquiry_auto_reply_subject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
     inquiryAutoReplyBody: data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
+    cancellationSubject: data?.cancellation_subject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject,
+    cancellationBody: data?.cancellation_body || DEFAULT_EMAIL_TEMPLATES.cancellationBody,
+    shipmentCompleteSubject: data?.shipment_complete_subject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject,
+    shipmentCompleteBody: data?.shipment_complete_body || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody,
   };
 }

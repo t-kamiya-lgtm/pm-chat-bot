@@ -25,6 +25,8 @@ const IMPORT_STATUS_LABELS: Record<ImportStatus, string> = {
   not_imported: "未取込み",
   import_error: "取込みエラー",
   excluded: "対象外",
+  shipped: "出荷済",
+  canceled: "キャンセル",
 };
 
 /** 列幅はPC(横に広い画面)での閲覧を前提に、ドラッグでの調整・記憶ができるようにしている。 */
@@ -43,7 +45,6 @@ const COLUMN_KEYS = [
   "survey",
   "setSelections",
   "importStatus",
-  "cancel",
 ] as const;
 type ColumnKey = (typeof COLUMN_KEYS)[number];
 
@@ -57,12 +58,11 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   type: "種別",
   paymentMethod: "支払い方法",
   amount: "金額",
-  status: "状態",
+  status: "決済状況",
   deliveryDateTime: "お届け希望日時",
   survey: "アンケート",
   setSelections: "セット内訳",
-  importStatus: "取り込み",
-  cancel: "キャンセル",
+  importStatus: "受注ステータス",
 };
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
@@ -80,7 +80,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   survey: 90,
   setSelections: 90,
   importStatus: 120,
-  cancel: 150,
 };
 
 const MIN_COLUMN_WIDTH = 40;
@@ -103,7 +102,9 @@ export interface OrderRow {
   set_selections: { id: string; name: string }[] | null;
   import_status: ImportStatus;
   billing_cycle_number: number;
-  canceled_at: string | null;
+  shipped_at: string | null;
+  carrier_name: string | null;
+  tracking_number: string | null;
   customers: { name: string; email: string } | null;
   products: { name: string } | null;
 }
@@ -245,19 +246,6 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
     }
   }
 
-  async function toggleCanceled(id: string, canceled: boolean) {
-    const res = await fetch(`/api/orders/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ canceled }),
-    });
-    if (res.ok) {
-      router.refresh();
-    } else {
-      setToast({ message: "キャンセル状態の更新に失敗しました", type: "error" });
-    }
-  }
-
   return (
     <div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
@@ -320,7 +308,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                 <tr
                   key={order.id}
                   className={
-                    order.canceled_at
+                    order.import_status === "canceled"
                       ? "border-t border-neutral-100 bg-neutral-100 text-neutral-400"
                       : "border-t border-neutral-100"
                   }
@@ -349,14 +337,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <td className="px-4 py-2">
                     {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
                   </td>
-                  <td className="px-4 py-2">
-                    {STATUS_LABELS[order.status]}
-                    {order.canceled_at && (
-                      <span className="ml-1 rounded bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
-                        キャンセル済み
-                      </span>
-                    )}
-                  </td>
+                  <td className="px-4 py-2">{STATUS_LABELS[order.status]}</td>
                   <td className="px-4 py-2">
                     {formatDeliveryDate(order.delivery_date)} {order.delivery_time_slot ?? ""}
                   </td>
@@ -393,19 +374,20 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                         </option>
                       ))}
                     </select>
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleCanceled(order.id, !order.canceled_at)}
-                      className={
-                        order.canceled_at
-                          ? "w-full rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
-                          : "w-full rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
-                      }
-                    >
-                      {order.canceled_at ? "キャンセルを取り消す" : "キャンセルにする"}
-                    </button>
+                    {order.import_status === "shipped" && (
+                      <p
+                        className="mt-1 cursor-help truncate text-xs text-neutral-400 underline decoration-dotted"
+                        title={[
+                          order.shipped_at && `出荷日: ${new Date(order.shipped_at).toLocaleDateString("ja-JP")}`,
+                          order.carrier_name && `配送業者: ${order.carrier_name}`,
+                          order.tracking_number && `送り状番号: ${order.tracking_number}`,
+                        ]
+                          .filter(Boolean)
+                          .join("\n")}
+                      >
+                        送り状情報
+                      </p>
+                    )}
                   </td>
                 </tr>
               );
