@@ -1120,6 +1120,39 @@ function EmbedSnippet({ label, code }: { label: string; code: string }) {
   );
 }
 
+/**
+ * ノード間の「隙間」に表示するドラッグ移動先ガイド。ドラッグ中でなければ通常の行間スペースとして機能し、
+ * ドラッグ中にこの隙間へホバーすると青い線が表示され、その状態で指を離すとそこへ移動する
+ * (線が出ていない場所で離した場合は何も起きず、元の位置のままになる)。
+ */
+function DropGuide({
+  active,
+  onDragOver,
+  onDrop,
+}: {
+  active: boolean;
+  onDragOver: () => void;
+  onDrop: () => void;
+}) {
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        onDragOver();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+      className="relative h-3"
+    >
+      {active && (
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-blue-500" />
+      )}
+    </div>
+  );
+}
+
 interface Props {
   scenario: Scenario;
   nodes: ScenarioNode[];
@@ -1272,6 +1305,7 @@ export function ScenarioEditor({
   const [newNodeMemo, setNewNodeMemo] = useState("");
   const [reorderPending, setReorderPending] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragOverGap, setDragOverGap] = useState<number | null>(null);
   const [menuItems, setMenuItems] = useState<ScenarioMenuItem[]>(initialMenuItems);
   const [newMenuLabel, setNewMenuLabel] = useState("");
   const [newMenuActionType, setNewMenuActionType] = useState<MenuItemActionType>("node");
@@ -2081,12 +2115,17 @@ export function ScenarioEditor({
     router.refresh();
   }
 
-  function handleDrop(targetIndex: number) {
+  /**
+   * gapIndexは、ドラッグ中のノードを除く前の並びにおける「隙間」の位置(0=先頭、nodes.length=末尾)。
+   * ドラッグ元を取り除いた後の並びでの位置に変換してmoveNodeToPositionへ渡す(▲▼ボタンと同じ計算)。
+   */
+  function handleGapDrop(gapIndex: number) {
     if (draggingIndex === null) return;
     const fromIndex = draggingIndex;
     setDraggingIndex(null);
-    if (fromIndex === targetIndex) return;
-    moveNodeToPosition(fromIndex, targetIndex + 1);
+    setDragOverGap(null);
+    const toPosition = gapIndex <= fromIndex ? gapIndex + 1 : gapIndex;
+    moveNodeToPosition(fromIndex, toPosition);
   }
 
   return (
@@ -2279,66 +2318,78 @@ export function ScenarioEditor({
         </p>
       )}
 
-      <div className="mb-8 space-y-3">
+      <div className="mb-8">
+        <DropGuide
+          active={draggingIndex !== null && dragOverGap === 0}
+          onDragOver={() => setDragOverGap(0)}
+          onDrop={() => handleGapDrop(0)}
+        />
         {nodes.map((node, index) => (
-          <div
-            key={node.id}
-            className={`flex items-start gap-2 ${draggingIndex === index ? "opacity-40" : ""}`}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleDrop(index)}
-          >
-            <div className="flex shrink-0 flex-col items-center gap-1 pt-4">
-              <div
-                draggable
-                onDragStart={() => setDraggingIndex(index)}
-                onDragEnd={() => setDraggingIndex(null)}
-                title="ドラッグして並び替え"
-                className="cursor-grab select-none rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-50 active:cursor-grabbing"
-              >
-                ⠿
+          <div key={node.id}>
+            <div
+              className={`flex items-start gap-2 ${draggingIndex === index ? "opacity-40" : ""}`}
+            >
+              <div className="flex shrink-0 flex-col items-center gap-1 pt-4">
+                <div
+                  draggable
+                  onDragStart={() => setDraggingIndex(index)}
+                  onDragEnd={() => {
+                    setDraggingIndex(null);
+                    setDragOverGap(null);
+                  }}
+                  title="ドラッグして並び替え"
+                  className="cursor-grab select-none rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-50 active:cursor-grabbing"
+                >
+                  ⠿
+                </div>
+                <input
+                  type="number"
+                  key={`${node.id}-${index}`}
+                  defaultValue={index + 1}
+                  min={1}
+                  max={nodes.length}
+                  disabled={reorderPending !== null}
+                  onBlur={(e) => {
+                    const value = Number(e.target.value);
+                    if (Number.isFinite(value) && value !== index + 1) moveNodeToPosition(index, value);
+                  }}
+                  className="input w-16 px-1 text-center"
+                />
+                <button
+                  type="button"
+                  disabled={reorderPending !== null || index === 0}
+                  onClick={() => moveNodeToPosition(index, index)}
+                  className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  disabled={reorderPending !== null || index === nodes.length - 1}
+                  onClick={() => moveNodeToPosition(index, index + 2)}
+                  className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
+                >
+                  ▼
+                </button>
               </div>
-              <input
-                type="number"
-                key={`${node.id}-${index}`}
-                defaultValue={index + 1}
-                min={1}
-                max={nodes.length}
-                disabled={reorderPending !== null}
-                onBlur={(e) => {
-                  const value = Number(e.target.value);
-                  if (Number.isFinite(value) && value !== index + 1) moveNodeToPosition(index, value);
-                }}
-                className="input w-16 px-1 text-center"
-              />
-              <button
-                type="button"
-                disabled={reorderPending !== null || index === 0}
-                onClick={() => moveNodeToPosition(index, index)}
-                className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                disabled={reorderPending !== null || index === nodes.length - 1}
-                onClick={() => moveNodeToPosition(index, index + 2)}
-                className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-              >
-                ▼
-              </button>
+              <div className="flex-1">
+                <NodeCard
+                  scenarioId={scenario.id}
+                  node={node}
+                  isFirst={index === 0}
+                  onMakeEntry={() => moveNodeToPosition(index, 1)}
+                  products={products}
+                  nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  showToast={setToast}
+                />
+              </div>
             </div>
-            <div className="flex-1">
-              <NodeCard
-                scenarioId={scenario.id}
-                node={node}
-                isFirst={index === 0}
-                onMakeEntry={() => moveNodeToPosition(index, 1)}
-                products={products}
-                nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
-                onDelete={() => handleDeleteNode(node.id)}
-                showToast={setToast}
-              />
-            </div>
+            <DropGuide
+              active={draggingIndex !== null && dragOverGap === index + 1}
+              onDragOver={() => setDragOverGap(index + 1)}
+              onDrop={() => handleGapDrop(index + 1)}
+            />
           </div>
         ))}
         {nodes.length === 0 && (
