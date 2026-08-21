@@ -61,16 +61,15 @@ export function ProductDetailPanel({
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-white">
-      <div className="flex items-center justify-between border-b border-neutral-200 p-4">
-        <p className="font-medium">商品詳細</p>
+      <div className="flex items-center gap-3 border-b border-neutral-200 p-4">
         <button
           type="button"
           onClick={onClose}
-          aria-label="閉じる"
-          className="text-2xl leading-none text-neutral-400 hover:text-neutral-600"
+          className="flex items-center gap-1 text-sm text-neutral-600 hover:text-neutral-900"
         >
-          ×
+          <span aria-hidden>◀</span> 戻る
         </button>
+        <p className="font-medium">商品詳細</p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
