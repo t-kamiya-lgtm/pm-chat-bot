@@ -96,8 +96,8 @@ export async function POST(request: Request) {
   // 2回目以降はStripeが自動でamountをそのまま繰り返し請求する)。
   const firstTimeDiscountAmount =
     product.first_time_price !== null ? Math.max(0, amount - product.first_time_price * quantity) : 0;
-  // 定期支払いの単価には含めない(アドオンは初回請求のみの一括請求項目として追加する)
-  const breakdown = calculateTotal(amount, product.shipping_fee, 0);
+  // 定期のPrice(2回目以降の請求額)には値引きを含めない(アドオンは初回請求のみの一括請求項目として追加する)
+  const recurringBreakdown = calculateTotal(amount, product.shipping_fee, 0);
 
   const supabase = createSupabaseAdminClient();
   // クーポン割引も、定期の単価自体は変えず初回請求のみの一括値引き項目として適用する
@@ -106,6 +106,14 @@ export async function POST(request: Request) {
     code: couponCode,
     subtotal: amount + addonAmount,
   });
+  // 画面表示・注文データに使う「今回のお支払い金額」は、クーポン割引・初回特別価格の
+  // 値引きを反映した金額にする(実際にStripeへ請求する初回invoiceの金額と一致させる)
+  const breakdown = calculateTotal(
+    amount,
+    product.shipping_fee,
+    0,
+    (appliedCoupon?.discountAmount ?? 0) + firstTimeDiscountAmount,
+  );
 
   const customer = await upsertCustomer(customerInput);
 
@@ -133,7 +141,7 @@ export async function POST(request: Request) {
     const { interval, intervalCount } = INTERVAL_MAP[subscriptionInterval];
     const price = await stripe.prices.create({
       currency: "jpy",
-      unit_amount: breakdown.total,
+      unit_amount: recurringBreakdown.total,
       recurring: { interval, interval_count: intervalCount },
       product_data: { name: product.name },
     });

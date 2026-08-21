@@ -2169,9 +2169,10 @@ export function ScenarioEditor({
         )}
         <div className="flex items-center gap-2">
           <a
-            href={`/widget?scenarioId=${scenario.id}`}
+            href={`/widget?scenarioId=${scenario.id}&preview=1`}
             target="_blank"
             rel="noopener noreferrer"
+            title="下書きでも確認できる、注文・決済・メール送信が一切発生しない安全なプレビュー"
             className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
           >
             プレビュー
