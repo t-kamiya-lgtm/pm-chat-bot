@@ -840,6 +840,117 @@ function ProductNextNodeEditor({
   );
 }
 
+/** 商品ごとのアップセル・クロスセル設定(任意)。checkoutノード自身の設定より優先して使われる。 */
+interface ProductUpsellEntry {
+  upsellProductId?: string;
+  upsellImageUrl?: string;
+  upsellComment?: string;
+  crossSellProductId?: string;
+  crossSellImageUrl?: string;
+  crossSellComment?: string;
+}
+
+/**
+ * 商品ごとのアップセル・クロスセルを、商品を横に並べたマトリクス形式で設定する。
+ * どの商品にどのアップセル/クロスセルが紐付いているかを一目で確認・編集できるようにする
+ * (商品ごとに別のcheckoutノードを作って個別に設定していた従来のやり方の代替)。
+ */
+function ProductUpsellMatrixEditor({
+  productIds,
+  products,
+  value,
+  onChange,
+}: {
+  productIds: string[];
+  products: PickableProduct[];
+  value: Record<string, ProductUpsellEntry>;
+  onChange: (map: Record<string, ProductUpsellEntry>) => void;
+}) {
+  if (productIds.length === 0) return null;
+
+  function updateEntry(productId: string, patch: Partial<ProductUpsellEntry>) {
+    onChange({ ...value, [productId]: { ...value[productId], ...patch } });
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-neutral-200 p-3">
+      <span className="block text-xs font-medium text-neutral-500">
+        商品ごとのアップセル・クロスセル(任意。その商品が選ばれた際に決済確認画面で提案します)
+      </span>
+      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+        {productIds.map((id) => {
+          const product = products.find((p) => p.id === id);
+          const entry = value[id] ?? {};
+          return (
+            <div key={id} className="w-56 shrink-0 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-2">
+              <p
+                className="truncate text-xs font-semibold text-neutral-700"
+                title={product ? productLabel(product) : id}
+              >
+                {product ? productLabel(product) : id}
+              </p>
+              <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
+                <span className="block text-xs font-medium text-amber-800">アップセル</span>
+                <OptionalProductSelect
+                  label="商品"
+                  products={products}
+                  value={entry.upsellProductId ?? ""}
+                  onChange={(v) => updateEntry(id, { upsellProductId: v || undefined })}
+                  compact
+                />
+                {entry.upsellProductId && (
+                  <>
+                    <input
+                      className="input text-xs"
+                      placeholder="画像URL(任意)"
+                      value={entry.upsellImageUrl ?? ""}
+                      onChange={(e) => updateEntry(id, { upsellImageUrl: e.target.value || undefined })}
+                    />
+                    <textarea
+                      className="input text-xs"
+                      rows={2}
+                      placeholder="案内文(任意)"
+                      value={entry.upsellComment ?? ""}
+                      onChange={(e) => updateEntry(id, { upsellComment: e.target.value || undefined })}
+                    />
+                  </>
+                )}
+              </div>
+              <div className="space-y-1 rounded-md border border-sky-200 bg-sky-50 p-2">
+                <span className="block text-xs font-medium text-sky-800">クロスセル</span>
+                <OptionalProductSelect
+                  label="商品"
+                  products={crossSellCandidates(products, id)}
+                  value={entry.crossSellProductId ?? ""}
+                  onChange={(v) => updateEntry(id, { crossSellProductId: v || undefined })}
+                  compact
+                />
+                {entry.crossSellProductId && (
+                  <>
+                    <input
+                      className="input text-xs"
+                      placeholder="画像URL(任意)"
+                      value={entry.crossSellImageUrl ?? ""}
+                      onChange={(e) => updateEntry(id, { crossSellImageUrl: e.target.value || undefined })}
+                    />
+                    <textarea
+                      className="input text-xs"
+                      rows={2}
+                      placeholder="案内文(任意)"
+                      value={entry.crossSellComment ?? ""}
+                      onChange={(e) => updateEntry(id, { crossSellComment: e.target.value || undefined })}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function OptionsEditor({
   options,
   onChange,
@@ -3418,6 +3529,9 @@ function NodeCard({
         .map((id) => [id, node.nextNodeMap[id]]),
     ),
   );
+  const [productUpsellMap, setProductUpsellMap] = useState<Record<string, ProductUpsellEntry>>(
+    (node.content.productUpsell as Record<string, ProductUpsellEntry> | undefined) ?? {},
+  );
   const [text, setText] = useState((node.content.text as string) ?? "");
   const [imageUrl, setImageUrl] = useState((node.content.imageUrl as string) ?? "");
   const [imageUrls, setImageUrls] = useState<string[]>(
@@ -3471,6 +3585,7 @@ function NodeCard({
     setProductNextMap(
       Object.fromEntries(ids.filter((id) => node.nextNodeMap[id]).map((id) => [id, node.nextNodeMap[id]])),
     );
+    setProductUpsellMap((node.content.productUpsell as Record<string, ProductUpsellEntry> | undefined) ?? {});
     setText((node.content.text as string) ?? "");
     setImageUrl((node.content.imageUrl as string) ?? "");
     setImageUrls(
@@ -3506,6 +3621,17 @@ function NodeCard({
         return;
       }
       content = node.type === "product" ? { productIds } : { productId: productIds[0] };
+      if (node.type === "product") {
+        const prunedUpsell = Object.fromEntries(
+          productIds
+            .filter((id) => productUpsellMap[id])
+            .map((id) => [id, productUpsellMap[id]])
+            .filter(([, entry]) => (entry as ProductUpsellEntry).upsellProductId || (entry as ProductUpsellEntry).crossSellProductId),
+        );
+        if (Object.keys(prunedUpsell).length > 0) {
+          content = { ...content, productUpsell: prunedUpsell };
+        }
+      }
       if (node.type === "checkout") {
         const mainProduct = products.find((p) => p.id === productIds[0]);
         const crossSellProduct = products.find((p) => p.id === crossSellProductId);
@@ -3690,14 +3816,22 @@ function NodeCard({
             ))}
 
           {node.type === "product" && (
-            <ProductNextNodeEditor
-              productIds={productIds}
-              products={products}
-              nextNodeByProduct={productNextMap}
-              onChange={setProductNextMap}
-              nodeOptions={nodeOptions}
-              compact
-            />
+            <>
+              <ProductNextNodeEditor
+                productIds={productIds}
+                products={products}
+                nextNodeByProduct={productNextMap}
+                onChange={setProductNextMap}
+                nodeOptions={nodeOptions}
+                compact
+              />
+              <ProductUpsellMatrixEditor
+                productIds={productIds}
+                products={products}
+                value={productUpsellMap}
+                onChange={setProductUpsellMap}
+              />
+            </>
           )}
 
           {node.type === "checkout" && (
@@ -3938,10 +4072,25 @@ function NodeCard({
                     const target =
                       nodeOptions.find((n) => n.id === productNextMap[id]) ??
                       nodeOptions.find((n) => n.id === defaultNext);
+                    const upsell = productUpsellMap[id];
+                    const upsellName = upsell?.upsellProductId
+                      ? products.find((p) => p.id === upsell.upsellProductId)?.name
+                      : undefined;
+                    const crossSellName = upsell?.crossSellProductId
+                      ? products.find((p) => p.id === upsell.crossSellProductId)?.name
+                      : undefined;
                     return (
                       <li key={id}>
                         {product ? productLabel(product) : "未設定"} →{" "}
                         {target?.summary ?? "自動: 一覧の次のノードへ進む"}
+                        {(upsellName || crossSellName) && (
+                          <span className="text-neutral-400">
+                            {" "}
+                            ({[upsellName && `アップセル: ${upsellName}`, crossSellName && `クロスセル: ${crossSellName}`]
+                              .filter(Boolean)
+                              .join(" / ")})
+                          </span>
+                        )}
                       </li>
                     );
                   })}
