@@ -885,6 +885,28 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
 
     const node = nodesById[item.nodeId];
     const productUpsell = resolveProductUpsell(node, productId, nodesById);
+
+    // プレビューではアップセル・クロスセルが出ない理由が分からないと設定を確認しづらいため、
+    // 「未設定」と「設定はあるが商品を解決できない」を区別して知らせる(本番では表示しない)。
+    if (isPreviewMode) {
+      const unresolved = [
+        productUpsell?.upsellProductId && !productsById[productUpsell.upsellProductId]
+          ? "アップセル"
+          : null,
+        productUpsell?.crossSellProductId && !productsById[productUpsell.crossSellProductId]
+          ? "クロスセル"
+          : null,
+      ].filter(Boolean);
+      const notice = !productUpsell?.upsellProductId && !productUpsell?.crossSellProductId
+        ? "プレビュー: この商品にはアップセル・クロスセルが設定されていません(商品提示ノードのマトリクスで設定してください)。"
+        : unresolved.length > 0
+          ? `プレビュー: ${unresolved.join("・")}に設定された商品が見つかりませんでした(商品が削除されている可能性があります)。`
+          : null;
+      if (notice) {
+        setTimeline((prev) => [...prev, { id: nextId(), kind: "bot-text", text: notice }]);
+      }
+    }
+
     const next = node?.next_node_map[productId] ?? node?.next_node_map.default;
     if (next && nodesById[next]?.type === "checkout") {
       advance(next, nodesById, productsById, item.id, orderedNodeIds, productId, productUpsell);
