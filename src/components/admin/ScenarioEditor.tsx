@@ -17,8 +17,10 @@ import { DEFAULT_VIDEO_ASPECT_RATIO, detectAspectRatio, getVideoThumbnailUrl } f
 import { contrastTextColor, effectiveTextColor, type TextColorOverride } from "@/lib/color";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
+import { ErrorDialog } from "@/components/admin/ErrorDialog";
 
 type ToastState = { message: string; type: "success" | "error" } | null;
+type ErrorDialogState = { title: string; description?: string; items?: string[] } | null;
 
 const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   checkbox: "チェックボックス(複数選択)",
@@ -382,6 +384,51 @@ function parseChoiceOptionTarget(
     return { nextNodeId: nextNodeId ?? "", qaProductId: productId };
   }
   return { nextNodeId: target };
+}
+
+const CHECKOUT_LINK_ERROR_TITLE = "決済導線ノードへは接続できません";
+const CHECKOUT_LINK_ERROR_DESCRIPTION =
+  "商品を選ばずに決済フォームへ入る導線になり、シナリオとして成立しません。\n" +
+  "決済フォームへは「商品提示」ノードで商品を選んだあと自動的に進みます。接続先を商品提示ノードに変更してください。";
+
+/** next_node_mapの値(Q&A sentinelを含む)から、実際に遷移するノードIDを取り出す。 */
+function resolveTargetNodeIds(target: string): string[] {
+  if (!target) return [];
+  if (target.startsWith(QA_TARGET_PREFIX)) {
+    // "qa:<productId>|<nextNodeId>" — Q&Aを閉じた時/「購入へ進む」で進む先が実ノード
+    const nextNodeId = target.slice(QA_TARGET_PREFIX.length).split("|")[1];
+    return nextNodeId ? [nextNodeId] : [];
+  }
+  return [target];
+}
+
+/**
+ * 決済導線ノードへ直接つながっている接続を洗い出す。
+ * 商品提示ノードは保存時に自動で紐付けを解除するため対象外。
+ */
+function findCheckoutLinks(nodes: ScenarioNode[], products: PickableProduct[]): string[] {
+  const checkoutNodes = new Map(nodes.filter((n) => n.type === "checkout").map((n) => [n.id, n]));
+  if (checkoutNodes.size === 0) return [];
+
+  const found: string[] = [];
+  const entryNode = nodes[0];
+  if (entryNode && entryNode.type === "checkout") {
+    found.push(`開始ノードが「決済導線: ${truncate(nodeSummary(entryNode, products), 40)}」になっています`);
+  }
+  for (const node of nodes) {
+    if (node.type === "product" || node.type === "checkout") continue;
+    for (const target of Object.values(node.nextNodeMap)) {
+      for (const targetId of resolveTargetNodeIds(target)) {
+        const checkoutNode = checkoutNodes.get(targetId);
+        if (!checkoutNode) continue;
+        found.push(
+          `「${NODE_TYPE_LABELS[node.type]}: ${truncate(nodeSummary(node, products), 30)}」→` +
+            `「決済導線: ${truncate(nodeSummary(checkoutNode, products), 30)}」`,
+        );
+      }
+    }
+  }
+  return found;
 }
 
 function serializeSurveyQuestions(questions: SurveyQuestion[]): SurveyQuestion[] {
@@ -1347,6 +1394,7 @@ export function ScenarioEditor({
 }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
+  const [errorDialog, setErrorDialog] = useState<ErrorDialogState>(null);
   const [publishing, setPublishing] = useState(false);
   const [editingScenarioName, setEditingScenarioName] = useState(false);
   const [scenarioNameDraft, setScenarioNameDraft] = useState(scenario.name);
@@ -1445,12 +1493,6 @@ export function ScenarioEditor({
   }, [couponForm]);
   const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
   const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
-  const [newNodeUpsellProductId, setNewNodeUpsellProductId] = useState("");
-  const [newNodeUpsellImageUrl, setNewNodeUpsellImageUrl] = useState("");
-  const [newNodeUpsellComment, setNewNodeUpsellComment] = useState("");
-  const [newNodeCrossSellProductId, setNewNodeCrossSellProductId] = useState("");
-  const [newNodeCrossSellImageUrl, setNewNodeCrossSellImageUrl] = useState("");
-  const [newNodeCrossSellComment, setNewNodeCrossSellComment] = useState("");
   const [newNodeProductUpsell, setNewNodeProductUpsell] = useState<Record<string, ProductUpsellEntry>>({});
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
@@ -1509,6 +1551,18 @@ export function ScenarioEditor({
   const nodeOptions = nodes.map((n) => ({ id: n.id, summary: nodeSummary(n, products) }));
 
   async function togglePublish() {
+    // 公開時のみ検証する(下書きに戻す操作は途中の状態でも通す)
+    if (scenario.status !== "published") {
+      const invalidLinks = findCheckoutLinks(nodes, products);
+      if (invalidLinks.length > 0) {
+        setErrorDialog({
+          title: CHECKOUT_LINK_ERROR_TITLE,
+          description: `次の接続があるため公開できません。\n${CHECKOUT_LINK_ERROR_DESCRIPTION}`,
+          items: invalidLinks,
+        });
+        return;
+      }
+    }
     setPublishing(true);
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
@@ -2049,29 +2103,6 @@ export function ScenarioEditor({
           content = { ...content, productUpsell: prunedUpsell };
         }
       }
-      if (newNodeType === "checkout") {
-        const mainProduct = products.find((p) => p.id === validProductIds[0]);
-        const crossSellProduct = products.find((p) => p.id === newNodeCrossSellProductId);
-        if (
-          crossSellProduct?.orderType === "subscription" &&
-          mainProduct?.orderType !== "subscription"
-        ) {
-          setToast({
-            message: "対象商品が単品のため、定期対応品はクロスセルに設定できません",
-            type: "error",
-          });
-          return;
-        }
-        content = {
-          ...content,
-          ...(newNodeUpsellProductId && { upsellProductId: newNodeUpsellProductId }),
-          ...(newNodeUpsellImageUrl.trim() && { upsellImageUrl: newNodeUpsellImageUrl.trim() }),
-          ...(newNodeUpsellComment.trim() && { upsellComment: newNodeUpsellComment.trim() }),
-          ...(newNodeCrossSellProductId && { crossSellProductId: newNodeCrossSellProductId }),
-          ...(newNodeCrossSellImageUrl.trim() && { crossSellImageUrl: newNodeCrossSellImageUrl.trim() }),
-          ...(newNodeCrossSellComment.trim() && { crossSellComment: newNodeCrossSellComment.trim() }),
-        };
-      }
       // 商品ノードは商品を選ぶと共通の決済フォームへ直接進むため、商品ごとの行き先は設定しない
       if (newNodeDefaultNext) {
         nextNodeMap = { default: newNodeDefaultNext };
@@ -2160,6 +2191,26 @@ export function ScenarioEditor({
       if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
     }
 
+    // 商品を選ばずに決済フォームへ入る導線は成立しないため、決済導線ノードへの接続は作らせない
+    if (newNodeType !== "product") {
+      const checkoutNodeIds = new Set(nodes.filter((n) => n.type === "checkout").map((n) => n.id));
+      const blocked = Object.values(nextNodeMap)
+        .flatMap(resolveTargetNodeIds)
+        .filter((id) => checkoutNodeIds.has(id))
+        .map((id) => {
+          const target = nodes.find((n) => n.id === id);
+          return `「決済導線: ${truncate(target ? nodeSummary(target, products) : id, 40)}」`;
+        });
+      if (blocked.length > 0) {
+        setErrorDialog({
+          title: CHECKOUT_LINK_ERROR_TITLE,
+          description: CHECKOUT_LINK_ERROR_DESCRIPTION,
+          items: blocked,
+        });
+        return;
+      }
+    }
+
     const res = await fetch(`/api/scenarios/${scenario.id}/nodes`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -2190,12 +2241,6 @@ export function ScenarioEditor({
     }
 
     setNewNodeProductIds([]);
-    setNewNodeUpsellProductId("");
-    setNewNodeUpsellImageUrl("");
-    setNewNodeUpsellComment("");
-    setNewNodeCrossSellProductId("");
-    setNewNodeCrossSellImageUrl("");
-    setNewNodeCrossSellComment("");
     setNewNodeProductUpsell({});
     setNewNodeText("");
     setNewNodeImageUrl("");
@@ -2316,6 +2361,14 @@ export function ScenarioEditor({
   return (
     <div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+      {errorDialog && (
+        <ErrorDialog
+          title={errorDialog.title}
+          description={errorDialog.description}
+          items={errorDialog.items}
+          onClose={() => setErrorDialog(null)}
+        />
+      )}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         {editingScenarioName ? (
           <div className="flex flex-1 flex-wrap items-center gap-2">
@@ -2578,6 +2631,7 @@ export function ScenarioEditor({
                   nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
                   onDelete={() => handleDeleteNode(node.id)}
                   showToast={setToast}
+                  showErrorDialog={setErrorDialog}
                 />
               </div>
             </div>
@@ -2610,11 +2664,15 @@ export function ScenarioEditor({
             value={newNodeType}
             onChange={(e) => setNewNodeType(e.target.value as ScenarioNodeType)}
           >
-            {(Object.keys(NODE_TYPE_LABELS) as ScenarioNodeType[]).map((type) => (
-              <option key={type} value={type}>
-                {NODE_TYPE_LABELS[type]}
-              </option>
-            ))}
+            {/* 決済導線ノードは廃止(商品提示ノードで商品を選ぶと決済フォームへ直接進む)。
+                既存ノードの表示のためラベル自体は残すが、新規追加はできないようにする。 */}
+            {(Object.keys(NODE_TYPE_LABELS) as ScenarioNodeType[])
+              .filter((type) => type !== "checkout")
+              .map((type) => (
+                <option key={type} value={type}>
+                  {NODE_TYPE_LABELS[type]}
+                </option>
+              ))}
           </select>
         </label>
 
@@ -2627,18 +2685,6 @@ export function ScenarioEditor({
           />
         )}
 
-        {newNodeType === "checkout" && (
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-neutral-700">品番(1件選択)</span>
-            <ProductPicker
-              type={newNodeType}
-              products={products}
-              selectedIds={newNodeProductIds}
-              onChange={setNewNodeProductIds}
-            />
-          </label>
-        )}
-
         {newNodeType === "product" && (
           <ProductUpsellMatrixEditor
             productIds={newNodeProductIds}
@@ -2647,72 +2693,6 @@ export function ScenarioEditor({
             value={newNodeProductUpsell}
             onChange={setNewNodeProductUpsell}
           />
-        )}
-
-        {newNodeType === "checkout" && (
-          <div className="space-y-3 rounded-md border border-neutral-200 p-3">
-            <p className="text-xs text-neutral-500">
-              注文確認画面でのアップセル(商品を入れ替える提案)・クロスセル(追加でもう1点提案)を設定できます(どちらも任意)。
-            </p>
-            <OptionalProductSelect
-              label="アップセル商品(任意・「商品を変更する」ボタンで入れ替え提案)"
-              products={products}
-              value={newNodeUpsellProductId}
-              onChange={setNewNodeUpsellProductId}
-            />
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">アップセル画像URL(任意・正方形1:1推奨)</span>
-              <input
-                className="input"
-                value={newNodeUpsellImageUrl}
-                onChange={(e) => setNewNodeUpsellImageUrl(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">
-                アップセルの案内文(任意・未入力時は「〇〇はいかがですか？」を自動表示)
-              </span>
-              <textarea
-                className="input"
-                rows={2}
-                value={newNodeUpsellComment}
-                onChange={(e) => setNewNodeUpsellComment(e.target.value)}
-              />
-            </label>
-            <OptionalProductSelect
-              label="クロスセル商品(任意・「カートに追加する」ボタンで追加提案)"
-              products={crossSellCandidates(products, newNodeProductIds[0])}
-              value={newNodeCrossSellProductId}
-              onChange={setNewNodeCrossSellProductId}
-            />
-            {(() => {
-              const mainProduct = products.find((p) => p.id === newNodeProductIds[0]);
-              return mainProduct && mainProduct.orderType !== "subscription" ? (
-                <p className="text-xs text-neutral-400">
-                  対象商品が単品のため、定期対応品はクロスセルに選べません(2回目以降の注文を作成できないため)。
-                </p>
-              ) : null;
-            })()}
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">クロスセル画像URL(任意・正方形1:1推奨)</span>
-              <input
-                className="input"
-                value={newNodeCrossSellImageUrl}
-                onChange={(e) => setNewNodeCrossSellImageUrl(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">
-                クロスセルの案内文(任意・未入力時は「〇〇も一緒にいかがですか？」を自動表示)
-              </span>
-              <textarea
-                className="input"
-                rows={2}
-                value={newNodeCrossSellComment}
-                onChange={(e) => setNewNodeCrossSellComment(e.target.value)}
-              />
-            </label>
-          </div>
         )}
 
         {newNodeType === "message" && (
@@ -3589,6 +3569,7 @@ function NodeCard({
   onMakeEntry,
   onDelete,
   showToast,
+  showErrorDialog,
 }: {
   scenarioId: string;
   node: ScenarioNode;
@@ -3599,6 +3580,7 @@ function NodeCard({
   onMakeEntry: () => void;
   onDelete: () => void;
   showToast: (toast: { message: string; type: "success" | "error" }) => void;
+  showErrorDialog: (dialog: { title: string; description?: string; items?: string[] }) => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -3851,6 +3833,26 @@ function NodeCard({
         questions: serializeSurveyQuestions(surveyQuestions),
       };
       if (defaultNext) nextNodeMap = { default: defaultNext };
+    }
+
+    // 商品を選ばずに決済フォームへ入る導線は成立しないため、決済導線ノードへの接続は保存させない
+    if (node.type !== "product" && node.type !== "checkout") {
+      const checkoutNodeIds = new Set(allNodes.filter((n) => n.type === "checkout").map((n) => n.id));
+      const blocked = Object.values(nextNodeMap)
+        .flatMap(resolveTargetNodeIds)
+        .filter((id) => checkoutNodeIds.has(id))
+        .map((id) => {
+          const target = allNodes.find((n) => n.id === id);
+          return `「決済導線: ${truncate(target ? nodeSummary(target, products) : id, 40)}」`;
+        });
+      if (blocked.length > 0) {
+        showErrorDialog({
+          title: CHECKOUT_LINK_ERROR_TITLE,
+          description: CHECKOUT_LINK_ERROR_DESCRIPTION,
+          items: blocked,
+        });
+        return;
+      }
     }
 
     setSaving(true);
@@ -4164,6 +4166,12 @@ function NodeCard({
           {memo && (
             <p className="mb-2 rounded bg-amber-50 p-2 text-xs whitespace-pre-wrap text-amber-800">
               メモ: {memo}
+            </p>
+          )}
+          {node.type === "checkout" && (
+            <p className="mb-2 rounded bg-red-50 p-2 text-xs text-red-700">
+              決済導線ノードは廃止されました。商品提示ノードで商品を選ぶと決済フォームへ直接進むため、このノードは不要です。
+              アップセル・クロスセルの設定は商品提示ノードに引き継がれているため、このノードは削除してください。
             </p>
           )}
           {node.type === "product" ? (
