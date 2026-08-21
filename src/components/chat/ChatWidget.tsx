@@ -25,6 +25,16 @@ interface GreetingItem {
   text?: string;
 }
 
+/** 商品ノード側で商品ごとに設定できるアップセル・クロスセル(あればcheckoutノード自身の設定より優先)。 */
+interface ProductUpsellEntry {
+  upsellProductId?: string;
+  upsellImageUrl?: string;
+  upsellComment?: string;
+  crossSellProductId?: string;
+  crossSellImageUrl?: string;
+  crossSellComment?: string;
+}
+
 type TimelineItem =
   | { id: string; kind: "bot-text"; text: string; imageUrl?: string; linkUrl?: string }
   | { id: string; kind: "image-carousel"; imageUrls: string[]; linkUrl?: string; caption?: string }
@@ -460,6 +470,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     orderedIds: string[] = orderedNodeIds,
     /** 直前に顧客が選んだ商品(ある場合)。到達したcheckoutノード自身の候補に含まれていれば、それを優先する。 */
     selectedProductId?: string,
+    /** 選んだ商品ノード側で設定された、その商品専用のアップセル・クロスセル(ある場合、checkoutノード自身の設定より優先)。 */
+    selectedProductUpsell?: ProductUpsellEntry,
   ) {
     const node = nodeMap[nodeId];
     if (!node) return;
@@ -493,7 +505,19 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         ]);
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
         if (next)
-          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
+          setTimeout(
+            () =>
+              advance(
+                next,
+                nodeMap,
+                productMap,
+                sourceItemId,
+                orderedIds,
+                selectedProductId,
+                selectedProductUpsell,
+              ),
+            300,
+          );
         break;
       }
       case "image": {
@@ -523,7 +547,19 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         }
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
         if (next)
-          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
+          setTimeout(
+            () =>
+              advance(
+                next,
+                nodeMap,
+                productMap,
+                sourceItemId,
+                orderedIds,
+                selectedProductId,
+                selectedProductUpsell,
+              ),
+            300,
+          );
         break;
       }
       case "video": {
@@ -541,7 +577,19 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         }
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
         if (next)
-          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
+          setTimeout(
+            () =>
+              advance(
+                next,
+                nodeMap,
+                productMap,
+                sourceItemId,
+                orderedIds,
+                selectedProductId,
+                selectedProductUpsell,
+              ),
+            300,
+          );
         break;
       }
       case "coupon": {
@@ -563,7 +611,19 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         }
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
         if (next)
-          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
+          setTimeout(
+            () =>
+              advance(
+                next,
+                nodeMap,
+                productMap,
+                sourceItemId,
+                orderedIds,
+                selectedProductId,
+                selectedProductUpsell,
+              ),
+            300,
+          );
         break;
       }
       case "choice": {
@@ -618,6 +678,16 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           // (複数商品を1つの決済導線ノードで共有している場合、選んだ商品と違うものがカートインする不具合を防ぐ)。
           const checkoutProductId =
             selectedProductId && validIds.includes(selectedProductId) ? selectedProductId : validIds[0];
+          // 選んだ商品自身に専用のアップセル・クロスセル設定があれば、checkoutノード自身の設定より優先する
+          // (未設定の項目も含めて丸ごと置き換える。「この商品にはクロスセルなし」を明示できるようにするため)。
+          const upsellOverride =
+            selectedProductId && checkoutProductId === selectedProductId ? selectedProductUpsell : undefined;
+          const upsellProductId = upsellOverride
+            ? upsellOverride.upsellProductId
+            : content.upsellProductId;
+          const crossSellProductId = upsellOverride
+            ? upsellOverride.crossSellProductId
+            : content.crossSellProductId;
           setTimeline((prev) => [
             // 決済導線は同時に1つだけ有効にする(未完了のまま残っている決済フォームは
             // 新しい注文を始めた時点で無効化する)
@@ -627,18 +697,13 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
               kind: "checkout",
               nodeId: node.id,
               productId: checkoutProductId,
-              upsellProductId:
-                content.upsellProductId && productMap[content.upsellProductId]
-                  ? content.upsellProductId
-                  : undefined,
-              upsellImageUrl: content.upsellImageUrl,
-              upsellComment: content.upsellComment,
+              upsellProductId: upsellProductId && productMap[upsellProductId] ? upsellProductId : undefined,
+              upsellImageUrl: upsellOverride ? upsellOverride.upsellImageUrl : content.upsellImageUrl,
+              upsellComment: upsellOverride ? upsellOverride.upsellComment : content.upsellComment,
               crossSellProductId:
-                content.crossSellProductId && productMap[content.crossSellProductId]
-                  ? content.crossSellProductId
-                  : undefined,
-              crossSellImageUrl: content.crossSellImageUrl,
-              crossSellComment: content.crossSellComment,
+                crossSellProductId && productMap[crossSellProductId] ? crossSellProductId : undefined,
+              crossSellImageUrl: upsellOverride ? upsellOverride.crossSellImageUrl : content.crossSellImageUrl,
+              crossSellComment: upsellOverride ? upsellOverride.crossSellComment : content.crossSellComment,
               sourceItemId,
               completionItems: checkoutMessages.completionItems,
               termsText: checkoutMessages.termsText,
@@ -778,9 +843,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
 
     const node = nodesById[item.nodeId];
+    const nodeContent = node?.content as { productUpsell?: Record<string, ProductUpsellEntry> } | undefined;
+    const productUpsell = nodeContent?.productUpsell?.[productId];
     const next = node?.next_node_map[productId] ?? node?.next_node_map.default;
     if (next && nodesById[next]?.type === "checkout") {
-      advance(next, nodesById, productsById, item.id, orderedNodeIds, productId);
+      advance(next, nodesById, productsById, item.id, orderedNodeIds, productId, productUpsell);
     } else {
       // シナリオ側で決済導線への接続が未設定でも購入導線を提供する
       setTimeline((prev) => [
@@ -792,6 +859,18 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           kind: "checkout",
           nodeId: item.nodeId,
           productId,
+          upsellProductId:
+            productUpsell?.upsellProductId && productsById[productUpsell.upsellProductId]
+              ? productUpsell.upsellProductId
+              : undefined,
+          upsellImageUrl: productUpsell?.upsellImageUrl,
+          upsellComment: productUpsell?.upsellComment,
+          crossSellProductId:
+            productUpsell?.crossSellProductId && productsById[productUpsell.crossSellProductId]
+              ? productUpsell.crossSellProductId
+              : undefined,
+          crossSellImageUrl: productUpsell?.crossSellImageUrl,
+          crossSellComment: productUpsell?.crossSellComment,
           sourceItemId: item.id,
           completionItems: checkoutMessages.completionItems,
           termsText: checkoutMessages.termsText,
