@@ -366,6 +366,27 @@ function extractProductIds(content: Record<string, unknown>): string[] {
   return [];
 }
 
+/**
+ * このシナリオの商品提示ノードで実際に使われている品番一覧(表示対象の品番+
+ * 商品ごとのアップセル・クロスセル対象)。クーポンの対象商品ピッカーの選択候補に使う。
+ */
+function scenarioRelevantProductIds(nodes: ScenarioNode[]): string[] {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.type !== "product") continue;
+    const content = node.content as {
+      productIds?: string[];
+      productUpsell?: Record<string, { upsellProductId?: string; crossSellProductId?: string }>;
+    };
+    for (const id of content.productIds ?? []) ids.add(id);
+    for (const entry of Object.values(content.productUpsell ?? {})) {
+      if (entry?.upsellProductId) ids.add(entry.upsellProductId);
+      if (entry?.crossSellProductId) ids.add(entry.crossSellProductId);
+    }
+  }
+  return Array.from(ids);
+}
+
 function truncate(text: string, max = 24) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
@@ -1526,17 +1547,6 @@ export function ScenarioEditor({
     setConversionTagSaved(false);
   }, [conversionTagDraft]);
 
-  const [emailFromAddressDraft, setEmailFromAddressDraft] = useState(scenario.emailFromAddress ?? "");
-  const [emailFromAddressSaving, setEmailFromAddressSaving] = useState(false);
-  const [emailFromAddressSaved, setEmailFromAddressSaved] = useState(false);
-  const emailFromAddressSkipResetRef = useRef(true);
-  useEffect(() => {
-    if (emailFromAddressSkipResetRef.current) {
-      emailFromAddressSkipResetRef.current = false;
-      return;
-    }
-    setEmailFromAddressSaved(false);
-  }, [emailFromAddressDraft]);
 
   const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
@@ -1567,6 +1577,13 @@ export function ScenarioEditor({
     imageUrl: initialCoupon?.imageUrl ?? "",
     promoMessage: initialCoupon?.promoMessage ?? "",
   });
+  // 対象商品を限定する場合の設定。チェックを外すと制限なし(全商品に適用可能)で保存する。
+  const [couponTargetProductsEnabled, setCouponTargetProductsEnabled] = useState(
+    Boolean(initialCoupon?.targetProductIds && initialCoupon.targetProductIds.length > 0),
+  );
+  const [couponTargetProductIds, setCouponTargetProductIds] = useState<string[]>(
+    initialCoupon?.targetProductIds ?? [],
+  );
   const [couponSaving, setCouponSaving] = useState(false);
   const [couponSaved, setCouponSaved] = useState(false);
   const couponSkipResetRef = useRef(true);
@@ -1576,7 +1593,7 @@ export function ScenarioEditor({
       return;
     }
     setCouponSaved(false);
-  }, [couponForm]);
+  }, [couponForm, couponTargetProductsEnabled, couponTargetProductIds]);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   /** ノード間の「＋」で作った直後のノードID。該当するNodeCardが自動的に編集状態を開く。 */
   const [autoEditNodeId, setAutoEditNodeId] = useState<string | null>(null);
@@ -1633,6 +1650,10 @@ export function ScenarioEditor({
 
   // 同じ種別のノードが複数あっても区別できるよう、一覧の表示No(1始まり)を前に付ける
   const nodeOptions = nodes.map((n, i) => ({ id: n.id, summary: `${i + 1}. ${nodeSummary(n)}` }));
+  // クーポンの対象商品として選べるのは、このシナリオの商品提示ノードやアップセル・クロスセルで
+  // 実際に使われている商品のみ(カタログ全体から選ばせると関係ない商品まで並んでしまうため)。
+  const couponCandidateProductIds = scenarioRelevantProductIds(nodes);
+  const couponCandidateProducts = products.filter((p) => couponCandidateProductIds.includes(p.id));
 
   async function togglePublish() {
     // 公開時のみ検証する(下書きに戻す操作は途中の状態でも通す)
@@ -1837,27 +1858,6 @@ export function ScenarioEditor({
     router.refresh();
   }
 
-  async function handleSaveEmailFromAddress() {
-    setEmailFromAddressSaving(true);
-    const res = await fetch(`/api/scenarios/${scenario.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ emailFromAddress: emailFromAddressDraft.trim() || null }),
-    });
-    setEmailFromAddressSaving(false);
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setToast({
-        message: `送信元アドレスの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
-        type: "error",
-      });
-      return;
-    }
-    setEmailFromAddressSaved(true);
-    setToast({ message: "保存しました", type: "success" });
-    router.refresh();
-  }
-
   async function handleSavePopupIconUrl() {
     setPopupIconUrlSaving(true);
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
@@ -1905,6 +1905,9 @@ export function ScenarioEditor({
       minOrderAmount: couponForm.minOrderAmount ? Number(couponForm.minOrderAmount) : null,
       imageUrl: couponForm.imageUrl.trim() || null,
       promoMessage: couponForm.promoMessage.trim() || null,
+      targetProductIds: couponTargetProductsEnabled && couponTargetProductIds.length > 0
+        ? couponTargetProductIds
+        : null,
     };
     const res = coupon
       ? await fetch(`/api/coupons/${coupon.id}`, {
@@ -1943,6 +1946,7 @@ export function ScenarioEditor({
       isActive: saved.is_active,
       imageUrl: saved.image_url,
       promoMessage: saved.promo_message,
+      targetProductIds: saved.target_product_ids,
       createdAt: saved.created_at,
       updatedAt: saved.updated_at,
     });
@@ -3017,6 +3021,55 @@ export function ScenarioEditor({
             </label>
           </div>
           <div className="mt-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={couponTargetProductsEnabled}
+                onChange={(e) => setCouponTargetProductsEnabled(e.target.checked)}
+              />
+              対象商品を指定する(チェックしない場合は全商品に適用可能)
+            </label>
+            <p className="mt-1 text-xs text-neutral-500">
+              対象商品を指定しても、最低注文金額など他の条件は商品代金の合計に対して判定されます。
+              例: 3,000円の対象商品でも、最低注文金額5,000円以上のクーポンの場合、その商品を2点購入したり、
+              クロスセル商品とまとめ買いして合計5,000円以上になった場合に適用されます。
+            </p>
+            {couponTargetProductsEnabled && (
+              <Accordion
+                title={`対象商品を選択${couponTargetProductIds.length > 0 ? `(${couponTargetProductIds.length}件選択中)` : ""}`}
+                defaultOpen
+              >
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-neutral-300 bg-white p-2">
+                  {couponCandidateProducts.length === 0 ? (
+                    <p className="text-xs text-neutral-400">
+                      商品提示ノードやアップセル・クロスセルで使用中の商品がありません。先に商品提示ノードで商品を設定してください。
+                    </p>
+                  ) : (
+                    couponCandidateProducts.map((product) => (
+                      <label
+                        key={product.id}
+                        className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={couponTargetProductIds.includes(product.id)}
+                          onChange={(e) =>
+                            setCouponTargetProductIds((prev) =>
+                              e.target.checked
+                                ? [...prev, product.id]
+                                : prev.filter((id) => id !== product.id),
+                            )
+                          }
+                        />
+                        {productLabel(product)}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </Accordion>
+            )}
+          </div>
+          <div className="mt-3">
             <h4 className="mb-1 text-xs font-semibold text-neutral-600">クーポン表示ノード用の告知内容(任意)</h4>
             <p className="mb-2 text-xs text-neutral-500">
               チャットフローに「クーポン表示」ノードを配置すると、ここで設定した画像・メッセージが
@@ -3188,30 +3241,6 @@ export function ScenarioEditor({
               埋め込みタグを発行するには、上の「専用URLを発行する」からこのシナリオの公開URLを設定してください。
             </p>
           )}
-        </div>
-
-        <div className="rounded-lg border border-neutral-200 p-4">
-          <h3 className="mb-1 text-sm font-semibold text-neutral-700">自動メールの送信元アドレス</h3>
-          <p className="mb-3 text-xs text-neutral-500">
-            注文完了・定期便・離脱リマインドの自動メールを送る際の送信元アドレスです。未設定の場合は共通のアドレスを使います。
-            複数ブランドで使い分ける場合はブランドごとにここで設定してください。
-            送信元に使うドメインは、事前にResend側でSPF/DKIM等のドメイン認証が完了している必要があります。
-          </p>
-          <input
-            type="text"
-            value={emailFromAddressDraft}
-            onChange={(e) => setEmailFromAddressDraft(e.target.value)}
-            placeholder="ブランドA 注文受付 <order@brand-a.example.com>"
-            className="input mb-2 w-full"
-          />
-          <button
-            type="button"
-            onClick={handleSaveEmailFromAddress}
-            disabled={emailFromAddressSaving}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {emailFromAddressSaving ? "保存中..." : emailFromAddressSaved ? "保存済み" : "保存"}
-          </button>
         </div>
 
         <div className="rounded-lg border border-neutral-200 p-4">
@@ -3440,6 +3469,12 @@ function NodeCard({
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>(
     (node.content.questions as SurveyQuestion[] | undefined) ?? [],
   );
+  // クーポン対象商品提示: このクーポンが1点でも適用される商品だけを、通常の商品提示ノードと同様に
+  // カルーセルで見せる(商品を選ぶとそのまま決済フォームへ進む)。既に商品が選ばれている場合は
+  // 表示せず、クーポンの告知(お知らせ)のみを流す。
+  const [couponShowTargetProducts, setCouponShowTargetProducts] = useState(
+    Boolean(node.content.showTargetProducts),
+  );
   const [memo, setMemo] = useState(node.memo ?? "");
   const [options, setOptions] = useState<OptionDraft[]>(
     ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
@@ -3477,6 +3512,7 @@ function NodeCard({
     setVideoCaption((node.content.caption as string) ?? "");
     setSurveyIntro((node.content.introText as string) ?? "");
     setSurveyQuestions((node.content.questions as SurveyQuestion[] | undefined) ?? []);
+    setCouponShowTargetProducts(Boolean(node.content.showTargetProducts));
     setMemo(node.memo ?? "");
     setOptions(
       ((node.content.options as { label: string; value: string }[] | undefined) ?? []).map((o) => ({
@@ -3605,7 +3641,7 @@ function NodeCard({
       };
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else if (node.type === "coupon") {
-      content = {};
+      content = { ...(couponShowTargetProducts && { showTargetProducts: true }) };
       if (defaultNext) nextNodeMap = { default: defaultNext };
     } else {
       if (surveyQuestions.length === 0) {
@@ -3953,10 +3989,22 @@ function NodeCard({
           )}
 
           {node.type === "coupon" && (
-            <p className="rounded-md bg-sky-50 p-3 text-xs text-neutral-600">
-              このシナリオの自動適用クーポンの告知画像・メッセージが、このノードの位置で表示されます。
-              内容は「表示設定」内の「クーポン設定」から編集してください。
-            </p>
+            <>
+              <p className="rounded-md bg-sky-50 p-3 text-xs text-neutral-600">
+                このシナリオの自動適用クーポンの告知画像・メッセージが、このノードの位置で表示されます。
+                内容は「表示設定」内の「クーポン設定」から編集してください。
+              </p>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={couponShowTargetProducts}
+                  onChange={(e) => setCouponShowTargetProducts(e.target.checked)}
+                />
+                クーポン対象商品提示(1点でも購入すればこのクーポンが適用される商品だけを、
+                商品提示ノードと同様にカルーセルで表示します。すでに商品が選ばれている場合は表示せず、
+                クーポンのお知らせのみを表示します)
+              </label>
+            </>
           )}
 
           <NextNodeSelect
@@ -4150,6 +4198,7 @@ function NodeCard({
           ) : node.type === "coupon" ? (
             <p className="rounded bg-sky-50 p-2 text-xs text-neutral-500">
               このシナリオの自動適用クーポンの告知画像・メッセージを表示します
+              {couponShowTargetProducts && "(クーポン対象商品提示: 有効)"}
             </p>
           ) : (
             <div className="rounded bg-sky-50 p-2 text-xs whitespace-pre-wrap">

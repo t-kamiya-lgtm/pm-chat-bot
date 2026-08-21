@@ -93,6 +93,7 @@ export async function POST(request: Request) {
     scenarioId,
     code: couponCode,
     subtotal: amount + addonAmount,
+    cartProductIds: [productId, addonProductId].filter((id): id is string => Boolean(id)),
   });
   const breakdown = calculateTotal(
     amount + addonAmount,

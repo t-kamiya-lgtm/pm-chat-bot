@@ -42,6 +42,36 @@ interface ProductUpsellEntry {
  * 未設定の場合は ①その商品の遷移先の決済導線ノード ②共通の遷移先の決済導線ノード
  * ③同じ品番を対象にしている決済導線ノード の順に設定を引き継ぐ。
  */
+/**
+ * クーポン対象商品提示で表示する品番一覧。「1点でも購入すればこのクーポンが適用される」商品だけを返す
+ * (最低注文金額がある場合、その商品単体の価格が満たしていることが条件)。
+ * 対象商品が限定されているクーポンはその一覧を、限定なしの場合はこのシナリオの商品提示ノードで
+ * 使われている品番全体を候補にする(カタログ全体から選ばせると無関係な商品まで並ぶため)。
+ */
+function computeCouponEligibleProductIds(
+  coupon: { minOrderAmount: number | null; targetProductIds: string[] | null },
+  productMap: Record<string, WidgetProduct>,
+  nodeMap: Record<string, WidgetScenarioNode>,
+): string[] {
+  const pool =
+    coupon.targetProductIds && coupon.targetProductIds.length > 0
+      ? coupon.targetProductIds
+      : Array.from(
+          new Set(
+            Object.values(nodeMap)
+              .filter((n) => n.type === "product")
+              .flatMap((n) => {
+                const ids = (n.content as { productIds?: string[] }).productIds;
+                return Array.isArray(ids) ? ids : [];
+              }),
+          ),
+        );
+  return pool.filter((id) => {
+    const product = productMap[id];
+    return Boolean(product) && product.price >= (coupon.minOrderAmount ?? 0);
+  });
+}
+
 function resolveProductUpsell(
   node: WidgetScenarioNode | undefined,
   productId: string,
@@ -193,7 +223,11 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     discountValue: number;
     imageUrl: string | null;
     promoMessage: string | null;
+    minOrderAmount: number | null;
+    targetProductIds: string[] | null;
   } | null>(null);
+  /** 商品(メイン)が一度でも選ばれたかどうか。クーポン対象商品提示は、これがまだfalseの間だけ表示する。 */
+  const hasSelectedProductRef = useRef(false);
   // dangerouslySetInnerHTMLで挿入した<script>はブラウザ仕様により実行されないため、
   // 管理者が設定した広告計測タグ(GA4/Metaピクセル等)は要素を組み立て直してDOMに追加する
   useEffect(() => {
@@ -405,6 +439,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             discount_value: number;
             image_url: string | null;
             promo_message: string | null;
+            min_order_amount: number | null;
+            target_product_ids: string[] | null;
           } | null;
         }>;
       }),
@@ -435,6 +471,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
               discountValue: scenarioBody.coupon.discount_value,
               imageUrl: scenarioBody.coupon.image_url,
               promoMessage: scenarioBody.coupon.promo_message,
+              minOrderAmount: scenarioBody.coupon.min_order_amount,
+              targetProductIds: scenarioBody.coupon.target_product_ids,
             }
           : null;
         fetch("/api/widget/access-log", {
@@ -536,6 +574,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       crossSellProductId?: string;
       crossSellImageUrl?: string;
       crossSellComment?: string;
+      showTargetProducts?: boolean;
     };
 
     switch (node.type) {
@@ -650,6 +689,25 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             },
           ]);
         }
+
+        // クーポン対象商品提示: すでに商品が選ばれている場合は表示せず、クーポンのお知らせのみ流す。
+        const showTargetProducts = Boolean(content.showTargetProducts);
+        const eligibleProductIds =
+          showTargetProducts && active && !hasSelectedProductRef.current
+            ? computeCouponEligibleProductIds(active, productMap, nodeMap)
+            : [];
+
+        if (eligibleProductIds.length > 0) {
+          setTimeout(() => {
+            setTimeline((prev) => [
+              ...prev,
+              { id: nextId(), kind: "product", nodeId: node.id, productIds: eligibleProductIds, resolved: false },
+            ]);
+          }, 300);
+          // 通常の商品提示ノードと同様、商品が選ばれるまではここで止まる(自動で次には進まない)
+          break;
+        }
+
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
         if (next)
           setTimeout(
@@ -729,6 +787,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           const crossSellProductId = upsellOverride
             ? upsellOverride.crossSellProductId
             : content.crossSellProductId;
+          hasSelectedProductRef.current = true;
           setTimeline((prev) => [
             // 決済導線は同時に1つだけ有効にする(未完了のまま残っている決済フォームは
             // 新しい注文を始めた時点で無効化する)
@@ -882,6 +941,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
 
   function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>, productId: string) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
+    hasSelectedProductRef.current = true;
 
     const node = nodesById[item.nodeId];
     const productUpsell = resolveProductUpsell(node, productId, nodesById);

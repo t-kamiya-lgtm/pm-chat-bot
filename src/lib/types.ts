@@ -259,6 +259,12 @@ export interface Coupon {
   imageUrl: string | null;
   /** クーポン表示ノードで使う訴求メッセージ(例: 「お得なクーポンがあります」)。 */
   promoMessage: string | null;
+  /**
+   * 対象商品を限定する場合の品番一覧。null/空配列は制限なし(全商品に適用可能)。
+   * カート内にこの一覧の商品が1つでも含まれることをゲート条件とし、他の条件
+   * (最低注文金額など)は商品代金の合計に対して従来通り判定する。
+   */
+  targetProductIds: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

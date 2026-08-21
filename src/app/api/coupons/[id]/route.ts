@@ -18,6 +18,7 @@ const couponUpdateSchema = z.object({
   isActive: z.boolean().optional(),
   imageUrl: z.string().nullable().optional(),
   promoMessage: z.string().nullable().optional(),
+  targetProductIds: z.array(z.string().uuid()).nullable().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -62,6 +63,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.isActive !== undefined && { is_active: input.isActive }),
       ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
       ...(input.promoMessage !== undefined && { promo_message: input.promoMessage }),
+      ...(input.targetProductIds !== undefined && { target_product_ids: input.targetProductIds }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
