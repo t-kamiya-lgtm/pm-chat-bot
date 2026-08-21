@@ -721,12 +721,14 @@ function OptionalProductSelect({
   value,
   onChange,
   label,
+  emptyLabel,
   compact,
 }: {
   products: PickableProduct[];
   value: string;
   onChange: (id: string) => void;
   label: string;
+  emptyLabel?: string;
   compact?: boolean;
 }) {
   const groups = Array.from(
@@ -787,7 +789,7 @@ function OptionalProductSelect({
           ))}
         </select>
         <select className="input w-full" value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">設定しない</option>
+          <option value="">{emptyLabel ?? "設定しない"}</option>
           {productsInGroup.map((product) => (
             <option key={product.id} value={product.id}>
               {productLabel(product)}
@@ -856,56 +858,91 @@ interface ProductUpsellEntry {
 }
 
 /**
- * 商品ごとのアップセル・クロスセルを、商品を横に並べたマトリクス形式で設定する。
- * どの商品にどのアップセル/クロスセルが紐付いているかを一目で確認・編集できるようにする
- * (商品ごとに別のcheckoutノードを作って個別に設定していた従来のやり方の代替)。
+ * 商品(カルーセルに表示する品番と表示順)と、商品ごとのアップセル・クロスセルを
+ * 商品を横に並べたマトリクス形式でまとめて設定する。
+ * 「どの品番を表示するか」のチェックリストと「アップセル・クロスセルの紐付け」が
+ * 別々のUIに分かれていたのを1つに統合し、この一覧だけで完結するようにしている。
+ * 各商品を選んだ際は共通の決済フォームへ直接進むため、個別に決済導線ノードを
+ * 指定する必要はない(商品ごとの「次のノード」設定は廃止)。
  */
 function ProductUpsellMatrixEditor({
   productIds,
+  onProductIdsChange,
   products,
   value,
   onChange,
-  nextNodeByProduct,
-  onNextNodeChange,
-  nodeOptions,
 }: {
   productIds: string[];
+  onProductIdsChange: (ids: string[]) => void;
   products: PickableProduct[];
   value: Record<string, ProductUpsellEntry>;
   onChange: (map: Record<string, ProductUpsellEntry>) => void;
-  nextNodeByProduct: Record<string, string>;
-  onNextNodeChange: (map: Record<string, string>) => void;
-  nodeOptions: { id: string; summary: string }[];
 }) {
-  if (productIds.length === 0) return null;
-
   function updateEntry(productId: string, patch: Partial<ProductUpsellEntry>) {
+    if (!productId) return;
     onChange({ ...value, [productId]: { ...value[productId], ...patch } });
+  }
+
+  function updateSlot(index: number, productId: string) {
+    onProductIdsChange(productIds.map((id, i) => (i === index ? productId : id)));
+  }
+  function removeSlot(index: number) {
+    onProductIdsChange(productIds.filter((_, i) => i !== index));
+  }
+  function moveSlot(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= productIds.length) return;
+    const next = [...productIds];
+    [next[index], next[target]] = [next[target], next[index]];
+    onProductIdsChange(next);
   }
 
   return (
     <div className="space-y-2 rounded-md border border-neutral-200 p-3">
       <span className="block text-xs font-medium text-neutral-500">
-        商品ごとの次のノード・アップセル・クロスセル(次のノードは任意。未設定の商品は下の「次に進むノード」に進みます。
-        アップセル・クロスセルも任意で、その商品が選ばれた際に決済確認画面で提案します)
+        表示する商品(カルーセルの表示順)と、商品ごとのアップセル・クロスセル(任意。
+        その商品が選ばれた際に決済確認画面で提案します)
       </span>
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
-        {productIds.map((id) => {
-          const product = products.find((p) => p.id === id);
+        {productIds.map((id, index) => {
           const entry = value[id] ?? {};
+          // 他のスロットで既に選ばれている商品は、この商品選択の候補から除外する(重複表示を防ぐ)
+          const availableProducts = products.filter((p) => p.id === id || !productIds.includes(p.id));
           return (
             <div
-              key={id}
+              key={index}
               className="w-64 shrink-0 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-2"
             >
-              <p className="break-words whitespace-normal text-xs font-semibold text-neutral-700">
-                {product ? productLabel(product) : id}
-              </p>
-              <NextNodeSelect
-                label="次のノード"
-                nodeOptions={nodeOptions}
-                value={nextNodeByProduct[id] ?? ""}
-                onChange={(v) => onNextNodeChange({ ...nextNodeByProduct, [id]: v })}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-neutral-700">商品{index + 1}</span>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => moveSlot(index, -1)}
+                    disabled={index === 0}
+                    className="text-neutral-500 hover:text-neutral-900 disabled:opacity-30"
+                  >
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSlot(index, 1)}
+                    disabled={index === productIds.length - 1}
+                    className="text-neutral-500 hover:text-neutral-900 disabled:opacity-30"
+                  >
+                    ▶
+                  </button>
+                  <button type="button" onClick={() => removeSlot(index)} className="text-red-600 hover:underline">
+                    削除
+                  </button>
+                </div>
+              </div>
+              <OptionalProductSelect
+                label="商品"
+                products={availableProducts}
+                value={id}
+                onChange={(v) => updateSlot(index, v)}
+                emptyLabel="選択してください"
                 compact
               />
               <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
@@ -965,7 +1002,19 @@ function ProductUpsellMatrixEditor({
             </div>
           );
         })}
+        <div className="flex w-64 shrink-0 items-center justify-center rounded-md border-2 border-dashed border-neutral-300 p-4">
+          <button
+            type="button"
+            onClick={() => onProductIdsChange([...productIds, ""])}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            + 商品を追加
+          </button>
+        </div>
       </div>
+      {productIds.length === 0 && (
+        <p className="text-xs text-neutral-400">まだ商品が追加されていません。「+ 商品を追加」から追加してください。</p>
+      )}
     </div>
   );
 }
@@ -3635,14 +3684,16 @@ function NodeCard({
     let nextNodeMap: Record<string, string> = {};
 
     if (usesProductPicker(node.type)) {
-      if (productIds.length === 0) {
+      // マトリクスで追加した直後、まだ商品を選択していない空スロット("")は保存対象から除く
+      const validProductIds = node.type === "product" ? productIds.filter(Boolean) : productIds;
+      if (validProductIds.length === 0) {
         showToast({ message: "品番を1つ以上選択してください", type: "error" });
         return;
       }
-      content = node.type === "product" ? { productIds } : { productId: productIds[0] };
+      content = node.type === "product" ? { productIds: validProductIds } : { productId: validProductIds[0] };
       if (node.type === "product") {
         const prunedUpsell = Object.fromEntries(
-          productIds
+          validProductIds
             .filter((id) => productUpsellMap[id])
             .map((id) => [id, productUpsellMap[id]])
             .filter(([, entry]) => (entry as ProductUpsellEntry).upsellProductId || (entry as ProductUpsellEntry).crossSellProductId),
@@ -3676,7 +3727,7 @@ function NodeCard({
       }
       if (node.type === "product") {
         nextNodeMap = {};
-        for (const id of productIds) {
+        for (const id of validProductIds) {
           const next = productNextMap[id];
           if (next) nextNodeMap[id] = next;
         }
@@ -3811,38 +3862,35 @@ function NodeCard({
             <textarea className="input" rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </label>
 
-          {usesProductPicker(node.type) &&
-            (node.type === "product_qa" ? (
-              <ProductGroupSelect
-                label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
+          {node.type === "product_qa" && (
+            <ProductGroupSelect
+              label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
+              products={products}
+              value={productIds[0] ?? ""}
+              onChange={(id) => setProductIds(id ? [id] : [])}
+              compact
+            />
+          )}
+
+          {node.type === "checkout" && (
+            <label className="block text-xs">
+              <span className="mb-1 block text-neutral-500">品番(1件選択)</span>
+              <ProductPicker
+                type={node.type}
                 products={products}
-                value={productIds[0] ?? ""}
-                onChange={(id) => setProductIds(id ? [id] : [])}
-                compact
+                selectedIds={productIds}
+                onChange={setProductIds}
               />
-            ) : (
-              <label className="block text-xs">
-                <span className="mb-1 block text-neutral-500">
-                  品番{node.type === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
-                </span>
-                <ProductPicker
-                  type={node.type}
-                  products={products}
-                  selectedIds={productIds}
-                  onChange={setProductIds}
-                />
-              </label>
-            ))}
+            </label>
+          )}
 
           {node.type === "product" && (
             <ProductUpsellMatrixEditor
               productIds={productIds}
+              onProductIdsChange={setProductIds}
               products={products}
               value={productUpsellMap}
               onChange={setProductUpsellMap}
-              nextNodeByProduct={productNextMap}
-              onNextNodeChange={setProductNextMap}
-              nodeOptions={nodeOptions}
             />
           )}
 
@@ -4094,7 +4142,7 @@ function NodeCard({
                     return (
                       <li key={id}>
                         {product ? productLabel(product) : "未設定"} →{" "}
-                        {target?.summary ?? "自動: 一覧の次のノードへ進む"}
+                        {target?.summary ?? "決済フォームへ進む"}
                         {(upsellName || crossSellName) && (
                           <span className="text-neutral-400">
                             {" "}
