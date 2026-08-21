@@ -804,49 +804,6 @@ function OptionalProductSelect({
   );
 }
 
-function ProductNextNodeEditor({
-  productIds,
-  products,
-  nextNodeByProduct,
-  onChange,
-  nodeOptions,
-  compact,
-}: {
-  productIds: string[];
-  products: PickableProduct[];
-  nextNodeByProduct: Record<string, string>;
-  onChange: (map: Record<string, string>) => void;
-  nodeOptions: { id: string; summary: string }[];
-  compact?: boolean;
-}) {
-  if (productIds.length === 0) return null;
-
-  return (
-    <div className="space-y-2 rounded-md border border-neutral-200 p-3">
-      <span
-        className={`block font-medium ${compact ? "text-neutral-500" : "text-neutral-700"} ${
-          compact ? "text-xs" : "text-sm"
-        }`}
-      >
-        商品ごとの次のノード(任意・選んだ商品によって行き先を分けられます。未設定の商品は下の「次に進むノード」に進みます)
-      </span>
-      {productIds.map((id) => {
-        const product = products.find((p) => p.id === id);
-        return (
-          <NextNodeSelect
-            key={id}
-            label={product ? productLabel(product) : id}
-            nodeOptions={nodeOptions}
-            value={nextNodeByProduct[id] ?? ""}
-            onChange={(v) => onChange({ ...nextNodeByProduct, [id]: v })}
-            compact={compact}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 /** 商品ごとのアップセル・クロスセル設定(任意)。checkoutノード自身の設定より優先して使われる。 */
 interface ProductUpsellEntry {
   upsellProductId?: string;
@@ -1441,7 +1398,7 @@ export function ScenarioEditor({
   const [newNodeCrossSellProductId, setNewNodeCrossSellProductId] = useState("");
   const [newNodeCrossSellImageUrl, setNewNodeCrossSellImageUrl] = useState("");
   const [newNodeCrossSellComment, setNewNodeCrossSellComment] = useState("");
-  const [newNodeProductNextMap, setNewNodeProductNextMap] = useState<Record<string, string>>({});
+  const [newNodeProductUpsell, setNewNodeProductUpsell] = useState<Record<string, ProductUpsellEntry>>({});
   const [newNodeText, setNewNodeText] = useState("");
   const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
   const [newNodeImageUrls, setNewNodeImageUrls] = useState<string[]>([""]);
@@ -2019,14 +1976,28 @@ export function ScenarioEditor({
     let nextNodeMap: Record<string, string> = {};
 
     if (usesProductPicker(newNodeType)) {
-      if (newNodeProductIds.length === 0) {
+      // マトリクスで追加した直後、まだ商品を選択していない空スロット("")は保存対象から除く
+      const validProductIds =
+        newNodeType === "product" ? newNodeProductIds.filter(Boolean) : newNodeProductIds;
+      if (validProductIds.length === 0) {
         setToast({ message: "品番を1つ以上選択してください", type: "error" });
         return;
       }
       content =
-        newNodeType === "product" ? { productIds: newNodeProductIds } : { productId: newNodeProductIds[0] };
+        newNodeType === "product" ? { productIds: validProductIds } : { productId: validProductIds[0] };
+      if (newNodeType === "product") {
+        const prunedUpsell = Object.fromEntries(
+          validProductIds
+            .filter((id) => newNodeProductUpsell[id])
+            .map((id) => [id, newNodeProductUpsell[id]])
+            .filter(([, entry]) => (entry as ProductUpsellEntry).upsellProductId || (entry as ProductUpsellEntry).crossSellProductId),
+        );
+        if (Object.keys(prunedUpsell).length > 0) {
+          content = { ...content, productUpsell: prunedUpsell };
+        }
+      }
       if (newNodeType === "checkout") {
-        const mainProduct = products.find((p) => p.id === newNodeProductIds[0]);
+        const mainProduct = products.find((p) => p.id === validProductIds[0]);
         const crossSellProduct = products.find((p) => p.id === newNodeCrossSellProductId);
         if (
           crossSellProduct?.orderType === "subscription" &&
@@ -2048,14 +2019,8 @@ export function ScenarioEditor({
           ...(newNodeCrossSellComment.trim() && { crossSellComment: newNodeCrossSellComment.trim() }),
         };
       }
-      if (newNodeType === "product") {
-        nextNodeMap = {};
-        for (const id of newNodeProductIds) {
-          const next = newNodeProductNextMap[id];
-          if (next) nextNodeMap[id] = next;
-        }
-        if (newNodeDefaultNext) nextNodeMap.default = newNodeDefaultNext;
-      } else if (newNodeDefaultNext) {
+      // 商品ノードは商品を選ぶと共通の決済フォームへ直接進むため、商品ごとの行き先は設定しない
+      if (newNodeDefaultNext) {
         nextNodeMap = { default: newNodeDefaultNext };
       }
     } else if (newNodeType === "message") {
@@ -2178,7 +2143,7 @@ export function ScenarioEditor({
     setNewNodeCrossSellProductId("");
     setNewNodeCrossSellImageUrl("");
     setNewNodeCrossSellComment("");
-    setNewNodeProductNextMap({});
+    setNewNodeProductUpsell({});
     setNewNodeText("");
     setNewNodeImageUrl("");
     setNewNodeImageUrls([""]);
@@ -2576,7 +2541,12 @@ export function ScenarioEditor({
         )}
       </div>
 
-      <form onSubmit={handleAddNode} className="max-w-xl space-y-4 border-t border-neutral-200 pt-6">
+      <form
+        onSubmit={handleAddNode}
+        className={`space-y-4 border-t border-neutral-200 pt-6 ${
+          newNodeType === "product" ? "max-w-4xl" : "max-w-xl"
+        }`}
+      >
         <h2 className="text-lg font-medium">ノードを追加</h2>
 
         <label className="block text-sm">
@@ -2594,35 +2564,34 @@ export function ScenarioEditor({
           </select>
         </label>
 
-        {usesProductPicker(newNodeType) &&
-          (newNodeType === "product_qa" ? (
-            <ProductGroupSelect
-              label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
+        {newNodeType === "product_qa" && (
+          <ProductGroupSelect
+            label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
+            products={products}
+            value={newNodeProductIds[0] ?? ""}
+            onChange={(id) => setNewNodeProductIds(id ? [id] : [])}
+          />
+        )}
+
+        {newNodeType === "checkout" && (
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-neutral-700">品番(1件選択)</span>
+            <ProductPicker
+              type={newNodeType}
               products={products}
-              value={newNodeProductIds[0] ?? ""}
-              onChange={(id) => setNewNodeProductIds(id ? [id] : [])}
+              selectedIds={newNodeProductIds}
+              onChange={setNewNodeProductIds}
             />
-          ) : (
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">
-                品番{newNodeType === "product" ? "(複数選択でカルーセル表示)" : "(1件選択)"}
-              </span>
-              <ProductPicker
-                type={newNodeType}
-                products={products}
-                selectedIds={newNodeProductIds}
-                onChange={setNewNodeProductIds}
-              />
-            </label>
-          ))}
+          </label>
+        )}
 
         {newNodeType === "product" && (
-          <ProductNextNodeEditor
+          <ProductUpsellMatrixEditor
             productIds={newNodeProductIds}
+            onProductIdsChange={setNewNodeProductIds}
             products={products}
-            nextNodeByProduct={newNodeProductNextMap}
-            onChange={setNewNodeProductNextMap}
-            nodeOptions={nodeOptions}
+            value={newNodeProductUpsell}
+            onChange={setNewNodeProductUpsell}
           />
         )}
 
