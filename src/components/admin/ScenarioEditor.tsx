@@ -1002,8 +1002,9 @@ function ProductUpsellMatrixEditor({
   }
 
   return (
-    // 白い商品カードが浮き上がるよう、マトリクスの土台は薄いブルーにする
-    <div className="space-y-2 rounded-md border border-neutral-300 bg-sky-50 p-3">
+    // 白い商品カードが浮き上がるよう、マトリクスの土台は薄いブルーにする。
+    // min-w-0 がないと横に並べた商品カードの合計幅でページ全体が広がってしまう。
+    <div className="min-w-0 space-y-2 rounded-md border border-neutral-300 bg-sky-50 p-3">
       <span className="block text-xs font-medium text-neutral-500">
         表示する商品(カルーセルの表示順)と、商品ごとのアップセル・クロスセル(任意。
         その商品が選ばれた際に決済確認画面で提案します)
@@ -1014,7 +1015,7 @@ function ProductUpsellMatrixEditor({
           「更新する」で保存すると、この商品提示ノードだけで完結し、決済導線ノードは不要になります。
         </p>
       )}
-      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+      <div className="-mx-1 flex max-w-full gap-3 overflow-x-auto px-1 pb-1">
         {productIds.map((id, index) => {
           const entry = value[id] ?? {};
           // 他のスロットで既に選ばれている商品は、この商品選択の候補から除外する(重複表示を防ぐ)
@@ -1411,6 +1412,23 @@ function EmbedSnippet({ label, code }: { label: string; code: string }) {
  * ドラッグ中にこの隙間へホバーすると青い線が表示され、その状態で指を離すとそこへ移動する
  * (線が出ていない場所で離した場合は何も起きず、元の位置のままになる)。
  */
+/** ノードとノードの間に新しいノードを挿入するボタン。一覧の流れの中で追加できるようにする。 */
+function InsertNodeButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return (
+    <div className="group flex justify-center py-1">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title="ここに新しいノードを追加"
+        className="rounded-full border border-neutral-300 bg-white px-3 py-0.5 text-xs text-neutral-400 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
+      >
+        ＋
+      </button>
+    </div>
+  );
+}
+
 function DropGuide({
   active,
   onDragOver,
@@ -1584,8 +1602,9 @@ export function ScenarioEditor({
   const [newNodeDefaultNext, setNewNodeDefaultNext] = useState("");
   const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
   const [newNodeMemo, setNewNodeMemo] = useState("");
-  const [reorderPending, setReorderPending] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  /** ノードの追加・並び替え中は、続けて操作されないようボタンを無効化する */
+  const [nodeOpPending, setNodeOpPending] = useState(false);
   const [dragOverGap, setDragOverGap] = useState<number | null>(null);
   const [menuItems, setMenuItems] = useState<ScenarioMenuItem[]>(initialMenuItems);
   const [newMenuLabel, setNewMenuLabel] = useState("");
@@ -2337,6 +2356,56 @@ export function ScenarioEditor({
   }
 
   /** fromIndexのノードをtoPosition(1始まりの表示順)へ移動する。間の全ノードのdisplay_orderを詰め直す。 */
+  /**
+   * ノードとノードの間の「＋」で、その位置に空のメッセージノードを作る。
+   * APIは常に末尾に作るため、作成後に表示順を振り直して指定位置へ入れる。
+   */
+  async function insertNodeAt(position: number) {
+    setNodeOpPending(true);
+    try {
+      const res = await fetch(`/api/scenarios/${scenario.id}/nodes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "message", content: { text: "" } }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setToast({
+          message: `ノードの追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+          type: "error",
+        });
+        return;
+      }
+      const created = (await res.json()) as { node: { id: string } };
+      const patchNode = (nodeId: string, payload: Record<string, unknown>) =>
+        fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+      const insertIndex = Math.max(0, Math.min(nodes.length, position - 1));
+      const orderedIds = [
+        ...nodes.slice(0, insertIndex).map((n) => n.id),
+        created.node.id,
+        ...nodes.slice(insertIndex).map((n) => n.id),
+      ];
+      await Promise.all(orderedIds.map((id, i) => patchNode(id, { displayOrder: i })));
+
+      // 前後のノードが直接繋がっている場合は、挿入したノードを経由するよう繋ぎ直す
+      const prev = nodes[insertIndex - 1];
+      const next = nodes[insertIndex];
+      if (prev && next && prev.nextNodeMap.default === next.id) {
+        await patchNode(prev.id, { nextNodeMap: { ...prev.nextNodeMap, default: created.node.id } });
+        await patchNode(created.node.id, { nextNodeMap: { default: next.id } });
+      }
+      setToast({ message: "ノードを追加しました。内容を編集してください", type: "success" });
+      router.refresh();
+    } finally {
+      setNodeOpPending(false);
+    }
+  }
+
   async function moveNodeToPosition(fromIndex: number, toPosition: number) {
     const toIndex = Math.max(0, Math.min(nodes.length - 1, toPosition - 1));
     if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= nodes.length) return;
@@ -2389,7 +2458,7 @@ export function ScenarioEditor({
       return;
     }
 
-    setReorderPending(moved.id);
+    setNodeOpPending(true);
 
     const results = await Promise.all(
       Array.from(patches.entries()).map(([nodeId, patch]) =>
@@ -2400,7 +2469,7 @@ export function ScenarioEditor({
         }),
       ),
     );
-    setReorderPending(null);
+    setNodeOpPending(false);
     if (results.some((r) => !r.ok)) {
       setToast({ message: "並び替えに失敗しました", type: "error" });
     }
@@ -2628,80 +2697,41 @@ export function ScenarioEditor({
         </p>
       )}
 
-      <div className="mb-8">
+      <div className="mb-8 min-w-0">
         <DropGuide
           active={draggingIndex !== null && dragOverGap === 0}
           onDragOver={() => setDragOverGap(0)}
           onDrop={() => handleGapDrop(0)}
         />
+        <InsertNodeButton disabled={nodeOpPending} onClick={() => insertNodeAt(1)} />
         {nodes.map((node, index) => (
-          <div key={node.id}>
-            <div
-              className={`flex items-start gap-2 ${draggingIndex === index ? "opacity-40" : ""}`}
-            >
-              <div className="flex shrink-0 flex-col items-center gap-1 pt-4">
-                <div
-                  draggable
-                  onDragStart={() => setDraggingIndex(index)}
-                  onDragEnd={() => {
-                    setDraggingIndex(null);
-                    setDragOverGap(null);
-                  }}
-                  title="ドラッグして並び替え"
-                  className="cursor-grab select-none rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-50 active:cursor-grabbing"
-                >
-                  ⠿
-                </div>
-                <input
-                  type="number"
-                  key={`${node.id}-${index}`}
-                  defaultValue={index + 1}
-                  min={1}
-                  max={nodes.length}
-                  disabled={reorderPending !== null}
-                  onBlur={(e) => {
-                    const value = Number(e.target.value);
-                    if (Number.isFinite(value) && value !== index + 1) moveNodeToPosition(index, value);
-                  }}
-                  className="input w-16 px-1 text-center"
-                />
-                <button
-                  type="button"
-                  disabled={reorderPending !== null || index === 0}
-                  onClick={() => moveNodeToPosition(index, index)}
-                  className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  disabled={reorderPending !== null || index === nodes.length - 1}
-                  onClick={() => moveNodeToPosition(index, index + 2)}
-                  className="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 disabled:opacity-30"
-                >
-                  ▼
-                </button>
-              </div>
-              <div className="flex-1">
-                <NodeCard
-                  scenarioId={scenario.id}
-                  node={node}
-                  isFirst={index === 0}
-                  onMakeEntry={() => moveNodeToPosition(index, 1)}
-                  products={products}
-                  allNodes={nodes}
-                  nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
-                  onDelete={() => handleDeleteNode(node.id)}
-                  showToast={setToast}
-                  showErrorDialog={setErrorDialog}
-                />
-              </div>
+          <div key={node.id} className="min-w-0">
+            <div className={`min-w-0 ${draggingIndex === index ? "opacity-40" : ""}`}>
+              <NodeCard
+                scenarioId={scenario.id}
+                node={node}
+                isFirst={index === 0}
+                orderNumber={index + 1}
+                onMakeEntry={() => moveNodeToPosition(index, 1)}
+                onDragStart={() => setDraggingIndex(index)}
+                onDragEnd={() => {
+                  setDraggingIndex(null);
+                  setDragOverGap(null);
+                }}
+                products={products}
+                allNodes={nodes}
+                nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
+                onDelete={() => handleDeleteNode(node.id)}
+                showToast={setToast}
+                showErrorDialog={setErrorDialog}
+              />
             </div>
             <DropGuide
               active={draggingIndex !== null && dragOverGap === index + 1}
               onDragOver={() => setDragOverGap(index + 1)}
               onDrop={() => handleGapDrop(index + 1)}
             />
+            <InsertNodeButton disabled={nodeOpPending} onClick={() => insertNodeAt(index + 2)} />
           </div>
         ))}
         {nodes.length === 0 && (
@@ -2717,7 +2747,7 @@ export function ScenarioEditor({
           newNodeType === "product" ? "max-w-4xl" : "max-w-xl"
         }`}
       >
-        <h2 className="text-lg font-medium">ノードを追加</h2>
+        <h2 className="text-base font-semibold">ノードを追加</h2>
 
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">ノード種別</span>
@@ -3051,9 +3081,10 @@ export function ScenarioEditor({
                       ▼
                     </button>
                   </div>
-                  <div className="flex-1">
-                    <span className="font-medium">{item.label}</span>
-                    <span className="ml-2 text-xs text-neutral-500">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium break-words">{item.label}</span>
+                    {/* URLは長くなるため枠内で折り返す */}
+                    <span className="ml-2 text-xs break-all text-neutral-500">
                       {item.actionType === "node"
                         ? `→ ${nodeOptions.find((n) => n.id === item.targetNodeId)?.summary ?? "(不明なノード)"}`
                         : item.actionType === "url"
@@ -3628,7 +3659,10 @@ function NodeCard({
   allNodes,
   nodeOptions,
   isFirst,
+  orderNumber,
   onMakeEntry,
+  onDragStart,
+  onDragEnd,
   onDelete,
   showToast,
   showErrorDialog,
@@ -3639,7 +3673,11 @@ function NodeCard({
   allNodes: ScenarioNode[];
   nodeOptions: { id: string; summary: string }[];
   isFirst: boolean;
+  /** 一覧での並び順(1始まり) */
+  orderNumber: number;
   onMakeEntry: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   onDelete: () => void;
   showToast: (toast: { message: string; type: "success" | "error" }) => void;
   showErrorDialog: (dialog: { title: string; description?: string; items?: string[] }) => void;
@@ -3939,13 +3977,26 @@ function NodeCard({
   }
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs">
-          {NODE_TYPE_LABELS[node.type]}
-          {isFirst && " ・開始ノード"}
-        </span>
-        <div className="flex gap-3 text-xs">
+    <div className="min-w-0 rounded-lg border border-neutral-200 bg-white p-3">
+      {/* 並び替え用のドラッグアイコンと順番はノード種別の左に置き、左側の操作列をなくして本文の幅を確保する */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            draggable
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            title="ドラッグして並び替え"
+            className="cursor-grab shrink-0 select-none px-0.5 text-neutral-400 active:cursor-grabbing"
+          >
+            ⠿
+          </span>
+          <span className="shrink-0 text-sm font-bold text-neutral-700">{orderNumber}</span>
+          <span className="truncate rounded bg-neutral-100 px-2 py-0.5 text-xs">
+            {NODE_TYPE_LABELS[node.type]}
+            {isFirst && " ・開始ノード"}
+          </span>
+        </div>
+        <div className="flex shrink-0 gap-3 text-xs">
           {!editing && (
             <button type="button" onClick={startEditing} className="text-blue-600 hover:underline">
               編集

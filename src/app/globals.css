@@ -31,9 +31,13 @@ body {
    * サイズが16px未満だと自動的にズームインし、その後のズームアウトが不完全に
    * なって背景が左右にズレたように見える不具合が起きるため。
    */
-  /* 管理画面の背景が薄いブルーのため、入力欄は白地を明示して境目を分かりやすくする */
+  /*
+   * 管理画面の背景が薄いブルーのため、入力欄は白地を明示して境目を分かりやすくする。
+   * フォントサイズは16px(text-base)を維持したまま、余白と行高を詰めて高さを抑える。
+   * 16px未満にするとiOS Safariが自動ズームしてしまうため、文字サイズは下げられない。
+   */
   .input {
-    @apply w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-base focus:border-blue-500 focus:outline-none;
+    @apply w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-base leading-tight focus:border-blue-500 focus:outline-none;
   }
 }
 

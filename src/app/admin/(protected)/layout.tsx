@@ -28,7 +28,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <AdminNav isAdmin={user.role === "admin"} />
       </header>
-      <main className="mx-auto max-w-screen-2xl px-6 py-8">{children}</main>
+      {/* min-w-0 と overflow-x-hidden で、横スクロールする表やカルーセルがページ全体を
+          広げて背景がズレる(スマホで顕著)のを防ぐ */}
+      <main className="mx-auto min-w-0 max-w-screen-2xl overflow-x-hidden px-4 py-6 sm:px-6 sm:py-8">
+        {children}
+      </main>
     </div>
   );
 }
