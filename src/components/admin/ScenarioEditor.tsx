@@ -316,6 +316,8 @@ function DisplayPreview({
 }
 
 type PickableProduct = Pick<Product, "id" | "name" | "price" | "orderType"> & {
+  /** 商品マスタの1枚目の画像。アップセル・クロスセルの画像URL未入力時の既定値として使う。 */
+  imageUrl: string | null;
   productGroupId: string | null;
   productGroupName: string | null;
 };
@@ -792,7 +794,8 @@ function OptionalProductSelect({
     return selected ? (selected.productGroupId ?? UNGROUPED_KEY) : undefined;
   };
 
-  const [selectedGroupId, setSelectedGroupId] = useState(() => groupIdForValue(value) ?? (groups[0]?.id ?? ""));
+  // 未設定のときは先頭のアイテムを勝手に選ばず「設定しない」を表示する
+  const [selectedGroupId, setSelectedGroupId] = useState(() => groupIdForValue(value) ?? "");
 
   // valueが外部から変わった(編集フォームを開き直した等)場合のみ、選択中のアイテムを追従させる。
   const [syncedValue, setSyncedValue] = useState(value);
@@ -829,6 +832,8 @@ function OptionalProductSelect({
             onChange("");
           }}
         >
+          {/* アイテム側でも「設定しない」を選べるようにする(商品を選ぶ前から未設定であることが分かるように) */}
+          <option value="">{emptyLabel ?? "設定しない"}</option>
           {groups.map((group) => (
             <option key={group.id} value={group.id}>
               {group.name}
@@ -965,6 +970,8 @@ function ProductUpsellMatrixEditor({
           const entry = value[id] ?? {};
           // 他のスロットで既に選ばれている商品は、この商品選択の候補から除外する(重複表示を防ぐ)
           const availableProducts = products.filter((p) => p.id === id || !productIds.includes(p.id));
+          const upsellProduct = products.find((p) => p.id === entry.upsellProductId);
+          const crossSellProduct = products.find((p) => p.id === entry.crossSellProductId);
           return (
             <div
               key={index}
@@ -1015,10 +1022,13 @@ function ProductUpsellMatrixEditor({
                   <>
                     <input
                       className="input text-xs"
-                      placeholder="画像URL(任意)"
+                      placeholder={upsellProduct?.imageUrl ?? "画像URL(任意)"}
                       value={entry.upsellImageUrl ?? ""}
                       onChange={(e) => updateEntry(id, { upsellImageUrl: e.target.value || undefined })}
                     />
+                    <p className="text-xs text-neutral-500">
+                      画像URLは未入力で構いません(商品マスタの1枚目の画像を使用します)。別の画像にしたい場合のみ入力してください。
+                    </p>
                     <textarea
                       className="input text-xs"
                       rows={2}
@@ -1042,10 +1052,13 @@ function ProductUpsellMatrixEditor({
                   <>
                     <input
                       className="input text-xs"
-                      placeholder="画像URL(任意)"
+                      placeholder={crossSellProduct?.imageUrl ?? "画像URL(任意)"}
                       value={entry.crossSellImageUrl ?? ""}
                       onChange={(e) => updateEntry(id, { crossSellImageUrl: e.target.value || undefined })}
                     />
+                    <p className="text-xs text-neutral-500">
+                      画像URLは未入力で構いません(商品マスタの1枚目の画像を使用します)。別の画像にしたい場合のみ入力してください。
+                    </p>
                     <textarea
                       className="input text-xs"
                       rows={2}

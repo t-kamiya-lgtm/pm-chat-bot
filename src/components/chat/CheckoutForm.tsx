@@ -357,6 +357,9 @@ export function CheckoutForm({
   const [couponInvalid, setCouponInvalid] = useState(false);
   const [couponChecking, setCouponChecking] = useState(false);
   const addonAmountForCoupon = addonSelected && crossSellProduct ? crossSellProduct.price : 0;
+  // 画像URLが未設定なら商品マスタの1枚目の画像を使う(シナリオ側で入力すればそちらが優先)
+  const upsellImage = upsellImageUrl || upsellProduct?.image_url || undefined;
+  const crossSellImage = crossSellImageUrl || crossSellProduct?.image_url || undefined;
   const couponSubtotal = activeProduct.price * quantity + addonAmountForCoupon;
   // クロスセル商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
   // 同じ周期のもう1つの定期便として同時申込になる(サーバー側の判定と揃える)。
@@ -1354,10 +1357,10 @@ export function CheckoutForm({
             {upsellProduct &&
               (activeProduct.id === upsellProduct.id ? (
                 <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
-                  {upsellImageUrl && (
+                  {upsellImage && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
-                      src={upsellImageUrl}
+                      src={upsellImage}
                       alt=""
                       className="aspect-square w-24 shrink-0 rounded-md object-cover"
                     />
@@ -1387,10 +1390,10 @@ export function CheckoutForm({
                 </div>
               ) : (
                 <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
-                  {upsellImageUrl && (
+                  {upsellImage && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
-                      src={upsellImageUrl}
+                      src={upsellImage}
                       alt=""
                       className="aspect-square w-24 shrink-0 rounded-md object-cover"
                     />
@@ -1412,10 +1415,10 @@ export function CheckoutForm({
               ))}
             {crossSellProduct && (
               <div className="flex items-start gap-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm">
-                {crossSellImageUrl && (
+                {crossSellImage && (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={crossSellImageUrl}
+                    src={crossSellImage}
                     alt=""
                     className="aspect-square w-24 shrink-0 rounded-md object-cover"
                   />
