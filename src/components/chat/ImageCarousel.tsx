@@ -8,7 +8,9 @@ interface ImageCarouselProps {
 
 export function ImageCarousel({ imageUrls, linkUrl, caption }: ImageCarouselProps) {
   return (
-    <div className="max-w-[85%] space-y-1">
+    // チャット幅いっぱいに表示する。1枚ずつスナップさせることで、
+    // 幅が足りずに2枚目が中途半端に欠けて見える状態を防ぐ。
+    <div className="w-full space-y-1">
       <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-lg">
         {imageUrls.map((url, index) =>
           linkUrl ? (
@@ -17,10 +19,10 @@ export function ImageCarousel({ imageUrls, linkUrl, caption }: ImageCarouselProp
               href={linkUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 snap-center"
+              className="w-full shrink-0 snap-center"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt="" className="h-48 w-48 rounded-lg object-cover" />
+              <img src={url} alt="" className="aspect-square w-full rounded-lg object-cover" />
             </a>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
@@ -28,11 +30,14 @@ export function ImageCarousel({ imageUrls, linkUrl, caption }: ImageCarouselProp
               key={index}
               src={url}
               alt=""
-              className="h-48 w-48 shrink-0 snap-center rounded-lg object-cover"
+              className="aspect-square w-full shrink-0 snap-center rounded-lg object-cover"
             />
           ),
         )}
       </div>
+      {imageUrls.length > 1 && (
+        <p className="text-xs text-neutral-400">横にスワイプすると次の画像が見られます({imageUrls.length}枚)</p>
+      )}
       {caption && <p className="text-sm text-neutral-700">{caption}</p>}
     </div>
   );
