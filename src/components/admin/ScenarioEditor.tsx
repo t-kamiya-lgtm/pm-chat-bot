@@ -814,6 +814,50 @@ interface ProductUpsellEntry {
   crossSellComment?: string;
 }
 
+/** 決済導線ノードのcontentに設定されたアップセル・クロスセルを、マトリクス1件分の形に変換する。 */
+function upsellEntryFromCheckoutNode(target: ScenarioNode | undefined): ProductUpsellEntry | undefined {
+  if (!target || target.type !== "checkout") return undefined;
+  const content = target.content as Record<string, string | undefined>;
+  if (!content.upsellProductId && !content.crossSellProductId) return undefined;
+  return {
+    upsellProductId: content.upsellProductId || undefined,
+    upsellImageUrl: content.upsellImageUrl || undefined,
+    upsellComment: content.upsellComment || undefined,
+    crossSellProductId: content.crossSellProductId || undefined,
+    crossSellImageUrl: content.crossSellImageUrl || undefined,
+    crossSellComment: content.crossSellComment || undefined,
+  };
+}
+
+/**
+ * 旧仕様(商品提示ノード + 決済導線ノードの2ノード構成)で決済導線ノード側に設定されていた
+ * アップセル・クロスセルを、商品提示ノードのマトリクスへ引き継ぐ。
+ * 商品提示ノード自身の設定(content.productUpsell)を最優先とし、未設定の商品についてのみ
+ * ①その商品の遷移先の決済導線ノード ②共通の遷移先の決済導線ノード
+ * ③同じ品番を対象にしている決済導線ノード の順に探して補完する。
+ */
+function inheritUpsellFromCheckoutNodes(
+  node: ScenarioNode,
+  allNodes: ScenarioNode[],
+): Record<string, ProductUpsellEntry> {
+  const own = (node.content.productUpsell as Record<string, ProductUpsellEntry> | undefined) ?? {};
+  if (node.type !== "product") return own;
+
+  const checkoutNodes = allNodes.filter((n) => n.type === "checkout");
+  if (checkoutNodes.length === 0) return own;
+
+  const merged = { ...own };
+  for (const productId of extractProductIds(node.content)) {
+    if (merged[productId]) continue;
+    const inherited =
+      upsellEntryFromCheckoutNode(checkoutNodes.find((n) => n.id === node.nextNodeMap[productId])) ??
+      upsellEntryFromCheckoutNode(checkoutNodes.find((n) => n.id === node.nextNodeMap.default)) ??
+      upsellEntryFromCheckoutNode(checkoutNodes.find((n) => n.content.productId === productId));
+    if (inherited) merged[productId] = inherited;
+  }
+  return merged;
+}
+
 /**
  * 商品(カルーセルに表示する品番と表示順)と、商品ごとのアップセル・クロスセルを
  * 商品を横に並べたマトリクス形式でまとめて設定する。
@@ -828,12 +872,15 @@ function ProductUpsellMatrixEditor({
   products,
   value,
   onChange,
+  inheritedCount,
 }: {
   productIds: string[];
   onProductIdsChange: (ids: string[]) => void;
   products: PickableProduct[];
   value: Record<string, ProductUpsellEntry>;
   onChange: (map: Record<string, ProductUpsellEntry>) => void;
+  /** 旧仕様の決済導線ノードから引き継いだ件数(0件のときは通知を出さない) */
+  inheritedCount?: number;
 }) {
   function updateEntry(productId: string, patch: Partial<ProductUpsellEntry>) {
     if (!productId) return;
@@ -860,6 +907,12 @@ function ProductUpsellMatrixEditor({
         表示する商品(カルーセルの表示順)と、商品ごとのアップセル・クロスセル(任意。
         その商品が選ばれた際に決済確認画面で提案します)
       </span>
+      {Boolean(inheritedCount) && (
+        <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+          決済導線ノード側に設定されていたアップセル・クロスセル{inheritedCount}件を引き継いで表示しています。
+          「更新する」で保存すると、この商品提示ノードだけで完結し、決済導線ノードは不要になります。
+        </p>
+      )}
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
         {productIds.map((id, index) => {
           const entry = value[id] ?? {};
@@ -2521,6 +2574,7 @@ export function ScenarioEditor({
                   isFirst={index === 0}
                   onMakeEntry={() => moveNodeToPosition(index, 1)}
                   products={products}
+                  allNodes={nodes}
                   nodeOptions={nodeOptions.filter((n) => n.id !== node.id)}
                   onDelete={() => handleDeleteNode(node.id)}
                   showToast={setToast}
@@ -3529,6 +3583,7 @@ function NodeCard({
   scenarioId,
   node,
   products,
+  allNodes,
   nodeOptions,
   isFirst,
   onMakeEntry,
@@ -3538,6 +3593,7 @@ function NodeCard({
   scenarioId: string;
   node: ScenarioNode;
   products: PickableProduct[];
+  allNodes: ScenarioNode[];
   nodeOptions: { id: string; summary: string }[];
   isFirst: boolean;
   onMakeEntry: () => void;
@@ -3566,9 +3622,17 @@ function NodeCard({
         .map((id) => [id, node.nextNodeMap[id]]),
     ),
   );
-  const [productUpsellMap, setProductUpsellMap] = useState<Record<string, ProductUpsellEntry>>(
-    (node.content.productUpsell as Record<string, ProductUpsellEntry> | undefined) ?? {},
+  // 旧仕様(決済導線ノード側に設定)のアップセル・クロスセルもマトリクスに引き継いで表示する。
+  // 保存すれば商品提示ノードの content.productUpsell に取り込まれ、決済導線ノードは不要になる。
+  const [initialProductUpsellMap] = useState<Record<string, ProductUpsellEntry>>(() =>
+    inheritUpsellFromCheckoutNodes(node, allNodes),
   );
+  const [productUpsellMap, setProductUpsellMap] = useState<Record<string, ProductUpsellEntry>>(
+    initialProductUpsellMap,
+  );
+  const inheritedUpsellCount =
+    Object.keys(initialProductUpsellMap).length -
+    Object.keys((node.content.productUpsell as Record<string, ProductUpsellEntry> | undefined) ?? {}).length;
   const [text, setText] = useState((node.content.text as string) ?? "");
   const [imageUrl, setImageUrl] = useState((node.content.imageUrl as string) ?? "");
   const [imageUrls, setImageUrls] = useState<string[]>(
@@ -3695,12 +3759,16 @@ function NodeCard({
         };
       }
       if (node.type === "product") {
+        // アップセル・クロスセルはこのマトリクスが唯一の設定箇所になったため、
+        // 旧仕様の決済導線ノードへの紐付けは保存時に解除する
+        // (商品を選ぶと共通の決済フォームへ直接進むので、決済導線ノードの指定は不要)。
+        const checkoutNodeIds = new Set(allNodes.filter((n) => n.type === "checkout").map((n) => n.id));
         nextNodeMap = {};
         for (const id of validProductIds) {
           const next = productNextMap[id];
-          if (next) nextNodeMap[id] = next;
+          if (next && !checkoutNodeIds.has(next)) nextNodeMap[id] = next;
         }
-        if (defaultNext) nextNodeMap.default = defaultNext;
+        if (defaultNext && !checkoutNodeIds.has(defaultNext)) nextNodeMap.default = defaultNext;
       } else if (defaultNext) {
         nextNodeMap = { default: defaultNext };
       }
@@ -3860,6 +3928,7 @@ function NodeCard({
               products={products}
               value={productUpsellMap}
               onChange={setProductUpsellMap}
+              inheritedCount={inheritedUpsellCount}
             />
           )}
 
@@ -4050,7 +4119,12 @@ function NodeCard({
 
           <NextNodeSelect
             label={node.type === "choice" ? "どの選択肢にも一致しない場合に進むノード(任意)" : "次に進むノード"}
-            nodeOptions={nodeOptions}
+            // 商品提示ノードは商品を選ぶと決済フォームへ直接進むため、決済導線ノードは選ばせない
+            nodeOptions={
+              node.type === "product"
+                ? nodeOptions.filter((n) => allNodes.find((x) => x.id === n.id)?.type !== "checkout")
+                : nodeOptions
+            }
             value={defaultNext}
             onChange={setDefaultNext}
             compact
@@ -4098,9 +4172,15 @@ function NodeCard({
                 <ul className="list-disc space-y-0.5 pl-4">
                   {productIds.map((id) => {
                     const product = products.find((p) => p.id === id);
+                    // 決済導線ノードへの旧紐付けが残っていても、実際の挙動と揃えて
+                    //「決済フォームへ進む」と表示する(保存時に紐付けは解除される)
+                    const isCheckout = (nodeId: string) =>
+                      allNodes.find((n) => n.id === nodeId)?.type === "checkout";
+                    const targetId = productNextMap[id] || defaultNext;
                     const target =
-                      nodeOptions.find((n) => n.id === productNextMap[id]) ??
-                      nodeOptions.find((n) => n.id === defaultNext);
+                      targetId && !isCheckout(targetId)
+                        ? nodeOptions.find((n) => n.id === targetId)
+                        : undefined;
                     const upsell = productUpsellMap[id];
                     const upsellName = upsell?.upsellProductId
                       ? products.find((p) => p.id === upsell.upsellProductId)?.name
