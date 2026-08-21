@@ -172,7 +172,7 @@ export function CustomerDetailView({
         <h2 className="mb-2 text-lg font-semibold">購入履歴</h2>
         <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-neutral-50 text-xs text-neutral-500">
+            <thead className="bg-sky-100 text-xs text-neutral-600">
               <tr>
                 <th className="px-4 py-2">注文番号</th>
                 <th className="px-4 py-2">日時</th>
@@ -233,7 +233,7 @@ export function CustomerDetailView({
             const order = orders.find((o) => o.id === expandedSurvey);
             if (!order?.survey_responses) return null;
             return (
-              <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
+              <div className="mt-2 rounded-md border border-neutral-200 bg-sky-50 p-3 text-sm">
                 {Object.entries(order.survey_responses).map(([q, a]) => (
                   <p key={q}>
                     <span className="text-neutral-500">{q}: </span>

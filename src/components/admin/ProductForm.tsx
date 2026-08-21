@@ -505,7 +505,7 @@ export function ProductForm({
                 選択中: {values.setOptionProductIds.length}点(同じ商品を複数回選べるため、選択肢の数が構成数より少なくてもかまいません)
               </p>
               {values.setOptionProductIds.length > 0 && (
-                <div className="mb-2 space-y-1 rounded-md border border-neutral-200 bg-neutral-50 p-2">
+                <div className="mb-2 space-y-1 rounded-md border border-neutral-200 bg-sky-50 p-2">
                   <p className="text-xs font-medium text-neutral-500">選択中(内訳ギャラリーの表示順)</p>
                   {values.setOptionProductIds.map((id, index) => {
                     const product = otherProducts.find((p) => p.id === id);

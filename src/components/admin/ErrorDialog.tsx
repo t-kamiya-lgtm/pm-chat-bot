@@ -23,7 +23,7 @@ export function ErrorDialog({
           <p className="mb-3 text-sm whitespace-pre-wrap text-neutral-700">{description}</p>
         )}
         {items && items.length > 0 && (
-          <ul className="mb-3 max-h-60 list-disc space-y-1 overflow-y-auto rounded bg-neutral-50 p-3 pl-7 text-xs text-neutral-700">
+          <ul className="mb-3 max-h-60 list-disc space-y-1 overflow-y-auto rounded bg-sky-50 p-3 pl-7 text-xs text-neutral-700">
             {items.map((item, index) => (
               <li key={index} className="break-words">
                 {item}

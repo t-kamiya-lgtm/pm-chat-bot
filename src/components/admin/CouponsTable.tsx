@@ -404,7 +404,7 @@ export function CouponsTable({
 
       <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
         <table className="w-full min-w-[1080px] text-sm">
-          <thead className="bg-neutral-50 text-left text-neutral-500">
+          <thead className="bg-sky-100 text-left text-neutral-600">
             <tr>
               <th className="px-4 py-2">種別</th>
               <th className="px-4 py-2">コード / 対象シナリオ</th>
@@ -498,7 +498,7 @@ export function CouponsTable({
                     </td>
                   </tr>
                   {expandedUsageId === c.id && (
-                    <tr className="border-t border-neutral-100 bg-neutral-50">
+                    <tr className="border-t border-neutral-100 bg-sky-50">
                       <td colSpan={columnCount} className="px-4 py-3 text-xs">
                         {usageLoading === c.id ? (
                           "読み込み中..."

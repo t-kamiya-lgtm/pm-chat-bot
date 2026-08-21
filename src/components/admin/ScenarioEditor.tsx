@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   Coupon,
@@ -567,7 +567,7 @@ function ProductPicker({
       </select>
 
       {type === "product" && selectedIds.length > 0 && (
-        <div className="space-y-1 rounded-md border border-neutral-200 bg-neutral-50 p-2">
+        <div className="space-y-1 rounded-md border border-neutral-200 bg-sky-50 p-2">
           <p className="text-xs font-medium text-neutral-500">選択中(カルーセルの表示順)</p>
           {selectedIds.map((id, index) => {
             const product = products.find((p) => p.id === id);
@@ -764,7 +764,11 @@ function ImageUrlListEditor({
   );
 }
 
-/** アップセル・クロスセルの品番選択。対象商品の選択と揃え、アイテム→品番の二段階で選ばせる(任意設定可)。 */
+/**
+ * アップセル・クロスセルの品番選択。対象商品の選択と揃え、アイテム→品番の二段階で選ばせる(任意設定可)。
+ * 品番はセット数などを含んで長くなり、ドロップダウンでは末尾が省略されてしまうため、
+ * 品番側は全文を折り返して表示できるラジオ形式の一覧にしている。
+ */
 function OptionalProductSelect({
   products,
   value,
@@ -796,6 +800,7 @@ function OptionalProductSelect({
 
   // 未設定のときは先頭のアイテムを勝手に選ばず「設定しない」を表示する
   const [selectedGroupId, setSelectedGroupId] = useState(() => groupIdForValue(value) ?? "");
+  const radioName = useId();
 
   // valueが外部から変わった(編集フォームを開き直した等)場合のみ、選択中のアイテムを追従させる。
   const [syncedValue, setSyncedValue] = useState(value);
@@ -817,8 +822,7 @@ function OptionalProductSelect({
   }
 
   const productsInGroup = products.filter((p) => (p.productGroupId ?? UNGROUPED_KEY) === selectedGroupId);
-
-  const selectedProduct = products.find((p) => p.id === value);
+  const emptyText = emptyLabel ?? "設定しない";
 
   return (
     <div className={compact ? "text-xs" : "text-sm"}>
@@ -833,26 +837,70 @@ function OptionalProductSelect({
           }}
         >
           {/* アイテム側でも「設定しない」を選べるようにする(商品を選ぶ前から未設定であることが分かるように) */}
-          <option value="">{emptyLabel ?? "設定しない"}</option>
+          <option value="">{emptyText}</option>
           {groups.map((group) => (
             <option key={group.id} value={group.id}>
               {group.name}
             </option>
           ))}
         </select>
-        <select className="input w-full" value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">{emptyLabel ?? "設定しない"}</option>
-          {productsInGroup.map((product) => (
-            <option key={product.id} value={product.id}>
-              {productLabel(product)}
-            </option>
-          ))}
-        </select>
-        {selectedProduct && (
-          <p className="break-words whitespace-normal text-neutral-500">{productLabel(selectedProduct)}</p>
+        {selectedGroupId && (
+          <div className="space-y-0.5 rounded-md border border-neutral-300 bg-white p-1">
+            <ProductRadio
+              name={radioName}
+              checked={!value}
+              onSelect={() => onChange("")}
+              text={emptyText}
+              muted
+            />
+            {productsInGroup.map((product) => (
+              <ProductRadio
+                key={product.id}
+                name={radioName}
+                checked={product.id === value}
+                onSelect={() => onChange(product.id)}
+                text={productLabel(product)}
+              />
+            ))}
+            {productsInGroup.length === 0 && (
+              <p className="px-2 py-1 text-neutral-400">このアイテムに品番が登録されていません</p>
+            )}
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** 品番1件分の選択行。品番名は省略せず折り返して全文を表示する。 */
+function ProductRadio({
+  name,
+  checked,
+  onSelect,
+  text,
+  muted,
+}: {
+  name: string;
+  checked: boolean;
+  onSelect: () => void;
+  text: string;
+  muted?: boolean;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 ${
+        checked ? "bg-blue-50 font-medium text-blue-900" : "hover:bg-neutral-50"
+      } ${muted && !checked ? "text-neutral-400" : ""}`}
+    >
+      <input
+        type="radio"
+        name={name}
+        checked={checked}
+        onChange={onSelect}
+        className="mt-0.5 shrink-0"
+      />
+      <span className="leading-snug break-words whitespace-normal">{text}</span>
+    </label>
   );
 }
 
@@ -954,7 +1002,8 @@ function ProductUpsellMatrixEditor({
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-neutral-200 p-3">
+    // 白い商品カードが浮き上がるよう、マトリクスの土台は薄いブルーにする
+    <div className="space-y-2 rounded-md border border-neutral-300 bg-sky-50 p-3">
       <span className="block text-xs font-medium text-neutral-500">
         表示する商品(カルーセルの表示順)と、商品ごとのアップセル・クロスセル(任意。
         その商品が選ばれた際に決済確認画面で提案します)
@@ -975,7 +1024,7 @@ function ProductUpsellMatrixEditor({
           return (
             <div
               key={index}
-              className="w-64 shrink-0 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-2"
+              className="w-72 shrink-0 space-y-2 rounded-md border border-neutral-300 bg-white p-2"
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-neutral-700">商品{index + 1}</span>
@@ -1072,7 +1121,7 @@ function ProductUpsellMatrixEditor({
             </div>
           );
         })}
-        <div className="flex w-64 shrink-0 items-center justify-center rounded-md border-2 border-dashed border-neutral-300 p-4">
+        <div className="flex w-72 shrink-0 items-center justify-center rounded-md border-2 border-dashed border-neutral-400 p-4">
           <button
             type="button"
             onClick={() => onProductIdsChange([...productIds, ""])}
@@ -1120,7 +1169,7 @@ function OptionsEditor({
         選択肢(それぞれがチャット上に1つのボタンとして表示されます)
       </span>
       {options.map((option, index) => (
-        <div key={index} className="space-y-2 rounded-md border-2 border-neutral-300 bg-neutral-50 p-3">
+        <div key={index} className="space-y-2 rounded-md border-2 border-neutral-300 bg-sky-50 p-3">
           <div className={`flex items-center justify-between font-semibold text-neutral-600 ${textSize}`}>
             <span>選択肢 {index + 1}</span>
             <button type="button" onClick={() => remove(index)} className="font-normal text-red-600 hover:underline">
@@ -2828,7 +2877,7 @@ export function ScenarioEditor({
         )}
 
         {newNodeType === "coupon" && (
-          <p className="rounded-md bg-neutral-50 p-3 text-xs text-neutral-600">
+          <p className="rounded-md bg-sky-50 p-3 text-xs text-neutral-600">
             {coupon
               ? `このシナリオの自動適用クーポン(${coupon.name})の告知画像・メッセージが、このノードの位置で表示されます。内容は「表示設定」内の「クーポン設定」から編集してください。`
               : "このシナリオにはまだ自動適用クーポンが設定されていません。「表示設定」内の「クーポン設定」から作成すると、このノードで告知が表示されるようになります。"}
@@ -4126,7 +4175,7 @@ function NodeCard({
           )}
 
           {node.type === "coupon" && (
-            <p className="rounded-md bg-neutral-50 p-3 text-xs text-neutral-600">
+            <p className="rounded-md bg-sky-50 p-3 text-xs text-neutral-600">
               このシナリオの自動適用クーポンの告知画像・メッセージが、このノードの位置で表示されます。
               内容は「表示設定」内の「クーポン設定」から編集してください。
             </p>
@@ -4189,7 +4238,7 @@ function NodeCard({
             </p>
           )}
           {node.type === "product" ? (
-            <div className="rounded bg-neutral-50 p-2 text-xs">
+            <div className="rounded bg-sky-50 p-2 text-xs">
               {productIds.length > 0 ? (
                 <ul className="list-disc space-y-0.5 pl-4">
                   {productIds.map((id) => {
@@ -4231,7 +4280,7 @@ function NodeCard({
               )}
             </div>
           ) : usesProductPicker(node.type) ? (
-            <p className="rounded bg-neutral-50 p-2 text-xs">
+            <p className="rounded bg-sky-50 p-2 text-xs">
               {node.type === "product_qa" ? "アイテム" : "品番"}:{" "}
               {node.type === "product_qa"
                 ? productIds
@@ -4254,12 +4303,12 @@ function NodeCard({
               )}
             </p>
           ) : node.type === "message" ? (
-            <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
+            <div className="rounded bg-sky-50 p-2 text-xs whitespace-pre-wrap">
               {truncate(text, 40) || "(未設定)"}
               {imageUrl && <p className="mt-1 text-neutral-400">画像: {imageUrl}</p>}
             </div>
           ) : node.type === "image" ? (
-            <div className="rounded bg-neutral-50 p-2 text-xs">
+            <div className="rounded bg-sky-50 p-2 text-xs">
               {imageUrls.filter(Boolean).length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {imageUrls
@@ -4281,7 +4330,7 @@ function NodeCard({
               {imageCaption && <p className="mt-1 text-neutral-500">{imageCaption}</p>}
             </div>
           ) : node.type === "video" ? (
-            <div className="rounded bg-neutral-50 p-2 text-xs">
+            <div className="rounded bg-sky-50 p-2 text-xs">
               {videoUrl ? (
                 <div className="flex items-start gap-2">
                   {getVideoThumbnailUrl(videoUrl) ? (
@@ -4306,7 +4355,7 @@ function NodeCard({
               {videoCaption && <p className="mt-1 text-neutral-500">{videoCaption}</p>}
             </div>
           ) : node.type === "survey" ? (
-            <div className="rounded bg-neutral-50 p-2 text-xs">
+            <div className="rounded bg-sky-50 p-2 text-xs">
               {surveyIntro && <p className="mb-1 text-neutral-600">{surveyIntro}</p>}
               {surveyQuestions.length > 0 ? (
                 <ul className="list-disc space-y-0.5 pl-4">
@@ -4328,11 +4377,11 @@ function NodeCard({
               )}
             </div>
           ) : node.type === "coupon" ? (
-            <p className="rounded bg-neutral-50 p-2 text-xs text-neutral-500">
+            <p className="rounded bg-sky-50 p-2 text-xs text-neutral-500">
               このシナリオの自動適用クーポンの告知画像・メッセージを表示します
             </p>
           ) : (
-            <div className="rounded bg-neutral-50 p-2 text-xs whitespace-pre-wrap">
+            <div className="rounded bg-sky-50 p-2 text-xs whitespace-pre-wrap">
               {truncate(text, 40) || "(未設定)"}
               {options.length > 0 && (
                 <p className="mt-1 text-neutral-500">
@@ -4342,7 +4391,7 @@ function NodeCard({
             </div>
           )}
           {node.type !== "product" && (
-            <p className="mt-1 rounded bg-neutral-50 p-2 text-xs text-neutral-500">
+            <p className="mt-1 rounded bg-sky-50 p-2 text-xs text-neutral-500">
               次のノード:{" "}
               {node.type === "choice"
                 ? options

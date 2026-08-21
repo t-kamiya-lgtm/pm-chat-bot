@@ -16,7 +16,7 @@ export function CustomersTable({ customers }: { customers: CustomerSummary[] }) 
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
       <table className="w-full min-w-[900px] text-left text-sm">
-        <thead className="bg-neutral-50 text-xs text-neutral-500">
+        <thead className="bg-sky-100 text-xs text-neutral-600">
           <tr>
             <th className="px-4 py-2">顧客ID</th>
             <th className="px-4 py-2">顧客名</th>

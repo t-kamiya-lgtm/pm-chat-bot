@@ -13,7 +13,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    // 背景を薄いブルーにして、白いカード・入力欄との境目が分かるようにする
+    <div className="min-h-screen bg-sky-50">
       <IdleLogout />
       <header className="border-b border-neutral-200 bg-white">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 py-4">
