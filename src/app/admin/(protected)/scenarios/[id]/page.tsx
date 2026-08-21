@@ -77,7 +77,7 @@ export default async function ScenarioEditorPage({
     supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
     supabase
       .from("products")
-      .select("id, name, price, order_type, product_group_id, product_groups(name)")
+      .select("id, name, price, order_type, image_url, product_group_id, product_groups(name)")
       .order("created_at", { ascending: false }),
     supabase.from("scenario_menu_items").select("*").eq("scenario_id", id).order("display_order"),
     supabase
@@ -140,6 +140,7 @@ export default async function ScenarioEditorPage({
           name: p.name as string,
           price: p.price as number,
           orderType: p.order_type as "one_time" | "subscription",
+          imageUrl: (p.image_url as string | null) ?? null,
           productGroupId: p.product_group_id as string | null,
           productGroupName: extractGroupName(p.product_groups),
         }))}
