@@ -1452,27 +1452,10 @@ function InsertNodeRow({
   );
 }
 
-function DropGuide({
-  active,
-  onDragOver,
-  onDrop,
-}: {
-  active: boolean;
-  onDragOver: () => void;
-  onDrop: () => void;
-}) {
+/** ノード間の「隙間」。ドラッグ中に指(ポインター)がここに重なると青い線を表示する。 */
+function DropGuide({ active }: { active: boolean }) {
   return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop();
-      }}
-      className="relative h-3"
-    >
+    <div className="relative h-3">
       {active && (
         <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-blue-500" />
       )}
@@ -1600,6 +1583,31 @@ export function ScenarioEditor({
   /** ノードの追加・並び替え中は、続けて操作されないようボタンを無効化する */
   const [nodeOpPending, setNodeOpPending] = useState(false);
   const [dragOverGap, setDragOverGap] = useState<number | null>(null);
+  // ノードカードのDOM要素(並び替え中に指の位置と各カードの位置を比較して、どの隙間に重なっているか判定するため)
+  const nodeCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+
+  /** 長押しドラッグ中、指(ポインター)のY座標から、どの隙間に重なっているかを判定する。 */
+  function handleNodeDragMove(clientY: number) {
+    const rects = nodeCardRefs.current.map((el) => el?.getBoundingClientRect() ?? null);
+    let gap = rects.length;
+    for (let i = 0; i < rects.length; i++) {
+      const rect = rects[i];
+      if (rect && clientY < rect.top + rect.height / 2) {
+        gap = i;
+        break;
+      }
+    }
+    setDragOverGap(gap);
+  }
+
+  /** 長押しドラッグを指を離して確定する。重なっていた隙間があればそこへ移動、なければ何もしない。 */
+  function handleNodeDrop() {
+    if (dragOverGap !== null) {
+      handleGapDrop(dragOverGap);
+    } else {
+      setDraggingIndex(null);
+    }
+  }
   const [menuItems, setMenuItems] = useState<ScenarioMenuItem[]>(initialMenuItems);
   const [newMenuLabel, setNewMenuLabel] = useState("");
   const [newMenuActionType, setNewMenuActionType] = useState<MenuItemActionType>("node");
@@ -2510,22 +2518,28 @@ export function ScenarioEditor({
       )}
 
       <div className="mb-8 min-w-0">
-        <DropGuide
-          active={draggingIndex !== null && dragOverGap === 0}
-          onDragOver={() => setDragOverGap(0)}
-          onDrop={() => handleGapDrop(0)}
-        />
+        <DropGuide active={draggingIndex !== null && dragOverGap === 0} />
         <InsertNodeRow disabled={nodeOpPending} onCreate={(type) => insertNodeAt(1, type)} />
         {nodes.map((node, index) => (
           <div key={node.id} className="min-w-0">
-            <div className={`min-w-0 ${draggingIndex === index ? "opacity-40" : ""}`}>
+            <div
+              ref={(el) => {
+                nodeCardRefs.current[index] = el;
+              }}
+              className={`min-w-0 ${draggingIndex === index ? "opacity-40" : ""}`}
+            >
               <NodeCard
                 scenarioId={scenario.id}
                 node={node}
                 isFirst={index === 0}
+                isLast={index === nodes.length - 1}
                 orderNumber={index + 1}
                 onMakeEntry={() => moveNodeToPosition(index, 1)}
+                onMoveUp={() => moveNodeToPosition(index, index)}
+                onMoveDown={() => moveNodeToPosition(index, index + 2)}
                 onDragStart={() => setDraggingIndex(index)}
+                onDragMove={handleNodeDragMove}
+                onDrop={handleNodeDrop}
                 onDragEnd={() => {
                   setDraggingIndex(null);
                   setDragOverGap(null);
@@ -2540,11 +2554,7 @@ export function ScenarioEditor({
                 onAutoEditHandled={() => setAutoEditNodeId(null)}
               />
             </div>
-            <DropGuide
-              active={draggingIndex !== null && dragOverGap === index + 1}
-              onDragOver={() => setDragOverGap(index + 1)}
-              onDrop={() => handleGapDrop(index + 1)}
-            />
+            <DropGuide active={draggingIndex !== null && dragOverGap === index + 1} />
             <InsertNodeRow disabled={nodeOpPending} onCreate={(type) => insertNodeAt(index + 2, type)} />
           </div>
         ))}
@@ -3265,9 +3275,14 @@ function NodeCard({
   allNodes,
   nodeOptions,
   isFirst,
+  isLast,
   orderNumber,
   onMakeEntry,
+  onMoveUp,
+  onMoveDown,
   onDragStart,
+  onDragMove,
+  onDrop,
   onDragEnd,
   onDelete,
   showToast,
@@ -3281,10 +3296,19 @@ function NodeCard({
   allNodes: ScenarioNode[];
   nodeOptions: { id: string; summary: string }[];
   isFirst: boolean;
+  isLast: boolean;
   /** 一覧での並び順(1始まり) */
   orderNumber: number;
   onMakeEntry: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  /** タイトル部分を長押しした瞬間(選択状態になり、並び替えを開始する) */
   onDragStart: () => void;
+  /** 選択状態のまま指(ポインター)を動かした時。clientYは画面上のY座標。 */
+  onDragMove: (clientY: number) => void;
+  /** 選択状態のまま指を離した時。重なっている隙間があればそこへ移動する。 */
+  onDrop: () => void;
+  /** 選択状態を解除する(移動せずに終了する場合も含む) */
   onDragEnd: () => void;
   onDelete: () => void;
   showToast: (toast: { message: string; type: "success" | "error" }) => void;
@@ -3297,6 +3321,64 @@ function NodeCard({
   // 「＋」で作った直後のノードは、開いた時点で中身が空(node.content === {})なので
   // 以下の各フィールドの初期値もそのまま編集用の初期値として使え、最初から編集状態で開いてよい
   const [editing, setEditing] = useState(Boolean(autoEdit));
+  // タイトル部分の長押しで並び替えを開始する(ドラッグ用の小さいアイコンだと掴みづらいため、
+  // 見出しの帯全体をドラッグ対応にしている)。長押し前に指が動いたら通常のスクロールとして扱う。
+  const [dragSelected, setDragSelected] = useState(false);
+  const longPressState = useRef<{ timer: ReturnType<typeof setTimeout> | null; startX: number; startY: number; active: boolean }>(
+    { timer: null, startX: 0, startY: 0, active: false },
+  );
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_MOVE_TOLERANCE = 10;
+
+  function clearLongPressTimer() {
+    if (longPressState.current.timer) {
+      clearTimeout(longPressState.current.timer);
+      longPressState.current.timer = null;
+    }
+  }
+
+  function handleTitlePointerDown(e: React.PointerEvent) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    longPressState.current.startX = e.clientX;
+    longPressState.current.startY = e.clientY;
+    longPressState.current.active = false;
+    clearLongPressTimer();
+    longPressState.current.timer = setTimeout(() => {
+      longPressState.current.active = true;
+      setDragSelected(true);
+      onDragStart();
+    }, LONG_PRESS_MS);
+  }
+
+  function handleTitlePointerMove(e: React.PointerEvent) {
+    if (!longPressState.current.active) {
+      const dx = e.clientX - longPressState.current.startX;
+      const dy = e.clientY - longPressState.current.startY;
+      if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) clearLongPressTimer();
+      return;
+    }
+    e.preventDefault();
+    onDragMove(e.clientY);
+  }
+
+  function handleTitlePointerUp(e: React.PointerEvent) {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    clearLongPressTimer();
+    const wasActive = longPressState.current.active;
+    longPressState.current.active = false;
+    setDragSelected(false);
+    if (wasActive) onDrop();
+  }
+
+  function handleTitlePointerCancel(e: React.PointerEvent) {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    clearLongPressTimer();
+    const wasActive = longPressState.current.active;
+    longPressState.current.active = false;
+    setDragSelected(false);
+    if (wasActive) onDragEnd();
+  }
   const [productIds, setProductIds] = useState<string[]>(extractProductIds(node.content));
   const [upsellProductId, setUpsellProductId] = useState((node.content.upsellProductId as string) ?? "");
   const [upsellImageUrl, setUpsellImageUrl] = useState((node.content.upsellImageUrl as string) ?? "");
@@ -3597,24 +3679,49 @@ function NodeCard({
   }
 
   return (
-    <div className="min-w-0 rounded-lg border border-neutral-200 bg-white p-3">
-      {/* 並び替え用のドラッグアイコンと順番はノード種別の左に置き、左側の操作列をなくして本文の幅を確保する */}
+    <div
+      className={`min-w-0 rounded-lg border-2 bg-white p-3 ${
+        dragSelected ? "border-blue-500" : "border-neutral-200"
+      }`}
+    >
+      {/* ▲▼は移動専用の小さいボタン、その右のタイトル帯(No+種別名)は長押しで
+          ドラッグ並び替えを開始する(小さいアイコンより掴みやすいよう帯全体を対象にしている) */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span
-            draggable
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            title="ドラッグして並び替え"
-            className="flex h-7 w-8 shrink-0 cursor-grab select-none items-center justify-center rounded text-base text-neutral-400 hover:bg-neutral-100 active:cursor-grabbing"
+          <div className="flex shrink-0 gap-0.5">
+            <button
+              type="button"
+              disabled={isFirst}
+              onClick={onMoveUp}
+              title="上に移動"
+              className="flex h-6 w-6 items-center justify-center rounded text-xs text-neutral-400 hover:bg-neutral-100 disabled:opacity-30"
+            >
+              ▲
+            </button>
+            <button
+              type="button"
+              disabled={isLast}
+              onClick={onMoveDown}
+              title="下に移動"
+              className="flex h-6 w-6 items-center justify-center rounded text-xs text-neutral-400 hover:bg-neutral-100 disabled:opacity-30"
+            >
+              ▼
+            </button>
+          </div>
+          <div
+            onPointerDown={handleTitlePointerDown}
+            onPointerMove={handleTitlePointerMove}
+            onPointerUp={handleTitlePointerUp}
+            onPointerCancel={handleTitlePointerCancel}
+            title="長押しして並び替え"
+            className="flex min-w-0 flex-1 touch-none items-center gap-1.5 rounded px-1 py-1 select-none"
           >
-            ⠿
-          </span>
-          <span className="shrink-0 text-sm font-bold text-neutral-700">{orderNumber}</span>
-          <span className="truncate rounded bg-neutral-100 px-2 py-0.5 text-xs">
-            {NODE_TYPE_LABELS[node.type]}
-            {isFirst && " ・開始ノード"}
-          </span>
+            <span className="shrink-0 text-sm font-bold text-neutral-700">{orderNumber}</span>
+            <span className="truncate rounded bg-neutral-100 px-2 py-0.5 text-xs">
+              {NODE_TYPE_LABELS[node.type]}
+              {isFirst && " ・開始ノード"}
+            </span>
+          </div>
         </div>
         <div className="flex shrink-0 gap-3 text-xs">
           {!editing && (
