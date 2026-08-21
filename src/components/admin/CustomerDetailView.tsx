@@ -26,6 +26,9 @@ const STATUS_LABELS: Record<string, string> = {
   canceled: "キャンセル",
 };
 
+/** 決済が完了し、購入として確定した状態(admin/dashboardの集計と同じ基準)。 */
+const CONFIRMED_ORDER_STATUSES = ["paid", "accepted"];
+
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("ja-JP");
 }
@@ -79,13 +82,31 @@ export function CustomerDetailView({
 
   const [expandedSurvey, setExpandedSurvey] = useState<string | null>(null);
 
+  const confirmedOrders = orders.filter((o) => CONFIRMED_ORDER_STATUSES.includes(o.status));
+  const totalPurchaseCount = confirmedOrders.length;
+  const totalPurchaseAmount = confirmedOrders.reduce(
+    (sum, o) => sum + o.amount + o.shipping_fee + o.payment_fee,
+    0,
+  );
+  // ordersはcreated_at降順で渡されるため、先頭が最新の注文
+  const latestOrder = orders[0] ?? null;
+  const latestShippingAddress = latestOrder?.shipping_address ?? null;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">
           {customer.name} 様{" "}
           <span className="text-base font-normal text-neutral-400">(顧客ID: {customer.customerNumber})</span>
         </h1>
+        <div className="flex gap-4 text-sm text-neutral-600">
+          <span>
+            累計購入回数: <strong className="text-neutral-900">{totalPurchaseCount}</strong>回
+          </span>
+          <span>
+            累計購入金額: <strong className="text-neutral-900">{totalPurchaseAmount.toLocaleString()}</strong>円
+          </span>
+        </div>
       </div>
 
       {customer.isMasked && (
@@ -95,6 +116,7 @@ export function CustomerDetailView({
       )}
 
       <div className="grid grid-cols-1 gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-sm sm:grid-cols-2">
+        <h2 className="text-sm font-semibold text-neutral-700 sm:col-span-2">注文者情報</h2>
         <div>
           <span className="block text-xs text-neutral-500">メールアドレス</span>
           {customer.email}
@@ -111,6 +133,35 @@ export function CustomerDetailView({
           <span className="block text-xs text-neutral-500">登録日</span>
           {formatDate(customer.createdAt)}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-sm sm:grid-cols-2">
+        <h2 className="text-sm font-semibold text-neutral-700 sm:col-span-2">
+          お届け先情報
+          {latestOrder && (
+            <span className="ml-2 text-xs font-normal text-neutral-400">
+              (最新のご注文: {latestOrder.order_number ?? "-"})
+            </span>
+          )}
+        </h2>
+        {latestShippingAddress ? (
+          <>
+            <div>
+              <span className="block text-xs text-neutral-500">お届け先氏名</span>
+              {latestShippingAddress.recipientName}
+            </div>
+            <div>
+              <span className="block text-xs text-neutral-500">お届け先電話番号</span>
+              {latestShippingAddress.recipientPhone}
+            </div>
+            <div className="sm:col-span-2">
+              <span className="block text-xs text-neutral-500">お届け先住所</span>
+              <AddressText address={latestShippingAddress} />
+            </div>
+          </>
+        ) : (
+          <p className="text-neutral-500 sm:col-span-2">注文者情報の住所と同じです</p>
+        )}
       </div>
 
       {isAdmin && activeSubscription && (
