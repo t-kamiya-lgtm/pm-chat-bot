@@ -1,7 +1,7 @@
 /**
  * 商品QAの「その他のご質問」問い合わせフォーム(要件定義書 4.7)用の通知メール送信。
  * DBには永続化せず、担当者メールアドレスへ通知するのみ。
- * RESEND_API_KEY が未設定の場合はコンソールログに出力するだけのフォールバックとする。
+ * GAS_MAIL_WEBHOOK_URL / GAS_MAIL_SECRET が未設定の場合はコンソールログに出力するだけのフォールバックとする。
  */
 export interface InquiryInput {
   name: string;
@@ -14,10 +14,11 @@ export interface InquiryInput {
 }
 
 export async function sendInquiryNotification(input: InquiryInput): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
+  const webhookUrl = process.env.GAS_MAIL_WEBHOOK_URL;
+  const secret = process.env.GAS_MAIL_SECRET;
   const to = input.receiveEmail || process.env.INQUIRY_NOTIFICATION_EMAIL;
 
-  if (!apiKey || !to) {
+  if (!webhookUrl || !secret || !to) {
     console.log("[inquiry] notification email not configured, logging instead:", input);
     return;
   }
@@ -25,13 +26,11 @@ export async function sendInquiryNotification(input: InquiryInput): Promise<void
   // 運用テスト期間中、本番の問い合わせと見分けられるよう件名に明記する。
   const testPrefix = process.env.INQUIRY_TEST_MODE === "true" ? "【テスト】" : "";
 
-  const res = await fetch("https://api.resend.com/emails", {
+  const res = await fetch(webhookUrl, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      secret,
       from: process.env.INQUIRY_FROM_EMAIL ?? "chatbot@example.com",
       to,
       subject: `${testPrefix}[チャットボット問い合わせ] ${input.productName ?? "商品QA"}`,
@@ -42,6 +41,7 @@ export async function sendInquiryNotification(input: InquiryInput): Promise<void
           ? `\n\nチャットURL: ${input.chatUrl}\n(お客様への返信時にこちらのリンクをご案内し、チャットボットでのご購入をお促しください)`
           : ""
       }`,
+      senderName: "プライムダイレクト",
     }),
   });
 
@@ -61,8 +61,6 @@ export interface SendEmailInput {
 /**
  * GAS(Google Apps Script) Webhook経由のメール送信ヘルパー(注文完了メール・離脱者リマインドメール用)。
  * GAS_MAIL_WEBHOOK_URL / GAS_MAIL_SECRET が未設定の場合はコンソールログに出力するだけのフォールバックとする。
- * 送信元アドレスはGAS側(Google Workspaceの送信元)で固定のため、input.fromは現時点では使用しない
- * (呼び出し元のシナリオ別送信元設定との整合は別途検討が必要)。
  * 戻り値は「実際にGAS Webhook経由で送信を試みたか」を示す(false = ログ出力のみ)。
  */
 export async function sendResendEmail(input: SendEmailInput): Promise<boolean> {
@@ -79,6 +77,7 @@ export async function sendResendEmail(input: SendEmailInput): Promise<boolean> {
     body: JSON.stringify({
       secret,
       to: input.to,
+      from: input.from,
       subject: input.subject,
       text: input.text,
       html: input.html,

@@ -9,7 +9,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 /**
  * 管理画面への招待メールを送る。ログインはGoogle認証のみのため、案内リンクを送るだけの内容とする。
- * 戻り値は「実際にメール送信を試みたか」(false = RESEND_API_KEY未設定でログ出力のみ)。
+ * 戻り値は「実際にメール送信を試みたか」(false = GAS_MAIL_WEBHOOK_URL未設定でログ出力のみ)。
  */
 export async function sendUserInviteEmail(input: {
   to: string;
