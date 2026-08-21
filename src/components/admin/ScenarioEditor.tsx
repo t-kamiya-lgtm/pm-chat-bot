@@ -42,6 +42,11 @@ const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   coupon: "クーポン表示",
 };
 
+/** 決済導線ノードは廃止済みのため、新規作成の選択肢からは除外する(既存ノードの表示ラベルはそのまま残す)。 */
+const CREATABLE_NODE_TYPES = (Object.keys(NODE_TYPE_LABELS) as ScenarioNodeType[]).filter(
+  (type) => type !== "checkout",
+);
+
 const ORDER_TYPE_LABELS: Record<string, string> = {
   one_time: "単品",
   subscription: "定期",
@@ -408,14 +413,18 @@ function resolveTargetNodeIds(target: string): string[] {
  * 決済導線ノードへ直接つながっている接続を洗い出す。
  * 商品提示ノードは保存時に自動で紐付けを解除するため対象外。
  */
-function findCheckoutLinks(nodes: ScenarioNode[], products: PickableProduct[]): string[] {
+function findCheckoutLinks(nodes: ScenarioNode[]): string[] {
   const checkoutNodes = new Map(nodes.filter((n) => n.type === "checkout").map((n) => [n.id, n]));
   if (checkoutNodes.size === 0) return [];
+
+  // 一覧の表示No(1始まり)を付けて、同じ種別のノードが複数あっても区別できるようにする
+  const indexById = new Map(nodes.map((n, i) => [n.id, i]));
+  const label = (n: ScenarioNode) => `${(indexById.get(n.id) ?? 0) + 1}. ${nodeSummary(n)}`;
 
   const found: string[] = [];
   const entryNode = nodes[0];
   if (entryNode && entryNode.type === "checkout") {
-    found.push(`開始ノードが「決済導線: ${truncate(nodeSummary(entryNode, products), 40)}」になっています`);
+    found.push(`開始ノードが「${label(entryNode)}」になっています`);
   }
   for (const node of nodes) {
     if (node.type === "product" || node.type === "checkout") continue;
@@ -423,10 +432,7 @@ function findCheckoutLinks(nodes: ScenarioNode[], products: PickableProduct[]): 
       for (const targetId of resolveTargetNodeIds(target)) {
         const checkoutNode = checkoutNodes.get(targetId);
         if (!checkoutNode) continue;
-        found.push(
-          `「${NODE_TYPE_LABELS[node.type]}: ${truncate(nodeSummary(node, products), 30)}」→` +
-            `「決済導線: ${truncate(nodeSummary(checkoutNode, products), 30)}」`,
-        );
+        found.push(`「${label(node)}」→「${label(checkoutNode)}」`);
       }
     }
   }
@@ -448,45 +454,13 @@ function serializeSurveyQuestions(questions: SurveyQuestion[]): SurveyQuestion[]
 }
 
 /** 他ノードへの遷移先選択のドロップダウンに表示する、ノードの内容が分かる短い要約。 */
-function nodeSummary(node: ScenarioNode, products: PickableProduct[]): string {
-  const productNames = (ids: string[]) =>
-    ids
-      .map((id) => products.find((p) => p.id === id)?.name)
-      .filter((name): name is string => Boolean(name))
-      .join("、") || "未設定";
-
-  switch (node.type) {
-    case "message":
-      return `メッセージ: ${truncate((node.content.text as string) ?? "")}`;
-    case "choice":
-      return `選択肢: ${truncate((node.content.text as string) ?? "")}`;
-    case "product":
-      return `商品提示: ${productNames(extractProductIds(node.content))}`;
-    case "checkout":
-      return `決済導線: ${productNames(extractProductIds(node.content))}`;
-    case "product_qa": {
-      const groupNames =
-        extractProductIds(node.content)
-          .map((id) => products.find((p) => p.id === id)?.productGroupName)
-          .filter((name): name is string => Boolean(name))
-          .join("、") || "未設定";
-      return `商品QA: ${groupNames}`;
-    }
-    case "image": {
-      const urls =
-        (node.content.imageUrls as string[] | undefined) ??
-        (node.content.imageUrl ? [node.content.imageUrl as string] : []);
-      return `画像表示: ${truncate((node.content.caption as string) || urls[0] || "")}${urls.length > 1 ? `他${urls.length}枚` : ""}`;
-    }
-    case "video":
-      return `動画表示: ${truncate((node.content.caption as string) || (node.content.videoUrl as string) || "")}`;
-    case "survey":
-      return `アンケート: ${((node.content.questions as SurveyQuestion[] | undefined) ?? []).length}件の質問`;
-    case "coupon":
-      return "クーポン表示(このシナリオの自動適用クーポンを表示)";
-    default:
-      return node.type;
-  }
+/**
+ * 遷移先の候補や案内文で表示するノードの名称。ノード種別のタイトルのみを返す
+ * (例: 「商品提示ノード」)。同じ種別のノードが複数ある場合は、呼び出し側で
+ * 一覧の順番(表示No)を前に付けて区別する。
+ */
+function nodeSummary(node: ScenarioNode): string {
+  return `${NODE_TYPE_LABELS[node.type]}ノード`;
 }
 
 function NextNodeSelect({
@@ -1412,19 +1386,68 @@ function EmbedSnippet({ label, code }: { label: string; code: string }) {
  * ドラッグ中にこの隙間へホバーすると青い線が表示され、その状態で指を離すとそこへ移動する
  * (線が出ていない場所で離した場合は何も起きず、元の位置のままになる)。
  */
-/** ノードとノードの間に新しいノードを挿入するボタン。一覧の流れの中で追加できるようにする。 */
-function InsertNodeButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+/**
+ * ノードとノードの間に新しいノードを挿入する行。「＋」を押すとノード種別を選ぶ小さなフォームが
+ * その場で開き、選んで「作成」するとその位置に空のノードができ、そのまま編集状態が開く。
+ */
+function InsertNodeRow({
+  onCreate,
+  disabled,
+}: {
+  onCreate: (type: ScenarioNodeType) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [type, setType] = useState<ScenarioNodeType>("message");
+
+  if (open) {
+    return (
+      <div className="my-1 flex flex-wrap items-center gap-2 rounded-md border border-blue-300 bg-white p-2">
+        <select
+          className="input w-auto"
+          value={type}
+          onChange={(e) => setType(e.target.value as ScenarioNodeType)}
+        >
+          {CREATABLE_NODE_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {NODE_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            setOpen(false);
+            onCreate(type);
+          }}
+          className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700 disabled:opacity-50"
+        >
+          作成
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+        >
+          キャンセル
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="group flex justify-center py-1">
+    <div className="flex items-center gap-2 py-1">
       <button
         type="button"
-        onClick={onClick}
+        onClick={() => setOpen(true)}
         disabled={disabled}
         title="ここに新しいノードを追加"
         className="rounded-full border border-neutral-300 bg-white px-3 py-0.5 text-xs text-neutral-400 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
       >
         ＋
       </button>
+      <span className="text-xs text-neutral-400">ノードを追加</span>
     </div>
   );
 }
@@ -1571,38 +1594,9 @@ export function ScenarioEditor({
     }
     setCouponSaved(false);
   }, [couponForm]);
-  const [newNodeType, setNewNodeType] = useState<ScenarioNodeType>("message");
-  const [newNodeProductIds, setNewNodeProductIds] = useState<string[]>([]);
-  const [newNodeProductUpsell, setNewNodeProductUpsell] = useState<Record<string, ProductUpsellEntry>>({});
-  const [newNodeText, setNewNodeText] = useState("");
-  const [newNodeImageUrl, setNewNodeImageUrl] = useState("");
-  const [newNodeImageUrls, setNewNodeImageUrls] = useState<string[]>([""]);
-  const [newNodeImageLinkUrl, setNewNodeImageLinkUrl] = useState("");
-  const [newNodeImageCaption, setNewNodeImageCaption] = useState("");
-  const [newNodeVideoUrl, setNewNodeVideoUrl] = useState("");
-  const [newNodeVideoAspectRatio, setNewNodeVideoAspectRatio] = useState(DEFAULT_VIDEO_ASPECT_RATIO);
-  const [newNodeVideoDetecting, setNewNodeVideoDetecting] = useState(false);
-  const [newNodeVideoCaption, setNewNodeVideoCaption] = useState("");
-
-  async function handleDetectNewNodeAspectRatio() {
-    if (!newNodeVideoUrl.trim()) return;
-    setNewNodeVideoDetecting(true);
-    try {
-      setNewNodeVideoAspectRatio(await detectAspectRatio(newNodeVideoUrl.trim()));
-    } catch {
-      setNewNodeVideoAspectRatio(DEFAULT_VIDEO_ASPECT_RATIO);
-    } finally {
-      setNewNodeVideoDetecting(false);
-    }
-  }
-  const [newNodeSurveyIntro, setNewNodeSurveyIntro] = useState("");
-  const [newNodeSurveyQuestions, setNewNodeSurveyQuestions] = useState<SurveyQuestion[]>([]);
-  const [newNodeChoiceText, setNewNodeChoiceText] = useState("");
-  const [newNodeOptions, setNewNodeOptions] = useState<OptionDraft[]>([]);
-  const [newNodeDefaultNext, setNewNodeDefaultNext] = useState("");
-  const [newNodeIsEntry, setNewNodeIsEntry] = useState(nodes.length === 0);
-  const [newNodeMemo, setNewNodeMemo] = useState("");
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  /** ノード間の「＋」で作った直後のノードID。該当するNodeCardが自動的に編集状態を開く。 */
+  const [autoEditNodeId, setAutoEditNodeId] = useState<string | null>(null);
   /** ノードの追加・並び替え中は、続けて操作されないようボタンを無効化する */
   const [nodeOpPending, setNodeOpPending] = useState(false);
   const [dragOverGap, setDragOverGap] = useState<number | null>(null);
@@ -1629,12 +1623,13 @@ export function ScenarioEditor({
     };
   }, []);
 
-  const nodeOptions = nodes.map((n) => ({ id: n.id, summary: nodeSummary(n, products) }));
+  // 同じ種別のノードが複数あっても区別できるよう、一覧の表示No(1始まり)を前に付ける
+  const nodeOptions = nodes.map((n, i) => ({ id: n.id, summary: `${i + 1}. ${nodeSummary(n)}` }));
 
   async function togglePublish() {
     // 公開時のみ検証する(下書きに戻す操作は途中の状態でも通す)
     if (scenario.status !== "published") {
-      const invalidLinks = findCheckoutLinks(nodes, products);
+      const invalidLinks = findCheckoutLinks(nodes);
       if (invalidLinks.length > 0) {
         setErrorDialog({
           title: CHECKOUT_LINK_ERROR_TITLE,
@@ -2157,191 +2152,6 @@ export function ScenarioEditor({
     router.push("/admin/scenarios");
   }
 
-  async function handleAddNode(event: React.FormEvent) {
-    event.preventDefault();
-
-    let content: Record<string, unknown>;
-    let nextNodeMap: Record<string, string> = {};
-
-    if (usesProductPicker(newNodeType)) {
-      // マトリクスで追加した直後、まだ商品を選択していない空スロット("")は保存対象から除く
-      const validProductIds =
-        newNodeType === "product" ? newNodeProductIds.filter(Boolean) : newNodeProductIds;
-      if (validProductIds.length === 0) {
-        setToast({ message: "品番を1つ以上選択してください", type: "error" });
-        return;
-      }
-      content =
-        newNodeType === "product" ? { productIds: validProductIds } : { productId: validProductIds[0] };
-      if (newNodeType === "product") {
-        const prunedUpsell = Object.fromEntries(
-          validProductIds
-            .filter((id) => newNodeProductUpsell[id])
-            .map((id) => [id, newNodeProductUpsell[id]])
-            .filter(([, entry]) => (entry as ProductUpsellEntry).upsellProductId || (entry as ProductUpsellEntry).crossSellProductId),
-        );
-        if (Object.keys(prunedUpsell).length > 0) {
-          content = { ...content, productUpsell: prunedUpsell };
-        }
-      }
-      // 商品ノードは商品を選ぶと共通の決済フォームへ直接進むため、商品ごとの行き先は設定しない
-      if (newNodeDefaultNext) {
-        nextNodeMap = { default: newNodeDefaultNext };
-      }
-    } else if (newNodeType === "message") {
-      if (!newNodeText.trim()) {
-        setToast({ message: "メッセージ本文を入力してください", type: "error" });
-        return;
-      }
-      content = {
-        text: newNodeText.trim(),
-        ...(newNodeImageUrl.trim() && { imageUrl: newNodeImageUrl.trim() }),
-      };
-      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
-    } else if (newNodeType === "choice") {
-      if (!newNodeChoiceText.trim()) {
-        setToast({ message: "質問文を入力してください", type: "error" });
-        return;
-      }
-      if (newNodeOptions.length === 0) {
-        setToast({ message: "選択肢を1つ以上追加してください", type: "error" });
-        return;
-      }
-      if (newNodeOptions.some((o) => !o.label.trim() || !o.value.trim())) {
-        setToast({ message: "選択肢の表示ラベル・内部値を入力してください", type: "error" });
-        return;
-      }
-      content = {
-        text: newNodeChoiceText.trim(),
-        options: newNodeOptions.map((o) => ({ label: o.label.trim(), value: o.value.trim() })),
-      };
-      nextNodeMap = buildChoiceNextNodeMap(newNodeOptions);
-      if (newNodeDefaultNext) nextNodeMap.default = newNodeDefaultNext;
-    } else if (newNodeType === "image") {
-      const urls = newNodeImageUrls.map((u) => u.trim()).filter(Boolean);
-      if (urls.length === 0) {
-        setToast({ message: "画像URLを入力してください", type: "error" });
-        return;
-      }
-      content = {
-        imageUrls: urls,
-        ...(newNodeImageLinkUrl.trim() && { linkUrl: newNodeImageLinkUrl.trim() }),
-        ...(newNodeImageCaption.trim() && { caption: newNodeImageCaption.trim() }),
-      };
-      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
-    } else if (newNodeType === "video") {
-      if (!newNodeVideoUrl.trim()) {
-        setToast({ message: "動画URLを入力してください", type: "error" });
-        return;
-      }
-      content = {
-        videoUrl: newNodeVideoUrl.trim(),
-        aspectRatio: newNodeVideoAspectRatio,
-        ...(newNodeVideoCaption.trim() && { caption: newNodeVideoCaption.trim() }),
-      };
-      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
-    } else if (newNodeType === "coupon") {
-      content = {};
-      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
-    } else {
-      if (newNodeSurveyQuestions.length === 0) {
-        setToast({ message: "質問を1つ以上追加してください", type: "error" });
-        return;
-      }
-      if (newNodeSurveyQuestions.some((q) => !q.label.trim())) {
-        setToast({ message: "質問文を入力してください", type: "error" });
-        return;
-      }
-      if (
-        newNodeSurveyQuestions.some(
-          (q) =>
-            (q.type === "checkbox" || q.type === "radio") &&
-            (q.options ?? []).map((o) => o.trim()).filter(Boolean).length === 0,
-        )
-      ) {
-        setToast({
-          message: "チェックボックス・ラジオボタンの質問には選択肢を1つ以上入力してください",
-          type: "error",
-        });
-        return;
-      }
-      content = {
-        ...(newNodeSurveyIntro.trim() && { introText: newNodeSurveyIntro.trim() }),
-        questions: serializeSurveyQuestions(newNodeSurveyQuestions),
-      };
-      if (newNodeDefaultNext) nextNodeMap = { default: newNodeDefaultNext };
-    }
-
-    // 商品を選ばずに決済フォームへ入る導線は成立しないため、決済導線ノードへの接続は作らせない
-    if (newNodeType !== "product") {
-      const checkoutNodeIds = new Set(nodes.filter((n) => n.type === "checkout").map((n) => n.id));
-      const blocked = Object.values(nextNodeMap)
-        .flatMap(resolveTargetNodeIds)
-        .filter((id) => checkoutNodeIds.has(id))
-        .map((id) => {
-          const target = nodes.find((n) => n.id === id);
-          return `「決済導線: ${truncate(target ? nodeSummary(target, products) : id, 40)}」`;
-        });
-      if (blocked.length > 0) {
-        setErrorDialog({
-          title: CHECKOUT_LINK_ERROR_TITLE,
-          description: CHECKOUT_LINK_ERROR_DESCRIPTION,
-          items: blocked,
-        });
-        return;
-      }
-    }
-
-    const res = await fetch(`/api/scenarios/${scenario.id}/nodes`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        type: newNodeType,
-        content,
-        nextNodeMap,
-        ...(newNodeMemo.trim() && { memo: newNodeMemo.trim() }),
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setToast({
-        message: `ノードの追加に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
-        type: "error",
-      });
-      return;
-    }
-
-    if (newNodeIsEntry) {
-      const { node: created } = await res.json();
-      await fetch(`/api/scenarios/${scenario.id}/nodes/${created.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ isEntry: true }),
-      });
-    }
-
-    setNewNodeProductIds([]);
-    setNewNodeProductUpsell({});
-    setNewNodeText("");
-    setNewNodeImageUrl("");
-    setNewNodeImageUrls([""]);
-    setNewNodeImageLinkUrl("");
-    setNewNodeImageCaption("");
-    setNewNodeVideoUrl("");
-    setNewNodeVideoAspectRatio(DEFAULT_VIDEO_ASPECT_RATIO);
-    setNewNodeVideoCaption("");
-    setNewNodeSurveyIntro("");
-    setNewNodeSurveyQuestions([]);
-    setNewNodeChoiceText("");
-    setNewNodeOptions([]);
-    setNewNodeDefaultNext("");
-    setNewNodeIsEntry(false);
-    setNewNodeMemo("");
-    setToast({ message: "ノードを追加しました", type: "success" });
-    router.refresh();
-  }
-
   async function handleDeleteNode(nodeId: string) {
     const res = await fetch(`/api/scenarios/${scenario.id}/nodes/${nodeId}`, { method: "DELETE" });
     if (!res.ok) {
@@ -2355,18 +2165,19 @@ export function ScenarioEditor({
     router.refresh();
   }
 
-  /** fromIndexのノードをtoPosition(1始まりの表示順)へ移動する。間の全ノードのdisplay_orderを詰め直す。 */
   /**
-   * ノードとノードの間の「＋」で、その位置に空のメッセージノードを作る。
+   * ノードとノードの間の「＋」で、その位置に指定した種別の空ノードを作る。
    * APIは常に末尾に作るため、作成後に表示順を振り直して指定位置へ入れる。
+   * 作成直後は内容が空なので、そのまま編集画面を開いて入力できるようにする
+   * (autoEditNodeId → NodeCard側で自動的に「編集」状態にする)。
    */
-  async function insertNodeAt(position: number) {
+  async function insertNodeAt(position: number, type: ScenarioNodeType) {
     setNodeOpPending(true);
     try {
       const res = await fetch(`/api/scenarios/${scenario.id}/nodes`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "message", content: { text: "" } }),
+        body: JSON.stringify({ type, content: {} }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -2399,13 +2210,14 @@ export function ScenarioEditor({
         await patchNode(prev.id, { nextNodeMap: { ...prev.nextNodeMap, default: created.node.id } });
         await patchNode(created.node.id, { nextNodeMap: { default: next.id } });
       }
-      setToast({ message: "ノードを追加しました。内容を編集してください", type: "success" });
+      setAutoEditNodeId(created.node.id);
       router.refresh();
     } finally {
       setNodeOpPending(false);
     }
   }
 
+  /** fromIndexのノードをtoPosition(1始まりの表示順)へ移動する。間の全ノードのdisplay_orderを詰め直す。 */
   async function moveNodeToPosition(fromIndex: number, toPosition: number) {
     const toIndex = Math.max(0, Math.min(nodes.length - 1, toPosition - 1));
     if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= nodes.length) return;
@@ -2703,7 +2515,7 @@ export function ScenarioEditor({
           onDragOver={() => setDragOverGap(0)}
           onDrop={() => handleGapDrop(0)}
         />
-        <InsertNodeButton disabled={nodeOpPending} onClick={() => insertNodeAt(1)} />
+        <InsertNodeRow disabled={nodeOpPending} onCreate={(type) => insertNodeAt(1, type)} />
         {nodes.map((node, index) => (
           <div key={node.id} className="min-w-0">
             <div className={`min-w-0 ${draggingIndex === index ? "opacity-40" : ""}`}>
@@ -2724,6 +2536,8 @@ export function ScenarioEditor({
                 onDelete={() => handleDeleteNode(node.id)}
                 showToast={setToast}
                 showErrorDialog={setErrorDialog}
+                autoEdit={autoEditNodeId === node.id}
+                onAutoEditHandled={() => setAutoEditNodeId(null)}
               />
             </div>
             <DropGuide
@@ -2731,7 +2545,7 @@ export function ScenarioEditor({
               onDragOver={() => setDragOverGap(index + 1)}
               onDrop={() => handleGapDrop(index + 1)}
             />
-            <InsertNodeButton disabled={nodeOpPending} onClick={() => insertNodeAt(index + 2)} />
+            <InsertNodeRow disabled={nodeOpPending} onCreate={(type) => insertNodeAt(index + 2, type)} />
           </div>
         ))}
         {nodes.length === 0 && (
@@ -2741,214 +2555,6 @@ export function ScenarioEditor({
         )}
       </div>
 
-      <form
-        onSubmit={handleAddNode}
-        className={`space-y-4 border-t border-neutral-200 pt-6 ${
-          newNodeType === "product" ? "max-w-4xl" : "max-w-xl"
-        }`}
-      >
-        <h2 className="text-base font-semibold">ノードを追加</h2>
-
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-neutral-700">ノード種別</span>
-          <select
-            className="input"
-            value={newNodeType}
-            onChange={(e) => setNewNodeType(e.target.value as ScenarioNodeType)}
-          >
-            {/* 決済導線ノードは廃止(商品提示ノードで商品を選ぶと決済フォームへ直接進む)。
-                既存ノードの表示のためラベル自体は残すが、新規追加はできないようにする。 */}
-            {(Object.keys(NODE_TYPE_LABELS) as ScenarioNodeType[])
-              .filter((type) => type !== "checkout")
-              .map((type) => (
-                <option key={type} value={type}>
-                  {NODE_TYPE_LABELS[type]}
-                </option>
-              ))}
-          </select>
-        </label>
-
-        {newNodeType === "product_qa" && (
-          <ProductGroupSelect
-            label="アイテム(商品Q&Aはアイテム単位で登録されているため、品番ではなくアイテムを選択します)"
-            products={products}
-            value={newNodeProductIds[0] ?? ""}
-            onChange={(id) => setNewNodeProductIds(id ? [id] : [])}
-          />
-        )}
-
-        {newNodeType === "product" && (
-          <ProductUpsellMatrixEditor
-            productIds={newNodeProductIds}
-            onProductIdsChange={setNewNodeProductIds}
-            products={products}
-            value={newNodeProductUpsell}
-            onChange={setNewNodeProductUpsell}
-          />
-        )}
-
-        {newNodeType === "message" && (
-          <>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">メッセージ本文</span>
-              <textarea
-                className="input"
-                rows={3}
-                value={newNodeText}
-                onChange={(e) => setNewNodeText(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">画像URL(任意・比率自由・横幅いっぱいに表示)</span>
-              <input
-                className="input"
-                value={newNodeImageUrl}
-                onChange={(e) => setNewNodeImageUrl(e.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        {newNodeType === "choice" && (
-          <>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">質問文</span>
-              <textarea
-                className="input"
-                rows={2}
-                value={newNodeChoiceText}
-                onChange={(e) => setNewNodeChoiceText(e.target.value)}
-              />
-            </label>
-            <OptionsEditor
-              options={newNodeOptions}
-              onChange={setNewNodeOptions}
-              nodeOptions={nodeOptions}
-              products={products}
-            />
-          </>
-        )}
-
-        {newNodeType === "image" && (
-          <>
-            <ImageUrlListEditor urls={newNodeImageUrls} onChange={setNewNodeImageUrls} />
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">リンクURL(任意・画像タップ時に開く)</span>
-              <input
-                className="input"
-                value={newNodeImageLinkUrl}
-                onChange={(e) => setNewNodeImageLinkUrl(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">キャプション(任意)</span>
-              <input
-                className="input"
-                value={newNodeImageCaption}
-                onChange={(e) => setNewNodeImageCaption(e.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        {newNodeType === "video" && (
-          <>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">
-                動画URL(直接URL(mp4等)、またはYouTube/Vimeoの動画URL)
-              </span>
-              <input
-                className="input"
-                placeholder="https://..."
-                value={newNodeVideoUrl}
-                onChange={(e) => setNewNodeVideoUrl(e.target.value)}
-                onBlur={handleDetectNewNodeAspectRatio}
-              />
-              <p className="mt-1 text-xs text-neutral-500">
-                縦横比:{" "}
-                {newNodeVideoDetecting ? "検出中..." : newNodeVideoAspectRatio}
-                {!newNodeVideoDetecting && newNodeVideoUrl.trim() && (
-                  <button
-                    type="button"
-                    onClick={handleDetectNewNodeAspectRatio}
-                    className="ml-2 text-blue-600 hover:underline"
-                  >
-                    再検出
-                  </button>
-                )}
-              </p>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">キャプション(任意)</span>
-              <input
-                className="input"
-                value={newNodeVideoCaption}
-                onChange={(e) => setNewNodeVideoCaption(e.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        {newNodeType === "survey" && (
-          <>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-neutral-700">
-                アンケート冒頭のコメント(任意・例: よろしければアンケートにご協力ください)
-              </span>
-              <textarea
-                className="input"
-                rows={2}
-                value={newNodeSurveyIntro}
-                onChange={(e) => setNewNodeSurveyIntro(e.target.value)}
-              />
-            </label>
-            <SurveyQuestionsEditor questions={newNodeSurveyQuestions} onChange={setNewNodeSurveyQuestions} />
-          </>
-        )}
-
-        {newNodeType === "coupon" && (
-          <p className="rounded-md bg-sky-50 p-3 text-xs text-neutral-600">
-            {coupon
-              ? `このシナリオの自動適用クーポン(${coupon.name})の告知画像・メッセージが、このノードの位置で表示されます。内容は「表示設定」内の「クーポン設定」から編集してください。`
-              : "このシナリオにはまだ自動適用クーポンが設定されていません。「表示設定」内の「クーポン設定」から作成すると、このノードで告知が表示されるようになります。"}
-          </p>
-        )}
-
-        <NextNodeSelect
-          label={newNodeType === "choice" ? "どの選択肢にも一致しない場合に進むノード(任意)" : "次に進むノード"}
-          nodeOptions={nodeOptions}
-          value={newNodeDefaultNext}
-          onChange={setNewNodeDefaultNext}
-        />
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={newNodeIsEntry}
-            onChange={(e) => setNewNodeIsEntry(e.target.checked)}
-          />
-          このノードを開始ノードにする
-        </label>
-
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-neutral-700">
-            メモ(任意・管理用。チャットボット画面には表示されません)
-          </span>
-          <textarea
-            className="input"
-            rows={2}
-            value={newNodeMemo}
-            onChange={(e) => setNewNodeMemo(e.target.value)}
-          />
-        </label>
-
-        <button
-          type="submit"
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
-        >
-          ノードを追加
-        </button>
-      </form>
       </Accordion>
 
       <Accordion title="表示設定">
@@ -3666,6 +3272,8 @@ function NodeCard({
   onDelete,
   showToast,
   showErrorDialog,
+  autoEdit,
+  onAutoEditHandled,
 }: {
   scenarioId: string;
   node: ScenarioNode;
@@ -3681,9 +3289,14 @@ function NodeCard({
   onDelete: () => void;
   showToast: (toast: { message: string; type: "success" | "error" }) => void;
   showErrorDialog: (dialog: { title: string; description?: string; items?: string[] }) => void;
+  /** 「＋」で作った直後のノードの場合true。マウント時に自動で編集状態を開く。 */
+  autoEdit?: boolean;
+  onAutoEditHandled?: () => void;
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
+  // 「＋」で作った直後のノードは、開いた時点で中身が空(node.content === {})なので
+  // 以下の各フィールドの初期値もそのまま編集用の初期値として使え、最初から編集状態で開いてよい
+  const [editing, setEditing] = useState(Boolean(autoEdit));
   const [productIds, setProductIds] = useState<string[]>(extractProductIds(node.content));
   const [upsellProductId, setUpsellProductId] = useState((node.content.upsellProductId as string) ?? "");
   const [upsellImageUrl, setUpsellImageUrl] = useState((node.content.upsellImageUrl as string) ?? "");
@@ -3793,6 +3406,12 @@ function NodeCard({
     setDefaultNext(node.nextNodeMap.default ?? "");
     setEditing(true);
   }
+
+  // 親の「自動編集」フラグは一度使ったら消してもらう(この後ノードを増やしても再度開かないように)
+  useEffect(() => {
+    if (autoEdit) onAutoEditHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEdit]);
 
   async function handleSave() {
     let content: Record<string, unknown>;
@@ -3942,8 +3561,9 @@ function NodeCard({
         .flatMap(resolveTargetNodeIds)
         .filter((id) => checkoutNodeIds.has(id))
         .map((id) => {
-          const target = allNodes.find((n) => n.id === id);
-          return `「決済導線: ${truncate(target ? nodeSummary(target, products) : id, 40)}」`;
+          const targetIndex = allNodes.findIndex((n) => n.id === id);
+          const target = targetIndex >= 0 ? allNodes[targetIndex] : undefined;
+          return `「${target ? `${targetIndex + 1}. ${nodeSummary(target)}` : id}」`;
         });
       if (blocked.length > 0) {
         showErrorDialog({
@@ -3986,7 +3606,7 @@ function NodeCard({
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             title="ドラッグして並び替え"
-            className="cursor-grab shrink-0 select-none px-0.5 text-neutral-400 active:cursor-grabbing"
+            className="flex h-7 w-8 shrink-0 cursor-grab select-none items-center justify-center rounded text-base text-neutral-400 hover:bg-neutral-100 active:cursor-grabbing"
           >
             ⠿
           </span>
@@ -4290,19 +3910,13 @@ function NodeCard({
           )}
           {node.type === "product" ? (
             <div className="rounded bg-sky-50 p-2 text-xs">
+              {/* 商品ごとの行き先は個別指定しない(商品を選ぶと共通の決済フォームへ直接進む)ため、
+                  ここでは各商品名とアップセル・クロスセル対象のみを表示する。次のノードは
+                  他のノードと同様、このブロックの下に1回だけ表示する。 */}
               {productIds.length > 0 ? (
                 <ul className="list-disc space-y-0.5 pl-4">
                   {productIds.map((id) => {
                     const product = products.find((p) => p.id === id);
-                    // 決済導線ノードへの旧紐付けが残っていても、実際の挙動と揃えて
-                    //「決済フォームへ進む」と表示する(保存時に紐付けは解除される)
-                    const isCheckout = (nodeId: string) =>
-                      allNodes.find((n) => n.id === nodeId)?.type === "checkout";
-                    const targetId = productNextMap[id] || defaultNext;
-                    const target =
-                      targetId && !isCheckout(targetId)
-                        ? nodeOptions.find((n) => n.id === targetId)
-                        : undefined;
                     const upsell = productUpsellMap[id];
                     const upsellName = upsell?.upsellProductId
                       ? products.find((p) => p.id === upsell.upsellProductId)?.name
@@ -4312,10 +3926,9 @@ function NodeCard({
                       : undefined;
                     return (
                       <li key={id}>
-                        {product ? productLabel(product) : "未設定"} →{" "}
-                        {target?.summary ?? "決済フォームへ進む"}
+                        {product ? productLabel(product) : "未設定"}
                         {(upsellName || crossSellName) && (
-                          <span className="text-neutral-400">
+                          <span className="text-red-600">
                             {" "}
                             ({[upsellName && `アップセル: ${upsellName}`, crossSellName && `クロスセル: ${crossSellName}`]
                               .filter(Boolean)
@@ -4441,27 +4054,38 @@ function NodeCard({
               )}
             </div>
           )}
-          {node.type !== "product" && (
-            <p className="mt-1 rounded bg-sky-50 p-2 text-xs text-neutral-500">
-              次のノード:{" "}
-              {node.type === "choice"
-                ? options
-                    .map((o) => {
-                      if (o.qaProductId) {
-                        const groupName =
-                          products.find((p) => p.id === o.qaProductId)?.productGroupName ?? "未設定";
-                        const after = nodeOptions.find((n) => n.id === o.nextNodeId);
-                        return `${o.label || o.value}→Q&A表示(${groupName})→${after?.summary ?? "自動: 一覧の次のノードへ進む"}`;
-                      }
-                      const target = nodeOptions.find((n) => n.id === o.nextNodeId);
-                      return target ? `${o.label || o.value}→${target.summary}` : null;
-                    })
-                    .filter(Boolean)
-                    .join("、") ||
-                  (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")
-                : (nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 一覧の次のノードへ進む")}
-            </p>
-          )}
+          <div className="mt-1 rounded bg-sky-50 p-2 text-xs text-neutral-500">
+            <span className="mr-1">▶</span>
+            {node.type === "choice" ? (
+              (() => {
+                const lines = options
+                  .map((o) => {
+                    if (o.qaProductId) {
+                      const groupName =
+                        products.find((p) => p.id === o.qaProductId)?.productGroupName ?? "未設定";
+                      const after = nodeOptions.find((n) => n.id === o.nextNodeId);
+                      return `${o.label || o.value}→Q&A表示(${groupName})→${after?.summary ?? "自動: 次のノード"}`;
+                    }
+                    const target = nodeOptions.find((n) => n.id === o.nextNodeId);
+                    return target ? `${o.label || o.value}→${target.summary}` : null;
+                  })
+                  .filter((line): line is string => Boolean(line));
+                if (lines.length === 0) {
+                  return <span>{nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 次のノード"}</span>;
+                }
+                // 選択肢が複数あると1行にまとめると読みづらいため、改行して「・」を付ける
+                return (
+                  <div className="mt-0.5 space-y-0.5">
+                    {lines.map((line, i) => (
+                      <p key={i}>・{line}</p>
+                    ))}
+                  </div>
+                );
+              })()
+            ) : (
+              <span>{nodeOptions.find((n) => n.id === defaultNext)?.summary ?? "自動: 次のノード"}</span>
+            )}
+          </div>
         </>
       )}
     </div>
