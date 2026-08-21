@@ -55,36 +55,39 @@ export interface SendEmailInput {
   from: string;
   subject: string;
   text: string;
+  html?: string;
 }
 
 /**
- * 汎用のResend送信ヘルパー(注文完了メール・離脱者リマインドメール用)。
- * RESEND_API_KEY未設定時はコンソールログに出力するだけのフォールバックとする。
- * 戻り値は「実際にResend経由で送信を試みたか」を示す(false = ログ出力のみ)。
+ * GAS(Google Apps Script) Webhook経由のメール送信ヘルパー(注文完了メール・離脱者リマインドメール用)。
+ * GAS_MAIL_WEBHOOK_URL / GAS_MAIL_SECRET が未設定の場合はコンソールログに出力するだけのフォールバックとする。
+ * 送信元アドレスはGAS側(Google Workspaceの送信元)で固定のため、input.fromは現時点では使用しない
+ * (呼び出し元のシナリオ別送信元設定との整合は別途検討が必要)。
+ * 戻り値は「実際にGAS Webhook経由で送信を試みたか」を示す(false = ログ出力のみ)。
  */
 export async function sendResendEmail(input: SendEmailInput): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.log("[email] RESEND_API_KEY not configured, logging instead:", input);
+  const webhookUrl = process.env.GAS_MAIL_WEBHOOK_URL;
+  const secret = process.env.GAS_MAIL_SECRET;
+  if (!webhookUrl || !secret) {
+    console.log("[email] GAS_MAIL_WEBHOOK_URL/GAS_MAIL_SECRET not configured, logging instead:", input);
     return false;
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
+  const res = await fetch(webhookUrl, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      from: input.from,
+      secret,
       to: input.to,
       subject: input.subject,
       text: input.text,
+      html: input.html,
+      senderName: "プライムダイレクト",
     }),
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to send email: ${res.status}`);
+    throw new Error(`Failed to send email via GAS webhook: ${res.status}`);
   }
   return true;
 }
