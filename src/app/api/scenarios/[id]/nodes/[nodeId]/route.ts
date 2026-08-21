@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { migrateCheckoutUpsellToProductNodes } from "@/lib/scenario-upsell-migration";
 
 const nodeUpdateSchema = z.object({
   type: z
@@ -76,6 +77,9 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   const { id: scenarioId, nodeId } = await params;
 
   const supabase = createSupabaseAdminClient();
+  // 決済導線ノードは廃止済み。削除でアップセル・クロスセルの設定が失われないよう、
+  // 先に商品提示ノードのマトリクスへ退避する。
+  await migrateCheckoutUpsellToProductNodes(supabase, scenarioId, nodeId);
   const { error } = await supabase
     .from("scenario_nodes")
     .delete()

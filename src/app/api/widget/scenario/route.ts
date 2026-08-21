@@ -74,14 +74,22 @@ export async function GET(request: Request) {
             productIds?: string[];
             upsellProductId?: string;
             crossSellProductId?: string;
+            productUpsell?: Record<string, { upsellProductId?: string; crossSellProductId?: string }>;
           };
           const ids = Array.isArray(content?.productIds)
             ? [...content.productIds]
             : content?.productId
               ? [content.productId]
               : [];
+          // 決済導線ノード自身に設定するアップセル・クロスセル(旧仕様)
           if (content?.upsellProductId) ids.push(content.upsellProductId);
           if (content?.crossSellProductId) ids.push(content.crossSellProductId);
+          // 商品提示ノードの商品ごとのアップセル・クロスセル。ここで拾わないと
+          // ウィジェット側で商品情報が見つからず、提案が表示されない
+          for (const entry of Object.values(content?.productUpsell ?? {})) {
+            if (entry?.upsellProductId) ids.push(entry.upsellProductId);
+            if (entry?.crossSellProductId) ids.push(entry.crossSellProductId);
+          }
           return ids;
         })
         .filter((id): id is string => Boolean(id)),
