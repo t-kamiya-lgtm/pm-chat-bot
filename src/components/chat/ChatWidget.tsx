@@ -458,6 +458,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     productMap: Record<string, WidgetProduct> = productsById,
     sourceItemId?: string,
     orderedIds: string[] = orderedNodeIds,
+    /** 直前に顧客が選んだ商品(ある場合)。到達したcheckoutノード自身の候補に含まれていれば、それを優先する。 */
+    selectedProductId?: string,
   ) {
     const node = nodeMap[nodeId];
     if (!node) return;
@@ -490,7 +492,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           { id: nextId(), kind: "bot-text", text: content.text ?? "", imageUrl: content.imageUrl },
         ]);
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
-        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
+        if (next)
+          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
         break;
       }
       case "image": {
@@ -519,7 +522,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           ]);
         }
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
-        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
+        if (next)
+          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
         break;
       }
       case "video": {
@@ -536,7 +540,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           ]);
         }
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
-        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
+        if (next)
+          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
         break;
       }
       case "coupon": {
@@ -557,7 +562,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
           ]);
         }
         const next = node.next_node_map.default ?? sequentialNextId(node.id, orderedIds);
-        if (next) setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds), 300);
+        if (next)
+          setTimeout(() => advance(next, nodeMap, productMap, sourceItemId, orderedIds, selectedProductId), 300);
         break;
       }
       case "choice": {
@@ -608,6 +614,10 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         }
 
         if (node.type === "checkout") {
+          // 直前に顧客が選んだ商品が、このcheckoutノード自身の候補に含まれていればそれを優先する
+          // (複数商品を1つの決済導線ノードで共有している場合、選んだ商品と違うものがカートインする不具合を防ぐ)。
+          const checkoutProductId =
+            selectedProductId && validIds.includes(selectedProductId) ? selectedProductId : validIds[0];
           setTimeline((prev) => [
             // 決済導線は同時に1つだけ有効にする(未完了のまま残っている決済フォームは
             // 新しい注文を始めた時点で無効化する)
@@ -616,7 +626,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
               id: nextId(),
               kind: "checkout",
               nodeId: node.id,
-              productId: validIds[0],
+              productId: checkoutProductId,
               upsellProductId:
                 content.upsellProductId && productMap[content.upsellProductId]
                   ? content.upsellProductId
@@ -759,7 +769,9 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
    */
   function handleFaqProceed(item: Extract<TimelineItem, { kind: "faq" }>) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, proceeded: true } : i)));
-    if (item.nextNodeId) advance(item.nextNodeId, nodesById, productsById);
+    if (item.nextNodeId) {
+      advance(item.nextNodeId, nodesById, productsById, undefined, orderedNodeIds, item.productId);
+    }
   }
 
   function handleProductSelect(item: Extract<TimelineItem, { kind: "product" }>, productId: string) {
@@ -768,7 +780,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     const node = nodesById[item.nodeId];
     const next = node?.next_node_map[productId] ?? node?.next_node_map.default;
     if (next && nodesById[next]?.type === "checkout") {
-      advance(next, nodesById, productsById, item.id);
+      advance(next, nodesById, productsById, item.id, orderedNodeIds, productId);
     } else {
       // シナリオ側で決済導線への接続が未設定でも購入導線を提供する
       setTimeline((prev) => [
