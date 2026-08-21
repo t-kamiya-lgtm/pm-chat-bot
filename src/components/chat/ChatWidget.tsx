@@ -35,6 +35,47 @@ interface ProductUpsellEntry {
   crossSellComment?: string;
 }
 
+/**
+ * 商品提示ノードだけでアップセル・クロスセルを完結させるための解決処理。
+ * 商品提示ノード自身の設定(content.productUpsell)が最優先。
+ * 旧仕様(決済導線ノード側に設定する2ノード構成)のシナリオでも同じ表示になるよう、
+ * 未設定の場合は ①その商品の遷移先の決済導線ノード ②共通の遷移先の決済導線ノード
+ * ③同じ品番を対象にしている決済導線ノード の順に設定を引き継ぐ。
+ */
+function resolveProductUpsell(
+  node: WidgetScenarioNode | undefined,
+  productId: string,
+  nodeMap: Record<string, WidgetScenarioNode>,
+): ProductUpsellEntry | undefined {
+  const own = (node?.content as { productUpsell?: Record<string, ProductUpsellEntry> } | undefined)
+    ?.productUpsell?.[productId];
+  if (own) return own;
+
+  const fromCheckout = (candidate: WidgetScenarioNode | undefined): ProductUpsellEntry | undefined => {
+    if (candidate?.type !== "checkout") return undefined;
+    const content = candidate.content as Record<string, string | undefined>;
+    if (!content.upsellProductId && !content.crossSellProductId) return undefined;
+    return {
+      upsellProductId: content.upsellProductId || undefined,
+      upsellImageUrl: content.upsellImageUrl || undefined,
+      upsellComment: content.upsellComment || undefined,
+      crossSellProductId: content.crossSellProductId || undefined,
+      crossSellImageUrl: content.crossSellImageUrl || undefined,
+      crossSellComment: content.crossSellComment || undefined,
+    };
+  };
+
+  const routedId = node?.next_node_map[productId];
+  const defaultId = node?.next_node_map.default;
+  return (
+    fromCheckout(routedId ? nodeMap[routedId] : undefined) ??
+    fromCheckout(defaultId ? nodeMap[defaultId] : undefined) ??
+    fromCheckout(
+      Object.values(nodeMap).find((n) => n.type === "checkout" && n.content.productId === productId),
+    )
+  );
+}
+
 type TimelineItem =
   | { id: string; kind: "bot-text"; text: string; imageUrl?: string; linkUrl?: string }
   | { id: string; kind: "image-carousel"; imageUrls: string[]; linkUrl?: string; caption?: string }
@@ -843,8 +884,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
     setTimeline((prev) => prev.map((i) => (i.id === item.id ? { ...i, resolved: true } : i)));
 
     const node = nodesById[item.nodeId];
-    const nodeContent = node?.content as { productUpsell?: Record<string, ProductUpsellEntry> } | undefined;
-    const productUpsell = nodeContent?.productUpsell?.[productId];
+    const productUpsell = resolveProductUpsell(node, productId, nodesById);
     const next = node?.next_node_map[productId] ?? node?.next_node_map.default;
     if (next && nodesById[next]?.type === "checkout") {
       advance(next, nodesById, productsById, item.id, orderedNodeIds, productId, productUpsell);
