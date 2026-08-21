@@ -766,12 +766,14 @@ function OptionalProductSelect({
 
   const productsInGroup = products.filter((p) => (p.productGroupId ?? UNGROUPED_KEY) === selectedGroupId);
 
+  const selectedProduct = products.find((p) => p.id === value);
+
   return (
     <div className={compact ? "text-xs" : "text-sm"}>
       <span className={labelClass}>{label}</span>
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-1">
         <select
-          className="input"
+          className="input w-full"
           value={selectedGroupId}
           onChange={(e) => {
             setSelectedGroupId(e.target.value);
@@ -784,7 +786,7 @@ function OptionalProductSelect({
             </option>
           ))}
         </select>
-        <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        <select className="input w-full" value={value} onChange={(e) => onChange(e.target.value)}>
           <option value="">設定しない</option>
           {productsInGroup.map((product) => (
             <option key={product.id} value={product.id}>
@@ -792,6 +794,9 @@ function OptionalProductSelect({
             </option>
           ))}
         </select>
+        {selectedProduct && (
+          <p className="break-words whitespace-normal text-neutral-500">{productLabel(selectedProduct)}</p>
+        )}
       </div>
     </div>
   );
@@ -860,11 +865,17 @@ function ProductUpsellMatrixEditor({
   products,
   value,
   onChange,
+  nextNodeByProduct,
+  onNextNodeChange,
+  nodeOptions,
 }: {
   productIds: string[];
   products: PickableProduct[];
   value: Record<string, ProductUpsellEntry>;
   onChange: (map: Record<string, ProductUpsellEntry>) => void;
+  nextNodeByProduct: Record<string, string>;
+  onNextNodeChange: (map: Record<string, string>) => void;
+  nodeOptions: { id: string; summary: string }[];
 }) {
   if (productIds.length === 0) return null;
 
@@ -875,20 +886,28 @@ function ProductUpsellMatrixEditor({
   return (
     <div className="space-y-2 rounded-md border border-neutral-200 p-3">
       <span className="block text-xs font-medium text-neutral-500">
-        商品ごとのアップセル・クロスセル(任意。その商品が選ばれた際に決済確認画面で提案します)
+        商品ごとの次のノード・アップセル・クロスセル(次のノードは任意。未設定の商品は下の「次に進むノード」に進みます。
+        アップセル・クロスセルも任意で、その商品が選ばれた際に決済確認画面で提案します)
       </span>
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
         {productIds.map((id) => {
           const product = products.find((p) => p.id === id);
           const entry = value[id] ?? {};
           return (
-            <div key={id} className="w-56 shrink-0 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-2">
-              <p
-                className="truncate text-xs font-semibold text-neutral-700"
-                title={product ? productLabel(product) : id}
-              >
+            <div
+              key={id}
+              className="w-64 shrink-0 space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-2"
+            >
+              <p className="break-words whitespace-normal text-xs font-semibold text-neutral-700">
                 {product ? productLabel(product) : id}
               </p>
+              <NextNodeSelect
+                label="次のノード"
+                nodeOptions={nodeOptions}
+                value={nextNodeByProduct[id] ?? ""}
+                onChange={(v) => onNextNodeChange({ ...nextNodeByProduct, [id]: v })}
+                compact
+              />
               <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
                 <span className="block text-xs font-medium text-amber-800">アップセル</span>
                 <OptionalProductSelect
@@ -3816,22 +3835,15 @@ function NodeCard({
             ))}
 
           {node.type === "product" && (
-            <>
-              <ProductNextNodeEditor
-                productIds={productIds}
-                products={products}
-                nextNodeByProduct={productNextMap}
-                onChange={setProductNextMap}
-                nodeOptions={nodeOptions}
-                compact
-              />
-              <ProductUpsellMatrixEditor
-                productIds={productIds}
-                products={products}
-                value={productUpsellMap}
-                onChange={setProductUpsellMap}
-              />
-            </>
+            <ProductUpsellMatrixEditor
+              productIds={productIds}
+              products={products}
+              value={productUpsellMap}
+              onChange={setProductUpsellMap}
+              nextNodeByProduct={productNextMap}
+              onNextNodeChange={setProductNextMap}
+              nodeOptions={nodeOptions}
+            />
           )}
 
           {node.type === "checkout" && (
