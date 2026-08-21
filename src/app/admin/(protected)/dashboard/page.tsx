@@ -184,7 +184,7 @@ function StatsTable({
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
       <table className="w-full text-sm">
-        <thead className="bg-neutral-50 text-left text-neutral-500">
+        <thead className="bg-sky-100 text-left text-neutral-600">
           <tr>
             <th className="px-3 py-2">{labelHeader}</th>
             {!hideAccess && <th className="px-3 py-2 text-right">アクセス数</th>}

@@ -250,7 +250,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
     <div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {selected.size > 0 && (
-        <div className="mb-3 flex items-center gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 text-sm">
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-neutral-300 bg-sky-50 p-3 text-sm">
           <span>{selected.size}件選択中</span>
           <select
             value={bulkStatus}
@@ -283,7 +283,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
               <col key={key} style={{ width: columnWidths[key] }} />
             ))}
           </colgroup>
-          <thead className="bg-neutral-50 text-left text-neutral-500">
+          <thead className="bg-sky-100 text-left text-neutral-600">
             <tr>
               {COLUMN_KEYS.map((key) => (
                 <th key={key} className="relative px-4 py-2 select-none">

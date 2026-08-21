@@ -43,7 +43,7 @@ function GreetingItemsEditor({
       </div>
 
       {items.map((item, index) => (
-        <div key={index} className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+        <div key={index} className="space-y-2 rounded-md border border-neutral-200 bg-sky-50 p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-neutral-500">項目 {index + 1}</span>
             <button

@@ -44,7 +44,7 @@ export function LeadsTable({ leads }: { leads: LeadRow[] }) {
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <table className="w-full min-w-[900px] text-sm">
-        <thead className="bg-neutral-50 text-left text-neutral-500">
+        <thead className="bg-sky-100 text-left text-neutral-600">
           <tr>
             <th className="px-4 py-2">更新日時</th>
             <th className="px-4 py-2">お名前</th>
