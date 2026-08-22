@@ -58,9 +58,26 @@ export async function GET(request: Request) {
 
   const QA_TARGET_PREFIX = "qa:";
 
+  // クーポン表示ノードは、シナリオの自動適用クーポン(scenario_auto)の告知内容をそのまま表示する。
+  // 対象商品限定クーポンの「クーポン対象商品提示」機能で使う商品データを後段の取得に含めるため、
+  // 商品ID一覧の組み立てより前に取得する。
+  let coupon: Record<string, unknown> | null = null;
+  if ((nodes ?? []).some((n) => n.type === "coupon")) {
+    const { data, error } = await supabase
+      .from("coupons")
+      .select(
+        "code, name, discount_type, discount_value, image_url, promo_message, is_active, min_order_amount, target_product_ids",
+      )
+      .eq("scenario_id", scenario.id)
+      .eq("type", "scenario_auto")
+      .maybeSingle();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    coupon = data && data.is_active ? data : null;
+  }
+
   const productIds = Array.from(
-    new Set(
-      (nodes ?? [])
+    new Set([
+      ...(nodes ?? [])
         .flatMap((n) => {
           if (n.type === "choice") {
             // 選択肢分岐ノードの「その場でQ&Aを表示する」設定(next_node_mapのsentinel値)から商品IDを拾う
@@ -93,7 +110,9 @@ export async function GET(request: Request) {
           return ids;
         })
         .filter((id): id is string => Boolean(id)),
-    ),
+      // クーポンの対象商品(他のノードで一度も使われていなくても、クーポン対象商品提示のために取得する)
+      ...((coupon?.target_product_ids as string[] | null) ?? []),
+    ]),
   );
 
   let products: Record<string, unknown>[] = [];
@@ -136,19 +155,6 @@ export async function GET(request: Request) {
     .eq("scenario_id", scenario.id)
     .order("display_order");
   if (menuItemsError) return NextResponse.json({ error: menuItemsError.message }, { status: 500 });
-
-  // クーポン表示ノードは、シナリオの自動適用クーポン(scenario_auto)の告知内容をそのまま表示する
-  let coupon: Record<string, unknown> | null = null;
-  if ((nodes ?? []).some((n) => n.type === "coupon")) {
-    const { data, error } = await supabase
-      .from("coupons")
-      .select("code, name, discount_type, discount_value, image_url, promo_message, is_active")
-      .eq("scenario_id", scenario.id)
-      .eq("type", "scenario_auto")
-      .maybeSingle();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    coupon = data && data.is_active ? data : null;
-  }
 
   return NextResponse.json({ scenario, nodes, products, menuItems: menuItems ?? [], coupon });
 }

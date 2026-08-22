@@ -105,6 +105,7 @@ export async function POST(request: Request) {
     scenarioId,
     code: couponCode,
     subtotal: amount + addonAmount,
+    cartProductIds: [productId, addonProductId].filter((id): id is string => Boolean(id)),
   });
   // 画面表示・注文データに使う「今回のお支払い金額」は、クーポン割引・初回特別価格の
   // 値引きを反映した金額にする(実際にStripeへ請求する初回invoiceの金額と一致させる)

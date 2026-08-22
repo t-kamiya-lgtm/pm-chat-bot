@@ -12,15 +12,17 @@ const bodySchema = z.object({
   scenarioId: z.string().uuid().optional(),
   code: z.string().optional(),
   subtotal: z.number().int().min(0),
+  /** カート内の商品ID(メイン商品・クロスセル/アドオン商品)。対象商品限定クーポンの判定に使う。 */
+  cartProductIds: z.array(z.string().uuid()).optional(),
 });
 
 export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid request" }, { status: 400 });
-  const { scenarioId, code, subtotal } = parsed.data;
+  const { scenarioId, code, subtotal, cartProductIds } = parsed.data;
 
   const supabase = createSupabaseAdminClient();
-  const applied = await resolveApplicableCoupon(supabase, { scenarioId, code, subtotal });
+  const applied = await resolveApplicableCoupon(supabase, { scenarioId, code, subtotal, cartProductIds });
 
   if (!applied) {
     return NextResponse.json({

@@ -21,6 +21,7 @@ const couponInputSchema = z
     isActive: z.boolean().optional(),
     imageUrl: z.string().nullable().optional(),
     promoMessage: z.string().nullable().optional(),
+    targetProductIds: z.array(z.string().uuid()).nullable().optional(),
   })
   .refine((v) => (v.type === "scenario_auto" ? Boolean(v.scenarioId) : true), {
     message: "scenarioId is required for scenario_auto coupons",
@@ -89,6 +90,7 @@ export async function POST(request: Request) {
       is_active: input.isActive ?? true,
       image_url: input.imageUrl ?? null,
       promo_message: input.promoMessage ?? null,
+      target_product_ids: input.targetProductIds ?? null,
     })
     .select("*")
     .single();

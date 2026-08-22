@@ -39,6 +39,7 @@ function mapCouponRow(row: Record<string, unknown>): Coupon {
     isActive: row.is_active as boolean,
     imageUrl: (row.image_url as string | null) ?? null,
     promoMessage: (row.promo_message as string | null) ?? null,
+    targetProductIds: (row.target_product_ids as string[] | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

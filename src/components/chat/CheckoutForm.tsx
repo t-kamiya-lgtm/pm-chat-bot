@@ -361,6 +361,11 @@ export function CheckoutForm({
   const upsellImage = upsellImageUrl || upsellProduct?.image_url || undefined;
   const crossSellImage = crossSellImageUrl || crossSellProduct?.image_url || undefined;
   const couponSubtotal = activeProduct.price * quantity + addonAmountForCoupon;
+  // 対象商品限定クーポンの判定用。メイン商品と、選択中のクロスセル/アドオン商品のIDを渡す。
+  const couponCartProductIds = [
+    activeProduct.id,
+    ...(addonSelected && crossSellProduct ? [crossSellProduct.id] : []),
+  ];
   // クロスセル商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
   // 同じ周期のもう1つの定期便として同時申込になる(サーバー側の判定と揃える)。
   const addonIsSubscription =
@@ -378,6 +383,7 @@ export function CheckoutForm({
           ...(scenarioId && { scenarioId }),
           code: code.trim() || undefined,
           subtotal: couponSubtotal,
+          cartProductIds: couponCartProductIds,
         }),
       });
       const data = await res.json().catch(() => ({ discountAmount: 0, invalidCode: false }));
