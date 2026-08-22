@@ -64,10 +64,20 @@ const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = [
  * キーボードの開閉アニメーション完了タイミングは端末やOSバージョンで変わるため、
  * 固定時間待つのではなくvisualViewportのresize(キーボード開閉で発火)を1回だけ拾う。
  * visualViewportが無い環境ではフォールバックとして従来通りの固定待機にする。
+ *
+ * 注意: resizeはキーボードが「開く」時だけでなく、この欄からフォーカスが外れて
+ * キーボードが「閉じる」時にも発火する。例えば「次へ」ボタンをタップした瞬間は
+ * このinputがblurしてキーボードが閉じるところなので、そこでこの欄をscrollIntoView
+ * してしまうとタップの最中にレイアウトが動き、ボタンのクリックが取りこぼされてしまう
+ * (「次へ」を押しても反応しない不具合の原因になっていた)。resize発火時にまだこの欄に
+ * フォーカスが残っている場合(=キーボードが開いた場合)のみスクロールするようにする。
  */
 function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
   const target = e.target;
-  const scroll = () => target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const scroll = () => {
+    if (document.activeElement !== target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
   const viewport = window.visualViewport;
   if (!viewport) {
     setTimeout(scroll, 300);
