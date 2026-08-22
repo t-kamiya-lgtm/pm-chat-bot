@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { MENU_LAYOUTS } from "@/lib/menu-layouts";
+
+const MENU_LAYOUT_KEYS = MENU_LAYOUTS.map((layout) => layout.key) as [string, ...string[]];
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -61,6 +64,8 @@ const updateSchema = z.object({
   popupIconUrl: z.string().nullable().optional(),
   popupPosition: z.enum(["bottom-right", "bottom-left"]).nullable().optional(),
   couponCodeFieldEnabled: z.boolean().optional(),
+  menuLayoutKey: z.enum(MENU_LAYOUT_KEYS).optional(),
+  menuImageUrl: z.string().nullable().optional(),
 });
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -145,6 +150,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(input.couponCodeFieldEnabled !== undefined && {
         coupon_code_field_enabled: input.couponCodeFieldEnabled,
       }),
+      ...(input.menuLayoutKey !== undefined && { menu_layout_key: input.menuLayoutKey }),
+      ...(input.menuImageUrl !== undefined && { menu_image_url: input.menuImageUrl }),
     })
     .eq("id", id)
     .select("*")

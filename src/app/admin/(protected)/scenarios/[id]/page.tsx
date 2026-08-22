@@ -130,6 +130,8 @@ export default async function ScenarioEditorPage({
           popupIconUrl: scenario.popup_icon_url,
           popupPosition: scenario.popup_position,
           couponCodeFieldEnabled: scenario.coupon_code_field_enabled,
+          menuLayoutKey: scenario.menu_layout_key ?? "row-3",
+          menuImageUrl: scenario.menu_image_url,
           version: scenario.version,
           createdBy: scenario.created_by,
           createdAt: scenario.created_at,

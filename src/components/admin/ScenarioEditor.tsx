@@ -20,6 +20,15 @@ import { Toast } from "@/components/admin/Toast";
 import { ErrorDialog } from "@/components/admin/ErrorDialog";
 import { SaveConfirmDialog } from "@/components/admin/SaveConfirmDialog";
 import { markEditingStart, markEditingEnd, registerSaveHandler } from "@/lib/unsaved-changes";
+import {
+  MENU_LAYOUTS,
+  getMenuLayout,
+  menuCellGridColumn,
+  menuCellGridRow,
+  menuGridTemplateColumns,
+  menuGridTemplateRows,
+  type MenuLayoutDef,
+} from "@/lib/menu-layouts";
 
 type ToastState = { message: string; type: "success" | "error" } | null;
 type ErrorDialogState = { title: string; description?: string; items?: string[] } | null;
@@ -1363,6 +1372,29 @@ function SurveyQuestionsEditor({
   );
 }
 
+/** 固定メニューのレイアウト選択で使う、マス目構成の小さなプレビュー(実際の項目は反映しない見本表示)。 */
+function MenuLayoutThumb({ layout }: { layout: MenuLayoutDef }) {
+  return (
+    <div
+      className="grid h-14 w-full overflow-hidden rounded-md border border-neutral-300 bg-neutral-50"
+      style={{
+        gridTemplateColumns: menuGridTemplateColumns(layout),
+        gridTemplateRows: menuGridTemplateRows(layout),
+      }}
+    >
+      {layout.cells.map((cell, index) => (
+        <div
+          key={index}
+          className="flex items-center justify-center border border-neutral-200 bg-white text-[9px] text-neutral-400"
+          style={{ gridColumn: menuCellGridColumn(cell), gridRow: menuCellGridRow(cell) }}
+        >
+          {index + 1}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Accordion({
   title,
   defaultOpen,
@@ -1652,6 +1684,12 @@ export function ScenarioEditor({
     }
   }
   const [menuItems, setMenuItems] = useState<ScenarioMenuItem[]>(initialMenuItems);
+  const [menuLayoutKey, setMenuLayoutKeyState] = useState(scenario.menuLayoutKey);
+  const [menuLayoutFilterRows, setMenuLayoutFilterRows] = useState<"all" | 1 | 2>("all");
+  const [menuLayoutFilterCells, setMenuLayoutFilterCells] = useState<"all" | number>("all");
+  const [menuImageUrlDraft, setMenuImageUrlDraft] = useState(scenario.menuImageUrl ?? "");
+  const [menuImageUrlSaving, setMenuImageUrlSaving] = useState(false);
+  const menuLayoutCapacityValue = getMenuLayout(menuLayoutKey).cells.length;
   const [newMenuLabel, setNewMenuLabel] = useState("");
   const [newMenuActionType, setNewMenuActionType] = useState<MenuItemActionType>("node");
   const [newMenuTargetNodeId, setNewMenuTargetNodeId] = useState("");
@@ -1936,6 +1974,32 @@ export function ScenarioEditor({
     patchDisplaySettings({ couponCodeFieldEnabled: enabled });
   }
 
+  function handleSelectMenuLayout(key: string) {
+    setMenuLayoutKeyState(key);
+    patchDisplaySettings({ menuLayoutKey: key });
+  }
+
+  async function handleSaveMenuImageUrl(): Promise<boolean> {
+    setMenuImageUrlSaving(true);
+    const res = await fetch(`/api/scenarios/${scenario.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ menuImageUrl: menuImageUrlDraft.trim() || null }),
+    });
+    setMenuImageUrlSaving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: `固定メニュー画像の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        type: "error",
+      });
+      return false;
+    }
+    setToast({ message: "保存しました", type: "success" });
+    router.refresh();
+    return true;
+  }
+
   async function handleSaveCoupon(): Promise<boolean> {
     if (!couponForm.name.trim() || !couponForm.discountValue) {
       setToast({ message: "名称と割引額を入力してください", type: "error" });
@@ -2056,6 +2120,13 @@ export function ScenarioEditor({
   async function handleAddMenuItem(event: React.FormEvent) {
     event.preventDefault();
 
+    if (menuItems.length >= menuLayoutCapacityValue) {
+      setToast({
+        message: `選択中のレイアウトの上限(${menuLayoutCapacityValue}件)に達しています`,
+        type: "error",
+      });
+      return;
+    }
     if (!newMenuLabel.trim()) {
       setToast({ message: "ボタンのラベルを入力してください", type: "error" });
       return;
@@ -2730,6 +2801,101 @@ export function ScenarioEditor({
           チャット画面下部に常時表示されるボタンです。特定のノードへジャンプさせるか、外部URLを新しいタブで開けます。
         </p>
 
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">レイアウト</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            段数・コマ数を選択できます。現在のレイアウトの上限を超えるボタンは表示されません。
+          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+            <label className="flex items-center gap-1">
+              段数:
+              <select
+                className="input"
+                value={menuLayoutFilterRows}
+                onChange={(e) =>
+                  setMenuLayoutFilterRows(e.target.value === "all" ? "all" : (Number(e.target.value) as 1 | 2))
+                }
+              >
+                <option value="all">すべて</option>
+                <option value="1">1段</option>
+                <option value="2">2段</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              コマ数:
+              <select
+                className="input"
+                value={menuLayoutFilterCells}
+                onChange={(e) =>
+                  setMenuLayoutFilterCells(e.target.value === "all" ? "all" : Number(e.target.value))
+                }
+              >
+                <option value="all">すべて</option>
+                {Array.from(new Set(MENU_LAYOUTS.map((l) => l.cells.length)))
+                  .sort((a, b) => a - b)
+                  .map((count) => (
+                    <option key={count} value={count}>
+                      {count}コマ
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {MENU_LAYOUTS.filter(
+              (l) =>
+                (menuLayoutFilterRows === "all" || l.rows === menuLayoutFilterRows) &&
+                (menuLayoutFilterCells === "all" || l.cells.length === menuLayoutFilterCells),
+            ).map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => handleSelectMenuLayout(l.key)}
+                className={`rounded-lg border p-2 text-left ${
+                  menuLayoutKey === l.key ? "border-blue-500 ring-2 ring-blue-100" : "border-neutral-200"
+                }`}
+              >
+                <MenuLayoutThumb layout={l} />
+                <p className="mt-1 text-[11px] font-medium text-neutral-700">{l.label}</p>
+              </button>
+            ))}
+          </div>
+          {menuItems.length > menuLayoutCapacityValue && (
+            <p className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+              現在のボタン数({menuItems.length}件)が選択中のレイアウトの上限({menuLayoutCapacityValue}件)を超えています。
+              上限を超える分は画面に表示されません。
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-700">画像モード(任意)</h3>
+          <p className="mb-3 text-xs text-neutral-500">
+            画像を設定すると、下記のテキストボタンの代わりに画像1枚を表示し、選択中のレイアウトのマス目に
+            対応する位置をクリック領域として使います(ボタンのラベルはクリック領域の説明用として使われるだけで、
+            画面には表示されません)。画像とテキストボタンを両方設定した場合は画像が優先されます。
+          </p>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">画像URL</span>
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="input w-full max-w-md"
+                value={menuImageUrlDraft}
+                onChange={(e) => setMenuImageUrlDraft(e.target.value)}
+                placeholder="https://example.com/menu.jpg"
+              />
+              <button
+                type="button"
+                onClick={handleSaveMenuImageUrl}
+                disabled={menuImageUrlSaving}
+                className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:opacity-50"
+              >
+                {menuImageUrlSaving ? "更新中..." : "更新"}
+              </button>
+            </div>
+          </label>
+        </div>
+
         {menuItems.length === 0 ? (
           <p className="text-sm text-neutral-400">まだボタンが登録されていません</p>
         ) : (
@@ -2855,6 +3021,11 @@ export function ScenarioEditor({
           </div>
         )}
 
+        {menuItems.length >= menuLayoutCapacityValue && (
+          <p className="text-xs text-amber-700">
+            選択中のレイアウトの上限({menuLayoutCapacityValue}件)に達しています。追加するにはレイアウトを変更してください。
+          </p>
+        )}
         <form onSubmit={handleAddMenuItem} className="flex flex-wrap items-end gap-2">
           <label className="block">
             <span className="mb-1 block text-xs text-neutral-500">ボタンのラベル</span>
@@ -2907,7 +3078,8 @@ export function ScenarioEditor({
           ) : null}
           <button
             type="submit"
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+            disabled={menuItems.length >= menuLayoutCapacityValue}
+            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700 disabled:opacity-40"
           >
             追加
           </button>

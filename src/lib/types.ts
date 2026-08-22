@@ -131,6 +131,8 @@ export interface Scenario {
   popupIconUrl: string | null;
   popupPosition: "bottom-right" | "bottom-left" | null;
   couponCodeFieldEnabled: boolean;
+  menuLayoutKey: string;
+  menuImageUrl: string | null;
   version: number;
   createdBy: string | null;
   createdAt: string;
