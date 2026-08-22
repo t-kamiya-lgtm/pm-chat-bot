@@ -194,6 +194,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [menuItems, setMenuItems] = useState<WidgetMenuItem[]>([]);
   const [menuLayoutKey, setMenuLayoutKey] = useState<string>("row-3");
   const [menuImageUrl, setMenuImageUrl] = useState<string | null>(null);
+  const [menuImageFailed, setMenuImageFailed] = useState(false);
   const [scenarioId, setScenarioId] = useState<string | undefined>(undefined);
   const [chatBackgroundColor, setChatBackgroundColor] = useState<string | null>(null);
   const [menuBackgroundColor, setMenuBackgroundColor] = useState<string | null>(null);
@@ -466,6 +467,7 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setMenuItems(scenarioBody.menuItems ?? []);
         setMenuLayoutKey(scenarioBody.scenario?.menu_layout_key ?? "row-3");
         setMenuImageUrl(scenarioBody.scenario?.menu_image_url ?? null);
+        setMenuImageFailed(false);
         setScenarioId(scenarioBody.scenario?.id);
         setAdTag(scenarioBody.scenario?.ad_tag ?? null);
         setConversionTag(scenarioBody.scenario?.conversion_tag ?? null);
@@ -1358,16 +1360,23 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
       </div>
 
       {!keyboardActive &&
-        (menuImageUrl || menuItems.length > 0) &&
+        ((menuImageUrl && !menuImageFailed) || menuItems.length > 0) &&
         (() => {
           const layout = getMenuLayout(menuLayoutKey);
           const cellItems = menuItems.slice(0, layout.cells.length);
           // 画像モード(menuImageUrlが設定されている場合)はテキストボタンより優先して表示する。
-          if (menuImageUrl) {
+          // ただし画像の読み込みに失敗した場合(URL誤り等)は、空白/壊れた画像アイコンが
+          // 表示されたままにならないよう、テキストボタン表示にフォールバックする。
+          if (menuImageUrl && !menuImageFailed) {
             return (
               <div className="relative shrink-0 border-t border-neutral-200 bg-white">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={menuImageUrl} alt="固定メニュー" className="block h-auto w-full" />
+                <img
+                  src={menuImageUrl}
+                  alt="固定メニュー"
+                  className="block h-auto w-full"
+                  onError={() => setMenuImageFailed(true)}
+                />
                 {cellItems.length > 0 && (
                   <div
                     className="absolute inset-0 grid"
