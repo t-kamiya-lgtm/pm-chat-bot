@@ -14,6 +14,7 @@ import { CheckoutForm } from "@/components/chat/CheckoutForm";
 import { FaqPanel } from "@/components/chat/FaqPanel";
 import { SurveyForm } from "@/components/chat/SurveyForm";
 import { effectiveTextColor } from "@/lib/color";
+import { getMenuLayout, menuCellGridColumn, menuCellGridRow, menuGridTemplateColumns, menuGridTemplateRows } from "@/lib/menu-layouts";
 import { ImageCarousel } from "@/components/chat/ImageCarousel";
 import { VideoPlayer } from "@/components/chat/VideoPlayer";
 import { CouponCard } from "@/components/chat/CouponCard";
@@ -191,6 +192,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
   const [productsById, setProductsById] = useState<Record<string, WidgetProduct>>({});
   const [orderedNodeIds, setOrderedNodeIds] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<WidgetMenuItem[]>([]);
+  const [menuLayoutKey, setMenuLayoutKey] = useState<string>("row-3");
+  const [menuImageUrl, setMenuImageUrl] = useState<string | null>(null);
   const [scenarioId, setScenarioId] = useState<string | undefined>(undefined);
   const [chatBackgroundColor, setChatBackgroundColor] = useState<string | null>(null);
   const [menuBackgroundColor, setMenuBackgroundColor] = useState<string | null>(null);
@@ -428,6 +431,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
             ad_tag?: string | null;
             conversion_tag?: string | null;
             coupon_code_field_enabled?: boolean;
+            menu_layout_key?: string | null;
+            menu_image_url?: string | null;
           };
           nodes: WidgetScenarioNode[];
           products: WidgetProduct[];
@@ -459,6 +464,8 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         setProductsById(productMap);
         setOrderedNodeIds(orderedIds);
         setMenuItems(scenarioBody.menuItems ?? []);
+        setMenuLayoutKey(scenarioBody.scenario?.menu_layout_key ?? "row-3");
+        setMenuImageUrl(scenarioBody.scenario?.menu_image_url ?? null);
         setScenarioId(scenarioBody.scenario?.id);
         setAdTag(scenarioBody.scenario?.ad_tag ?? null);
         setConversionTag(scenarioBody.scenario?.conversion_tag ?? null);
@@ -1350,28 +1357,73 @@ export function ChatWidget({ scenarioSlug }: { scenarioSlug?: string } = {}) {
         })}
       </div>
 
-      {menuItems.length > 0 && !keyboardActive && (
-        <div
-          className={`flex shrink-0 divide-x divide-neutral-200 border-t border-neutral-200 ${
-            menuBackgroundColor ? "" : "bg-white"
-          }`}
-          style={{
-            ...(menuBackgroundColor && { backgroundColor: menuBackgroundColor }),
-            color: effectiveTextColor(menuBackgroundColor, menuTextColor),
-          }}
-        >
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleMenuItemClick(item)}
-              className="flex-1 px-2 py-3 text-center text-xs hover:bg-black/5"
+      {!keyboardActive &&
+        (menuImageUrl || menuItems.length > 0) &&
+        (() => {
+          const layout = getMenuLayout(menuLayoutKey);
+          const cellItems = menuItems.slice(0, layout.cells.length);
+          // 画像モード(menuImageUrlが設定されている場合)はテキストボタンより優先して表示する。
+          if (menuImageUrl) {
+            return (
+              <div className="relative shrink-0 border-t border-neutral-200 bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={menuImageUrl} alt="固定メニュー" className="block h-auto w-full" />
+                {cellItems.length > 0 && (
+                  <div
+                    className="absolute inset-0 grid"
+                    style={{
+                      gridTemplateColumns: menuGridTemplateColumns(layout),
+                      gridTemplateRows: menuGridTemplateRows(layout),
+                    }}
+                  >
+                    {cellItems.map((item, index) => {
+                      const cell = layout.cells[index];
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-label={item.label}
+                          onClick={() => handleMenuItemClick(item)}
+                          className="opacity-0"
+                          style={{ gridColumn: menuCellGridColumn(cell), gridRow: menuCellGridRow(cell) }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          if (cellItems.length === 0) return null;
+          return (
+            <div
+              className={`grid shrink-0 border-t border-neutral-200 ${menuBackgroundColor ? "" : "bg-white"}`}
+              style={{
+                gridTemplateColumns: menuGridTemplateColumns(layout),
+                gridTemplateRows: menuGridTemplateRows(layout),
+                ...(menuBackgroundColor && { backgroundColor: menuBackgroundColor }),
+                color: effectiveTextColor(menuBackgroundColor, menuTextColor),
+              }}
             >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
+              {cellItems.map((item, index) => {
+                const cell = layout.cells[index];
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleMenuItemClick(item)}
+                    className={`flex items-center justify-center border border-neutral-100 px-2 text-center hover:bg-black/5 ${
+                      layout.rows === 2 ? "py-1.5 text-[10px]" : "py-3 text-xs"
+                    }`}
+                    style={{ gridColumn: menuCellGridColumn(cell), gridRow: menuCellGridRow(cell) }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
       {detailContext && detailProduct && (
         <ProductDetailPanel

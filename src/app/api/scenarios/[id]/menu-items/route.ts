@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { menuLayoutCapacity } from "@/lib/menu-layouts";
 
 const menuItemSchema = z
   .object({
@@ -50,13 +51,29 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   const supabase = createSupabaseAdminClient();
 
-  const { data: lastItem } = await supabase
-    .from("scenario_menu_items")
-    .select("display_order")
-    .eq("scenario_id", scenarioId)
-    .order("display_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [{ data: scenarioRow }, { count: currentCount }, { data: lastItem }] = await Promise.all([
+    supabase.from("scenarios").select("menu_layout_key").eq("id", scenarioId).maybeSingle(),
+    supabase
+      .from("scenario_menu_items")
+      .select("id", { count: "exact", head: true })
+      .eq("scenario_id", scenarioId),
+    supabase
+      .from("scenario_menu_items")
+      .select("display_order")
+      .eq("scenario_id", scenarioId)
+      .order("display_order", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const capacity = menuLayoutCapacity(scenarioRow?.menu_layout_key);
+  if ((currentCount ?? 0) >= capacity) {
+    return NextResponse.json(
+      { error: `選択中のレイアウトの上限(${capacity}件)に達しています。追加するにはレイアウトを変更してください。` },
+      { status: 400 },
+    );
+  }
+
   const displayOrder = (lastItem?.display_order ?? -1) + 1;
 
   const { data, error } = await supabase
