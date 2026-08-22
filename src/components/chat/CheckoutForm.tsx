@@ -61,12 +61,39 @@ const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = [
  * モバイルでキーボード表示時に入力欄が隠れないよう、フォーカス時にスクロールする。
  * block: "center"だと、埋め込みポップアップ等の小さいコンテナでは中央寄せのために
  * 上下に大きな空白ができ、実質的に入力欄が見えなくなることがあるため"nearest"にする。
+ * キーボードの開閉アニメーション完了タイミングは端末やOSバージョンで変わるため、
+ * 固定時間待つのではなくvisualViewportのresize(キーボード開閉で発火)を1回だけ拾う。
+ * visualViewportが無い環境ではフォールバックとして従来通りの固定待機にする。
  */
 function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
   const target = e.target;
-  setTimeout(() => {
-    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, 300);
+  const scroll = () => target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const viewport = window.visualViewport;
+  if (!viewport) {
+    setTimeout(scroll, 300);
+    return;
+  }
+  let done = false;
+  const handleResize = () => {
+    if (done) return;
+    done = true;
+    viewport.removeEventListener("resize", handleResize);
+    scroll();
+  };
+  viewport.addEventListener("resize", handleResize);
+  // キーボードが既に開いている等でresizeが発火しない場合のフォールバック
+  setTimeout(handleResize, 400);
+}
+
+/**
+ * autoFocus属性は要素マウントと同じ同期コミット内でフォーカスされるため、
+ * 直前に重いDOM入れ替え(options→wizard等)が起きた直後だと、iOS Safariで新しい
+ * レイアウトが描画されるより先にキーボードが開こうとして表示が崩れることがある。
+ * refコールバックでフォーカスを次フレームに遅らせることでこれを避ける。
+ */
+function focusOnNextFrame(node: HTMLInputElement | null) {
+  if (!node) return;
+  requestAnimationFrame(() => node.focus());
 }
 
 const OFFER_COMMENT_MAX_LENGTH = 40;
@@ -632,6 +659,7 @@ export function CheckoutForm({
 
   function handleUpsellSelect() {
     if (!upsellProduct) return;
+    (document.activeElement as HTMLElement | null)?.blur();
     setActiveProduct(upsellProduct);
     setSubscriptionInterval(upsellProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
@@ -640,6 +668,7 @@ export function CheckoutForm({
 
   /** 商品編集画面から、同じカルーセルの他の商品に切り替える(住所等の入力済み情報は保持したまま)。 */
   function handleSwitchProduct(nextProduct: WidgetProduct) {
+    (document.activeElement as HTMLElement | null)?.blur();
     setActiveProduct(nextProduct);
     setSubscriptionInterval(nextProduct.subscription_intervals[0] ?? "monthly");
     setQuantity(1);
@@ -1030,7 +1059,7 @@ export function CheckoutForm({
                     {CHECKOUT_FIELD_LABELS[key]}
                   </span>
                   <input
-                    autoFocus={key === "postalCode"}
+                    ref={key === "postalCode" ? focusOnNextFrame : undefined}
                     type="text"
                     className="input"
                     value={values[key]}
@@ -1246,7 +1275,7 @@ export function CheckoutForm({
         ) : (
           <label className="block">
             <input
-              autoFocus
+              ref={focusOnNextFrame}
               type={step.key === "email" ? "email" : step.key === "phone" ? "tel" : "text"}
               inputMode={step.key === "phone" ? "tel" : undefined}
               className="input"
@@ -1947,6 +1976,10 @@ export function CheckoutForm({
             totalSetSelected !== activeProduct.set_item_count
           }
           onClick={() => {
+            // 数量選択欄やサブスク間隔のselect等にフォーカスが残ったままこの下の
+            // 重いDOM入れ替え(options→wizard)を行うと、iOS Safariでキーボード/ピッカーが
+            // 開いたまま新しい画面がその裏に隠れる不具合になるため、先に明示的にblurする。
+            (document.activeElement as HTMLElement | null)?.blur();
             if (returnToStepIndex !== null) {
               const target = returnToStepIndex;
               setReturnToStepIndex(null);
