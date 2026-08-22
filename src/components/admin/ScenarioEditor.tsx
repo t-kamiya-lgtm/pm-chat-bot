@@ -2875,6 +2875,13 @@ export function ScenarioEditor({
             対応する位置をクリック領域として使います(ボタンのラベルはクリック領域の説明用として使われるだけで、
             画面には表示されません)。画像とテキストボタンを両方設定した場合は画像が優先されます。
           </p>
+          <p className="mb-3 rounded-md bg-neutral-50 p-2 text-xs text-neutral-500">
+            推奨画像サイズ(横幅いっぱいに表示され、高さは画像の比率に応じて自動調整されます)
+            <br />
+            ・1段レイアウトの場合: 2500×843px / 1200×405px / 800×270px(比率 約2.96:1)
+            <br />
+            ・2段レイアウトの場合: 2500×1686px / 1200×810px / 800×540px(比率 約1.48:1)
+          </p>
           <label className="block text-sm">
             <span className="mb-1 block text-xs text-neutral-500">画像URL</span>
             <div className="flex flex-wrap gap-2">
