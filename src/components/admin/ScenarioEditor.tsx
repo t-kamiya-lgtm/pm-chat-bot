@@ -18,6 +18,8 @@ import { contrastTextColor, effectiveTextColor, type TextColorOverride } from "@
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
 import { ErrorDialog } from "@/components/admin/ErrorDialog";
+import { SaveConfirmDialog } from "@/components/admin/SaveConfirmDialog";
+import { markEditingStart, markEditingEnd, registerSaveHandler } from "@/lib/unsaved-changes";
 
 type ToastState = { message: string; type: "success" | "error" } | null;
 type ErrorDialogState = { title: string; description?: string; items?: string[] } | null;
@@ -385,6 +387,21 @@ function scenarioRelevantProductIds(nodes: ScenarioNode[]): string[] {
     }
   }
   return Array.from(ids);
+}
+
+/** クーポン設定フォームの初期値/リセット先を、保存済みのクーポン(またはnull)から組み立てる。 */
+function couponFormFromCoupon(source: Coupon | null) {
+  return {
+    name: source?.name ?? "",
+    discountType: source?.discountType ?? ("percent" as "percent" | "fixed"),
+    discountValue: source ? String(source.discountValue) : "",
+    startsAt: source?.startsAt ? source.startsAt.slice(0, 10) : "",
+    endsAt: source?.endsAt ? source.endsAt.slice(0, 10) : "",
+    maxUses: source?.maxUses ? String(source.maxUses) : "",
+    minOrderAmount: source?.minOrderAmount ? String(source.minOrderAmount) : "",
+    imageUrl: source?.imageUrl ?? "",
+    promoMessage: source?.promoMessage ?? "",
+  };
 }
 
 function truncate(text: string, max = 24) {
@@ -1350,12 +1367,31 @@ function Accordion({
   title,
   defaultOpen,
   children,
+  onSave,
+  onCancel,
+  saving,
 }: {
   title: string;
   defaultOpen?: boolean;
   children: React.ReactNode;
+  /** 指定すると下部のボタンが「保存して閉じる」/「キャンセル」になる(未指定時は「閉じる」のみ)。 */
+  onSave?: () => Promise<boolean> | boolean;
+  /** 「キャンセル」を押した時、保存していない変更を元に戻す処理(onSaveを指定する場合は必須)。 */
+  onCancel?: () => void;
+  saving?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
+
+  async function handleSaveAndClose() {
+    const ok = await onSave?.();
+    if (ok !== false) setOpen(false);
+  }
+
+  function handleCancel() {
+    onCancel?.();
+    setOpen(false);
+  }
+
   return (
     <div className="mb-4 rounded-lg border border-neutral-200 bg-white">
       <button
@@ -1369,13 +1405,33 @@ function Accordion({
       {open && (
         <div className="space-y-6 border-t border-neutral-200 p-4">
           {children}
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
-          >
-            閉じる
-          </button>
+          {onSave ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveAndClose}
+                disabled={saving}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? "保存中..." : "保存して閉じる"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+              >
+                キャンセル
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-md border border-neutral-300 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+            >
+              閉じる
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1524,59 +1580,29 @@ export function ScenarioEditor({
     headerTextColor: scenario.headerTextColor,
   });
   const [adTagDraft, setAdTagDraft] = useState(scenario.adTag ?? "");
+  // 「キャンセル」で戻す先(直前に保存した値)。scenario propは保存後すぐには更新されないため別途保持する。
+  const [savedAdTagDraft, setSavedAdTagDraft] = useState(scenario.adTag ?? "");
   const [adTagSaving, setAdTagSaving] = useState(false);
-  const [adTagSaved, setAdTagSaved] = useState(false);
-  const adTagSkipResetRef = useRef(true);
-  useEffect(() => {
-    if (adTagSkipResetRef.current) {
-      adTagSkipResetRef.current = false;
-      return;
-    }
-    setAdTagSaved(false);
-  }, [adTagDraft]);
 
   const [conversionTagDraft, setConversionTagDraft] = useState(scenario.conversionTag ?? "");
+  const [savedConversionTagDraft, setSavedConversionTagDraft] = useState(scenario.conversionTag ?? "");
   const [conversionTagSaving, setConversionTagSaving] = useState(false);
-  const [conversionTagSaved, setConversionTagSaved] = useState(false);
-  const conversionTagSkipResetRef = useRef(true);
-  useEffect(() => {
-    if (conversionTagSkipResetRef.current) {
-      conversionTagSkipResetRef.current = false;
-      return;
-    }
-    setConversionTagSaved(false);
-  }, [conversionTagDraft]);
 
 
   const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
+  const [savedPopupIconUrlDraft, setSavedPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
-  const [popupIconUrlSaved, setPopupIconUrlSaved] = useState(false);
-  const popupIconUrlSkipResetRef = useRef(true);
-  useEffect(() => {
-    if (popupIconUrlSkipResetRef.current) {
-      popupIconUrlSkipResetRef.current = false;
-      return;
-    }
-    setPopupIconUrlSaved(false);
-  }, [popupIconUrlDraft]);
   const [popupPosition, setPopupPositionState] = useState<"bottom-right" | "bottom-left">(
+    scenario.popupPosition ?? "bottom-right",
+  );
+  const [savedPopupPosition, setSavedPopupPosition] = useState<"bottom-right" | "bottom-left">(
     scenario.popupPosition ?? "bottom-right",
   );
   const [couponCodeFieldEnabled, setCouponCodeFieldEnabledState] = useState(
     scenario.couponCodeFieldEnabled,
   );
   const [coupon, setCoupon] = useState<Coupon | null>(initialCoupon);
-  const [couponForm, setCouponForm] = useState({
-    name: initialCoupon?.name ?? "",
-    discountType: initialCoupon?.discountType ?? ("percent" as "percent" | "fixed"),
-    discountValue: initialCoupon ? String(initialCoupon.discountValue) : "",
-    startsAt: initialCoupon?.startsAt ? initialCoupon.startsAt.slice(0, 10) : "",
-    endsAt: initialCoupon?.endsAt ? initialCoupon.endsAt.slice(0, 10) : "",
-    maxUses: initialCoupon?.maxUses ? String(initialCoupon.maxUses) : "",
-    minOrderAmount: initialCoupon?.minOrderAmount ? String(initialCoupon.minOrderAmount) : "",
-    imageUrl: initialCoupon?.imageUrl ?? "",
-    promoMessage: initialCoupon?.promoMessage ?? "",
-  });
+  const [couponForm, setCouponForm] = useState(couponFormFromCoupon(initialCoupon));
   // 対象商品を限定する場合の設定。チェックを外すと制限なし(全商品に適用可能)で保存する。
   const [couponTargetProductsEnabled, setCouponTargetProductsEnabled] = useState(
     Boolean(initialCoupon?.targetProductIds && initialCoupon.targetProductIds.length > 0),
@@ -1816,7 +1842,7 @@ export function ScenarioEditor({
     patchDisplaySettings({ headerTitle: display.headerTitle.trim() || null });
   }
 
-  async function handleSaveAdTag() {
+  async function handleSaveAdTag(): Promise<boolean> {
     setAdTagSaving(true);
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
@@ -1830,14 +1856,15 @@ export function ScenarioEditor({
         message: `広告タグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
         type: "error",
       });
-      return;
+      return false;
     }
-    setAdTagSaved(true);
+    setSavedAdTagDraft(adTagDraft);
     setToast({ message: "保存しました", type: "success" });
     router.refresh();
+    return true;
   }
 
-  async function handleSaveConversionTag() {
+  async function handleSaveConversionTag(): Promise<boolean> {
     setConversionTagSaving(true);
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
@@ -1851,37 +1878,57 @@ export function ScenarioEditor({
         message: `コンバージョンタグの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
         type: "error",
       });
-      return;
+      return false;
     }
-    setConversionTagSaved(true);
+    setSavedConversionTagDraft(conversionTagDraft);
     setToast({ message: "保存しました", type: "success" });
     router.refresh();
+    return true;
   }
 
-  async function handleSavePopupIconUrl() {
+  /** タグ設定アコーディオンの「保存して閉じる」。広告タグ・コンバージョンタグをまとめて保存する。 */
+  async function handleSaveTagSettings(): Promise<boolean> {
+    const [adOk, conversionOk] = await Promise.all([handleSaveAdTag(), handleSaveConversionTag()]);
+    return adOk && conversionOk;
+  }
+
+  function handleCancelTagSettings() {
+    setAdTagDraft(savedAdTagDraft);
+    setConversionTagDraft(savedConversionTagDraft);
+  }
+
+  /** ポップアップ設定アコーディオンの「保存して閉じる」。アイコン画像URLと表示位置をまとめて保存する。 */
+  async function handleSavePopupSettings(): Promise<boolean> {
     setPopupIconUrlSaving(true);
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ popupIconUrl: popupIconUrlDraft.trim() || null }),
+      body: JSON.stringify({ popupIconUrl: popupIconUrlDraft.trim() || null, popupPosition }),
     });
     setPopupIconUrlSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setToast({
-        message: `アイコン画像の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        message: `ポップアップ設定の保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
         type: "error",
       });
-      return;
+      return false;
     }
-    setPopupIconUrlSaved(true);
+    setSavedPopupIconUrlDraft(popupIconUrlDraft);
+    setSavedPopupPosition(popupPosition);
     setToast({ message: "保存しました", type: "success" });
     router.refresh();
+    return true;
   }
 
+  function handleCancelPopupSettings() {
+    setPopupIconUrlDraft(savedPopupIconUrlDraft);
+    setPopupPositionState(savedPopupPosition);
+  }
+
+  /** 表示位置はポップアップ設定アコーディオンの「保存して閉じる」でまとめて保存するため、ここでは下書きの更新のみ行う。 */
   function setPopupPosition(position: "bottom-right" | "bottom-left") {
     setPopupPositionState(position);
-    patchDisplaySettings({ popupPosition: position });
   }
 
   function setCouponCodeFieldEnabled(enabled: boolean) {
@@ -1889,10 +1936,10 @@ export function ScenarioEditor({
     patchDisplaySettings({ couponCodeFieldEnabled: enabled });
   }
 
-  async function handleSaveCoupon() {
+  async function handleSaveCoupon(): Promise<boolean> {
     if (!couponForm.name.trim() || !couponForm.discountValue) {
       setToast({ message: "名称と割引額を入力してください", type: "error" });
-      return;
+      return false;
     }
     setCouponSaving(true);
     const payload = {
@@ -1927,7 +1974,7 @@ export function ScenarioEditor({
         message: `クーポンの保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
         type: "error",
       });
-      return;
+      return false;
     }
     const { coupon: saved } = await res.json();
     setCoupon({
@@ -1952,6 +1999,13 @@ export function ScenarioEditor({
     });
     setCouponSaved(true);
     setToast({ message: "保存しました", type: "success" });
+    return true;
+  }
+
+  function handleCancelCouponSettings() {
+    setCouponForm(couponFormFromCoupon(coupon));
+    setCouponTargetProductsEnabled(Boolean(coupon?.targetProductIds && coupon.targetProductIds.length > 0));
+    setCouponTargetProductIds(coupon?.targetProductIds ?? []);
   }
 
   async function handleToggleCouponActive() {
@@ -2860,7 +2914,12 @@ export function ScenarioEditor({
         </form>
       </Accordion>
 
-      <Accordion title="ポップアップ設定">
+      <Accordion
+        title="ポップアップ設定"
+        onSave={handleSavePopupSettings}
+        onCancel={handleCancelPopupSettings}
+        saving={popupIconUrlSaving}
+      >
         <p className="text-xs text-neutral-500">
           埋め込みタグの「ポップアップ表示」で表示されるボタンの見た目です。アイコン画像を設定すると、
           デフォルトのテキストボタンの代わりに丸いアイコンボタンで表示されます。
@@ -2879,11 +2938,10 @@ export function ScenarioEditor({
             />
             <button
               type="button"
-              onClick={handleSavePopupIconUrl}
-              disabled={popupIconUrlSaving}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+              onClick={(e) => (e.currentTarget.previousElementSibling as HTMLInputElement | null)?.blur()}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
             >
-              {popupIconUrlSaving ? "保存中..." : popupIconUrlSaved ? "保存済み" : "保存"}
+              更新
             </button>
           </div>
         </label>
@@ -2923,7 +2981,12 @@ export function ScenarioEditor({
         </div>
       </Accordion>
 
-      <Accordion title="クーポン設定">
+      <Accordion
+        title="クーポン設定"
+        onSave={handleSaveCoupon}
+        onCancel={handleCancelCouponSettings}
+        saving={couponSaving}
+      >
         <div>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -3133,7 +3196,12 @@ export function ScenarioEditor({
         </div>
       </Accordion>
 
-      <Accordion title="タグ設定">
+      <Accordion
+        title="タグ設定"
+        onSave={handleSaveTagSettings}
+        onCancel={handleCancelTagSettings}
+        saving={adTagSaving || conversionTagSaving}
+      >
         <div className="rounded-lg border border-neutral-200 p-4">
           <h3 className="mb-1 text-sm font-semibold text-neutral-700">埋め込みタグ</h3>
           <p className="mb-3 text-xs text-neutral-500">
@@ -3260,9 +3328,9 @@ export function ScenarioEditor({
             type="button"
             onClick={handleSaveAdTag}
             disabled={adTagSaving}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:opacity-50"
           >
-            {adTagSaving ? "保存中..." : adTagSaved ? "保存済み" : "保存"}
+            {adTagSaving ? "更新中..." : "更新"}
           </button>
         </div>
 
@@ -3287,9 +3355,9 @@ export function ScenarioEditor({
             type="button"
             onClick={handleSaveConversionTag}
             disabled={conversionTagSaving}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:opacity-50"
           >
-            {conversionTagSaving ? "保存中..." : conversionTagSaved ? "保存済み" : "保存"}
+            {conversionTagSaving ? "更新中..." : "更新"}
           </button>
         </div>
       </Accordion>
@@ -3350,6 +3418,40 @@ function NodeCard({
   // 「＋」で作った直後のノードは、開いた時点で中身が空(node.content === {})なので
   // 以下の各フィールドの初期値もそのまま編集用の初期値として使え、最初から編集状態で開いてよい
   const [editing, setEditing] = useState(Boolean(autoEdit));
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const handleSaveRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+
+  // 編集中であることをグローバルメニュー側と共有する(未保存のままページ遷移しようとした際に
+  // 確認ポップアップを出すため)。保存処理の実体は毎レンダー最新のものをrefで参照する。
+  useEffect(() => {
+    if (!editing) return;
+    markEditingStart();
+    registerSaveHandler(() => handleSaveRef.current());
+    return () => {
+      markEditingEnd();
+      registerSaveHandler(null);
+    };
+  }, [editing]);
+
+  // 編集中にこのノードの外をタップ(クリック)した場合、そのままでは操作が実行されてしまうため
+  // クリックの既定動作とバブリングを止めて、代わりに保存確認ポップアップを出す。
+  // スクロール操作はclickイベントを発生させないため、誤反応しない。
+  useEffect(() => {
+    if (!editing) return;
+    function handleClickCapture(e: MouseEvent) {
+      if (cardRef.current && e.target instanceof Node && !cardRef.current.contains(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowLeaveConfirm(true);
+      }
+    }
+    document.addEventListener("click", handleClickCapture, true);
+    return () => document.removeEventListener("click", handleClickCapture, true);
+  }, [editing]);
   // タイトル部分の長押しで並び替えを開始する(ドラッグ用の小さいアイコンだと掴みづらいため、
   // 見出しの帯全体をドラッグ対応にしている)。長押し前に指が動いたら通常のスクロールとして扱う。
   const [dragSelected, setDragSelected] = useState(false);
@@ -3716,10 +3818,21 @@ function NodeCard({
 
   return (
     <div
+      ref={cardRef}
       className={`min-w-0 rounded-lg border-2 bg-white p-3 ${
         dragSelected ? "border-blue-500" : "border-neutral-200"
       }`}
     >
+      {showLeaveConfirm && (
+        <SaveConfirmDialog
+          saving={saving}
+          onCancel={() => setShowLeaveConfirm(false)}
+          onSave={async () => {
+            await handleSave();
+            setShowLeaveConfirm(false);
+          }}
+        />
+      )}
       {/* ▲▼は移動専用の小さいボタン、その右のタイトル帯(No+種別名)は長押しで
           ドラッグ並び替えを開始する(小さいアイコンより掴みやすいよう帯全体を対象にしている) */}
       <div className="mb-2 flex items-center justify-between gap-2">

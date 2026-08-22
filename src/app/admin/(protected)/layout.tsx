@@ -16,7 +16,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     // 背景を薄いブルーにして、白いカード・入力欄との境目が分かるようにする
     <div className="min-h-screen bg-sky-50">
       <IdleLogout />
-      <header className="border-b border-neutral-200 bg-white">
+      {/* sticky: スマホでノード一覧などを下にスクロールしてもヘッダーが見えなくなるのを防ぐ */}
+      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 py-4">
           <Link href="/admin" className="font-semibold hover:text-neutral-700">
             チャットボット決済システム 管理画面
