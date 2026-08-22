@@ -1688,6 +1688,7 @@ export function ScenarioEditor({
   const [menuLayoutFilterRows, setMenuLayoutFilterRows] = useState<"all" | 1 | 2>("all");
   const [menuLayoutFilterCells, setMenuLayoutFilterCells] = useState<"all" | number>("all");
   const [menuImageUrlDraft, setMenuImageUrlDraft] = useState(scenario.menuImageUrl ?? "");
+  const [menuImagePreviewFailed, setMenuImagePreviewFailed] = useState(false);
   const [menuImageUrlSaving, setMenuImageUrlSaving] = useState(false);
   const menuLayoutCapacityValue = getMenuLayout(menuLayoutKey).cells.length;
   const [newMenuLabel, setNewMenuLabel] = useState("");
@@ -2888,7 +2889,10 @@ export function ScenarioEditor({
               <input
                 className="input w-full max-w-md"
                 value={menuImageUrlDraft}
-                onChange={(e) => setMenuImageUrlDraft(e.target.value)}
+                onChange={(e) => {
+                  setMenuImageUrlDraft(e.target.value);
+                  setMenuImagePreviewFailed(false);
+                }}
                 placeholder="https://example.com/menu.jpg"
               />
               <button
@@ -2901,6 +2905,28 @@ export function ScenarioEditor({
               </button>
             </div>
           </label>
+          {menuImageUrlDraft.trim() && (
+            <div className="mt-3">
+              <p className="mb-1 text-xs text-neutral-500">プレビュー</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={menuImageUrlDraft.trim()}
+                alt=""
+                className="max-w-md rounded-md border border-neutral-200"
+                onLoad={() => setMenuImagePreviewFailed(false)}
+                onError={() => setMenuImagePreviewFailed(true)}
+              />
+              {menuImagePreviewFailed && (
+                <p className="mt-1 rounded-md bg-red-50 p-2 text-xs text-red-700">
+                  画像を読み込めませんでした。このURLは画面に直接表示できない可能性があります。
+                  {menuImageUrlDraft.includes("drive.google.com") &&
+                    "Google Driveの共有リンク(view)は直接の画像URLとして使えません。"}
+                  画像ホスティングサービス等の、拡張子(.jpg/.pngなど)で直接画像が開けるURLを指定してください。
+                  このまま保存すると、チャット上でも画像が表示されません。
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {menuItems.length === 0 ? (
