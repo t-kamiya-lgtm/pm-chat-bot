@@ -36,7 +36,7 @@ const SECTIONS: { title: string; cards: DashboardCard[] }[] = [
   {
     title: "設定",
     cards: [
-      { href: "/admin/checkout-fields", title: "決済フォーム設定", description: "注文フォームの入力項目カスタマイズ" },
+      { href: "/admin/checkout-fields", title: "基本設定", description: "あいさつ文・注文確認メッセージ等の共通設定" },
       { href: "/admin/email-templates", title: "自動メール設定", description: "注文完了・離脱リマインド等のメール本文" },
       { href: "/admin/email-addresses", title: "メールアドレス管理", description: "自動メールの送信元アドレスの管理" },
       { href: "/admin/business-days", title: "営業日設定", description: "配送日・営業カレンダーの管理" },

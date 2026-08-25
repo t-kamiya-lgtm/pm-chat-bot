@@ -19,6 +19,8 @@ import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
 import { ErrorDialog } from "@/components/admin/ErrorDialog";
 import { SaveConfirmDialog } from "@/components/admin/SaveConfirmDialog";
+import { ScenarioCheckoutFieldsSection } from "@/components/admin/ScenarioCheckoutFieldsSection";
+import type { CheckoutFieldKey } from "@/lib/checkout-fields";
 import { markEditingStart, markEditingEnd, registerSaveHandler } from "@/lib/unsaved-changes";
 import {
   MENU_LAYOUTS,
@@ -1583,6 +1585,7 @@ interface Props {
   products: PickableProduct[];
   menuItems: ScenarioMenuItem[];
   coupon: Coupon | null;
+  checkoutFieldOrder: CheckoutFieldKey[];
 }
 
 export function ScenarioEditor({
@@ -1591,6 +1594,7 @@ export function ScenarioEditor({
   products,
   menuItems: initialMenuItems,
   coupon: initialCoupon,
+  checkoutFieldOrder,
 }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
@@ -2698,6 +2702,7 @@ export function ScenarioEditor({
             ノードがまだありません
           </p>
         )}
+        <ScenarioCheckoutFieldsSection scenarioId={scenario.id} initialOrder={checkoutFieldOrder} />
       </div>
 
       </Accordion>
