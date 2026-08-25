@@ -9,7 +9,7 @@ interface ImportResult {
   errors: { line: number; orderNumber: string; reason: string }[];
 }
 
-/** 送り状データCSV(注文番号・出荷日・運送会社名・送り状番号)を取り込み、Stripe注文を出荷済にする。 */
+/** 出荷報告データ(.xlsx、基幹システム「通販ゲート」形式)を取り込み、Stripe注文を出荷済にする。 */
 export function ShipmentImportForm() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -23,11 +23,11 @@ export function ShipmentImportForm() {
     setUploading(true);
     setResult(null);
 
-    const csv = await file.text();
+    const formData = new FormData();
+    formData.append("file", file);
     const res = await fetch("/api/orders/import-shipment", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ csv }),
+      body: formData,
     });
 
     setUploading(false);
@@ -52,19 +52,20 @@ export function ShipmentImportForm() {
         onClick={() => setOpen((v) => !v)}
         className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
       >
-        送り状CSV取込み(Stripe注文のみ)
+        出荷報告データ取込み(Stripe注文のみ)
       </button>
       {open && (
         <div className="mt-2 max-w-xl rounded-lg border border-neutral-200 bg-white p-3 text-sm">
           <p className="mb-2 text-xs text-neutral-500">
-            列構成: 注文番号, 出荷日, 運送会社名, 送り状番号(ヘッダー行の有無どちらでも可)。
-            取り込むと該当注文の受注ステータスが「出荷済」になり、購入者へ出荷完了メールが送信されます。
-            代引き・後払いの注文は対象外です。
+            基幹システム「通販ゲート」の出荷報告データ(.xlsx)をそのまま取り込めます。
+            「媒体名」が「WEB」かつ「WEB用受注番号」(=当システムの注文番号)が入力されている行のみ処理し、
+            該当注文の受注ステータスを「出荷済」に更新、購入者へ出荷完了メールを送信します。
+            代引き・後払いの注文、他媒体経由の行は対象外です。
           </p>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={handleFileChange}
             disabled={uploading}
           />
