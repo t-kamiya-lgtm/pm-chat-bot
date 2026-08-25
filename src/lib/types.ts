@@ -200,12 +200,16 @@ export interface Address {
 export interface ShippingAddress extends Address {
   recipientName: string;
   recipientPhone: string;
+  /** 半角カナ。基幹システム連携(通販ゲート)の「届先・ｶﾅ氏名」向け。 */
+  recipientNameKana: string;
 }
 
 export interface Customer {
   id: string;
   email: string;
   name: string;
+  /** 半角カナ。基幹システム連携(通販ゲート)の「注文者・ｶﾅ氏名」向け。 */
+  nameKana: string | null;
   phone: string | null;
   address: Address | null;
   smaregiMemberId: string | null;

@@ -4,6 +4,7 @@ import type { Address } from "@/lib/types";
 export interface CustomerInput {
   email: string;
   name: string;
+  nameKana: string;
   phone?: string | null;
   address: Address;
 }
@@ -12,6 +13,7 @@ export interface CustomerRow {
   id: string;
   email: string;
   name: string;
+  name_kana: string | null;
   phone: string | null;
   address: Address | null;
   smaregi_member_id: string | null;
@@ -28,6 +30,7 @@ export async function upsertCustomer(input: CustomerInput): Promise<CustomerRow>
       {
         email: input.email,
         name: input.name,
+        name_kana: input.nameKana,
         phone: input.phone ?? null,
         address: input.address,
       },
