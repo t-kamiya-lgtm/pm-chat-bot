@@ -143,6 +143,9 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       charge: paymentFee,
       tax: totalTax,
       payment_total: total,
+      // 受注登録時点ではまだ入金(代引きの集金・後払いの支払い)が完了していないため0。
+      // 必須項目のため明示的に指定する(未指定だとAPIに拒否される)。
+      payment_amount_total: 0,
       total_notax: subtotal - totalTax,
       total_tax: totalTax,
       deliv_fee_notax: shippingFee,
