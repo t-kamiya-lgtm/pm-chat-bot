@@ -39,6 +39,7 @@ export default async function EmailTemplatesPage() {
         initialShipmentCompleteBody={
           data?.shipment_complete_body || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody
         }
+        defaults={DEFAULT_EMAIL_TEMPLATES}
       />
     </div>
   );
