@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     .select("*, customers(name, email, phone, address), products!product_id(name, smaregi_product_id)")
     .order("created_at", { ascending: false });
   query = applyOrderFilters(query, filters);
-  if (!filters.showAll) query = query.limit(100);
+  if (!filters.showAll && !filters.orderIds?.length) query = query.limit(100);
 
   const { data: orders, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -155,7 +155,14 @@ function ColumnResizeHandle({
   );
 }
 
-export function OrdersTable({ orders }: { orders: OrderRow[] }) {
+/** 絞り込み条件のクエリ文字列に、選択中の注文IDを追加したCSV出力用URLを組み立てる。 */
+function buildSelectedExportHref(basePath: string, exportQuery: string, selected: Set<string>): string {
+  const params = new URLSearchParams(exportQuery);
+  params.set("orderIds", Array.from(selected).join(","));
+  return `${basePath}?${params.toString()}`;
+}
+
+export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; exportQuery: string }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<ImportStatus>("imported");
@@ -273,6 +280,31 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
           </button>
         </div>
       )}
+
+      <div className="mb-3 flex items-center gap-2">
+        <a
+          href={
+            selected.size > 0
+              ? buildSelectedExportHref("/api/orders/export", exportQuery, selected)
+              : `/api/orders/export?${exportQuery}`
+          }
+          className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+        >
+          {selected.size > 0 ? `選択した${selected.size}件をCSV出力` : "この絞り込み結果をCSV出力"}
+        </a>
+        <a
+          href={
+            selected.size > 0
+              ? buildSelectedExportHref("/api/orders/export-core-system", exportQuery, selected)
+              : `/api/orders/export-core-system?${exportQuery}`
+          }
+          className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+        >
+          {selected.size > 0
+            ? `選択した${selected.size}件を通販ゲート取込用CSV出力`
+            : "通販ゲート取込用CSV出力(Stripe注文のみ)"}
+        </a>
+      </div>
 
       <p className="mb-2 text-xs text-neutral-400">列見出しの右端をドラッグすると列の幅を調整できます(次回も同じ幅で表示されます)</p>
 
