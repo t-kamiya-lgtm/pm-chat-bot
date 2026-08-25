@@ -18,6 +18,7 @@ import {
   MIN_DELIVERY_LEAD_BUSINESS_DAYS,
   type CheckoutFieldKey,
 } from "@/lib/checkout-fields";
+import { isHalfWidthKatakanaInput, isReadingOnlyKana, toHalfWidthKatakana } from "@/lib/kana";
 import { isJapaneseHoliday } from "@/lib/japanese-holidays";
 
 /** 管理画面で登録した臨時休業日(YYYY-MM-DD)。起動時に一度だけ取得し、営業日計算に使う。 */
@@ -50,9 +51,10 @@ const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string; description
 
 const SHIPPING_ADDRESS_FIELD_KEYS = ["postalCode", "prefecture", "city", "line1"] as const;
 type ShippingAddressFieldKey = (typeof SHIPPING_ADDRESS_FIELD_KEYS)[number];
-type ShippingFieldKey = "recipientName" | "recipientPhone" | ShippingAddressFieldKey;
+type ShippingFieldKey = "recipientName" | "recipientNameKana" | "recipientPhone" | ShippingAddressFieldKey;
 const SHIPPING_FIELD_KEYS: ShippingFieldKey[] = [
   "recipientName",
+  "recipientNameKana",
   "recipientPhone",
   ...SHIPPING_ADDRESS_FIELD_KEYS,
 ];
@@ -104,6 +106,41 @@ function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
 function focusOnNextFrame(node: HTMLInputElement | null) {
   if (!node) return;
   requestAnimationFrame(() => node.focus());
+}
+
+/**
+ * 氏名欄への漢字入力中に、IMEの変換確定(compositionend)から読み(ひらがな/カタカナ)を
+ * 拾い集めてフリガナ欄へ自動反映する。氏名は姓・名の間にスペースを挟んで別々に変換
+ * されることが多いため、変換確定のたびに読みを半角カナへ変換して積み上げていく方式。
+ * あくまで入力の手間を減らす補助であり、確定した変換結果を保証するものではないため、
+ * お客様がフリガナ欄を直接編集した場合はそれ以降の自動反映を止める。
+ */
+function useKanaAutoCapture(onAutoUpdate: (kana: string) => void) {
+  const segmentsRef = useRef<string[]>([]);
+  const autoEnabledRef = useRef(true);
+
+  function handleCompositionEnd(e: React.CompositionEvent<HTMLInputElement>) {
+    if (!autoEnabledRef.current) return;
+    const reading = e.data;
+    if (!reading || !isReadingOnlyKana(reading)) return;
+    segmentsRef.current = [...segmentsRef.current, toHalfWidthKatakana(reading)];
+    onAutoUpdate(segmentsRef.current.join(" "));
+  }
+
+  /** 氏名欄が空に戻った場合、次の入力に備えて読みの積み上げをリセットする。 */
+  function resetIfCleared(nameValue: string) {
+    if (!nameValue.trim()) {
+      segmentsRef.current = [];
+      autoEnabledRef.current = true;
+    }
+  }
+
+  /** フリガナ欄をお客様が直接編集したら、以降は自動上書きしない。 */
+  function markManualEdit() {
+    autoEnabledRef.current = false;
+  }
+
+  return { handleCompositionEnd, resetIfCleared, markManualEdit };
 }
 
 const OFFER_COMMENT_MAX_LENGTH = 40;
@@ -221,11 +258,20 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
   }
 }
 
+function validateNameKana(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "フリガナを入力してください";
+  return isHalfWidthKatakanaInput(trimmed) ? null : "フリガナは半角カナで入力してください";
+}
+
 function validateShippingField(key: ShippingFieldKey, value: string): string | null {
   const trimmed = value.trim();
   switch (key) {
     case "recipientName":
       return trimmed ? null : "お届け先のお名前を入力してください";
+    case "recipientNameKana":
+      if (!trimmed) return "お届け先のフリガナを入力してください";
+      return isHalfWidthKatakanaInput(trimmed) ? null : "フリガナは半角カナで入力してください";
     case "recipientPhone":
       return /^0\d{9,10}$/.test(trimmed.replace(/[^0-9]/g, ""))
         ? null
@@ -456,6 +502,8 @@ export function CheckoutForm({
     name: "",
     email: "",
     phone: "",
+    gender: "",
+    birthday: "",
     postalCode: "",
     prefecture: "",
     city: "",
@@ -467,6 +515,11 @@ export function CheckoutForm({
   const paymentMethod = values.paymentMethod as PaymentMethod;
   const paymentFee = methodFees[paymentMethod] ?? 0;
   const [touched, setTouched] = useState<Partial<Record<CheckoutFieldKey, boolean>>>({});
+  // フリガナ(半角カナ)。基幹システム連携の必須項目のため別途収集する(氏名欄はCheckoutFieldKeyの
+  // 並び替え対象のため、フリガナは常に氏名の直後に固定表示する専用のstateとして持つ)。
+  const [nameKana, setNameKana] = useState("");
+  const [nameKanaTouched, setNameKanaTouched] = useState(false);
+  const nameKanaAuto = useKanaAutoCapture(setNameKana);
   const [addressLookupStatus, setAddressLookupStatus] = useState<"idle" | "loading" | "not_found">(
     "idle",
   );
@@ -474,6 +527,7 @@ export function CheckoutForm({
   const [shipToDifferentAddress, setShipToDifferentAddress] = useState(false);
   const [shippingValues, setShippingValues] = useState<Record<ShippingFieldKey, string>>({
     recipientName: "",
+    recipientNameKana: "",
     recipientPhone: "",
     postalCode: "",
     prefecture: "",
@@ -481,6 +535,9 @@ export function CheckoutForm({
     line1: "",
   });
   const [shippingTouched, setShippingTouched] = useState<Partial<Record<ShippingFieldKey, boolean>>>({});
+  const recipientNameKanaAuto = useKanaAutoCapture((kana) =>
+    setShippingValues((prev) => ({ ...prev, recipientNameKana: kana })),
+  );
   const [shippingAddressLookupStatus, setShippingAddressLookupStatus] = useState<
     "idle" | "loading" | "not_found"
   >("idle");
@@ -708,8 +765,11 @@ export function CheckoutForm({
   function buildOrderPayload() {
     const customer = {
       name: values.name,
+      nameKana,
       email: values.email,
       phone: values.phone || undefined,
+      gender: values.gender || undefined,
+      birthDate: values.birthday || undefined,
       address: {
         postalCode: values.postalCode,
         prefecture: values.prefecture,
@@ -728,6 +788,7 @@ export function CheckoutForm({
     const shippingAddress = shipToDifferentAddress
       ? {
           recipientName: shippingValues.recipientName,
+          recipientNameKana: shippingValues.recipientNameKana,
           recipientPhone: shippingValues.recipientPhone,
           postalCode: shippingValues.postalCode,
           prefecture: shippingValues.prefecture,
@@ -916,17 +977,20 @@ export function CheckoutForm({
     const keysToValidate =
       step.kind === "address" ? ADDRESS_FIELD_KEYS : step.kind === "delivery" ? DELIVERY_FIELD_KEYS : [step.key];
     const hasFieldError = keysToValidate.some((key) => validateField(key, values[key]));
+    const isNameStep = step.kind === "field" && step.key === "name";
+    const hasNameKanaError = isNameStep && Boolean(validateNameKana(nameKana));
     const hasShippingError =
       step.kind === "address" &&
       shipToDifferentAddress &&
       SHIPPING_FIELD_KEYS.some((key) => validateShippingField(key, shippingValues[key]));
 
-    if (hasFieldError || hasShippingError) {
+    if (hasFieldError || hasNameKanaError || hasShippingError) {
       setTouched((prev) => {
         const next = { ...prev };
         for (const key of keysToValidate) next[key] = true;
         return next;
       });
+      if (isNameStep) setNameKanaTouched(true);
       if (hasShippingError) {
         setShippingTouched((prev) => {
           const next = { ...prev };
@@ -1113,9 +1177,12 @@ export function CheckoutForm({
                   <input
                     className="input"
                     value={shippingValues.recipientName}
-                    onChange={(e) =>
-                      setShippingValues((prev) => ({ ...prev, recipientName: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setShippingValues((prev) => ({ ...prev, recipientName: nextValue }));
+                      recipientNameKanaAuto.resetIfCleared(nextValue);
+                    }}
+                    onCompositionEnd={recipientNameKanaAuto.handleCompositionEnd}
                     onFocus={scrollFieldIntoView}
                     onBlur={() => setShippingTouched((prev) => ({ ...prev, recipientName: true }))}
                   />
@@ -1123,6 +1190,26 @@ export function CheckoutForm({
                     validateShippingField("recipientName", shippingValues.recipientName) && (
                       <p className="mt-1 text-xs text-red-600">
                         {validateShippingField("recipientName", shippingValues.recipientName)}
+                      </p>
+                    )}
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-neutral-700">お届け先のフリガナ</span>
+                  <input
+                    className="input"
+                    value={shippingValues.recipientNameKana}
+                    onChange={(e) => {
+                      recipientNameKanaAuto.markManualEdit();
+                      setShippingValues((prev) => ({ ...prev, recipientNameKana: e.target.value }));
+                    }}
+                    onFocus={scrollFieldIntoView}
+                    onBlur={() => setShippingTouched((prev) => ({ ...prev, recipientNameKana: true }))}
+                    placeholder="半角カナで自動入力されます(修正可)"
+                  />
+                  {shippingTouched.recipientNameKana &&
+                    validateShippingField("recipientNameKana", shippingValues.recipientNameKana) && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {validateShippingField("recipientNameKana", shippingValues.recipientNameKana)}
                       </p>
                     )}
                 </label>
@@ -1282,6 +1369,61 @@ export function CheckoutForm({
               </label>
             ))}
           </div>
+        ) : step.key === "gender" ? (
+          <div className="space-y-2">
+            {["男性", "女性", "回答しない"].map((option) => {
+              const selected =
+                option === "回答しない" ? values.gender === "" : values.gender === option;
+              return (
+                <label
+                  key={option}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border p-2 text-sm ${
+                    selected ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    checked={selected}
+                    onChange={() =>
+                      setValues((prev) => ({ ...prev, gender: option === "回答しない" ? "" : option }))
+                    }
+                  />
+                  {option}
+                </label>
+              );
+            })}
+          </div>
+        ) : step.key === "birthday" ? (
+          <label className="block">
+            <label className="mb-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!values.birthday}
+                onChange={(e) => {
+                  if (e.target.checked) setValues((prev) => ({ ...prev, birthday: "" }));
+                }}
+              />
+              回答しない
+            </label>
+            {values.birthday !== "" && (
+              <input
+                type="date"
+                className="input"
+                value={values.birthday}
+                onChange={(e) => setValues((prev) => ({ ...prev, birthday: e.target.value }))}
+                onFocus={scrollFieldIntoView}
+              />
+            )}
+            {values.birthday === "" && (
+              <button
+                type="button"
+                className="input text-left text-neutral-400"
+                onClick={() => setValues((prev) => ({ ...prev, birthday: formatLocalDate(new Date()) }))}
+              >
+                日付を選択
+              </button>
+            )}
+          </label>
         ) : (
           <label className="block">
             <input
@@ -1290,7 +1432,12 @@ export function CheckoutForm({
               inputMode={step.key === "phone" ? "tel" : undefined}
               className="input"
               value={values[step.key]}
-              onChange={(e) => setValues((prev) => ({ ...prev, [step.key]: e.target.value }))}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setValues((prev) => ({ ...prev, [step.key]: nextValue }));
+                if (step.key === "name") nameKanaAuto.resetIfCleared(nextValue);
+              }}
+              onCompositionEnd={step.key === "name" ? nameKanaAuto.handleCompositionEnd : undefined}
               onFocus={scrollFieldIntoView}
               onBlur={() => {
                 setTouched((prev) => ({ ...prev, [step.key]: true }));
@@ -1307,6 +1454,32 @@ export function CheckoutForm({
               <p className="mt-1 text-xs text-red-600">
                 {validateField(step.key, values[step.key])}
               </p>
+            )}
+          </label>
+        )}
+        {step.kind === "field" && step.key === "name" && (
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-medium text-neutral-700">フリガナ</span>
+            <input
+              type="text"
+              className="input"
+              value={nameKana}
+              onChange={(e) => {
+                nameKanaAuto.markManualEdit();
+                setNameKana(e.target.value);
+              }}
+              onFocus={scrollFieldIntoView}
+              onBlur={() => setNameKanaTouched(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleNextStep();
+                }
+              }}
+              placeholder="半角カナで自動入力されます(修正可)"
+            />
+            {nameKanaTouched && validateNameKana(nameKana) && (
+              <p className="mt-1 text-xs text-red-600">{validateNameKana(nameKana)}</p>
             )}
           </label>
         )}

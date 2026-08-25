@@ -10,8 +10,13 @@ export const addressSchema = z.object({
 
 export const customerInputSchema = z.object({
   name: z.string().min(1),
+  nameKana: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional(),
+  /** 任意回答。 */
+  gender: z.string().optional(),
+  /** 任意回答("YYYY-MM-DD")。 */
+  birthDate: z.string().optional(),
   address: addressSchema,
 });
 
@@ -19,6 +24,7 @@ export const customerInputSchema = z.object({
 export const shippingAddressSchema = addressSchema.extend({
   recipientName: z.string().min(1),
   recipientPhone: z.string().min(1),
+  recipientNameKana: z.string().min(1),
 });
 
 export const subscriptionIntervalSchema = z.enum(["biweekly", "monthly", "bimonthly"]);

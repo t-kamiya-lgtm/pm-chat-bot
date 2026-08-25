@@ -3,6 +3,8 @@ export type CheckoutFieldKey =
   | "name"
   | "email"
   | "phone"
+  | "gender"
+  | "birthday"
   | "postalCode"
   | "prefecture"
   | "city"
@@ -15,6 +17,8 @@ export const CHECKOUT_FIELD_KEYS: CheckoutFieldKey[] = [
   "name",
   "email",
   "phone",
+  "gender",
+  "birthday",
   "postalCode",
   "prefecture",
   "city",
@@ -28,6 +32,8 @@ export const CHECKOUT_FIELD_LABELS: Record<CheckoutFieldKey, string> = {
   name: "お名前",
   email: "メールアドレス",
   phone: "電話番号",
+  gender: "性別",
+  birthday: "生年月日",
   postalCode: "郵便番号",
   prefecture: "都道府県",
   city: "市区町村",

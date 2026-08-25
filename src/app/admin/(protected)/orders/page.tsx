@@ -52,6 +52,12 @@ export default async function AdminOrdersPage({
           >
             この絞り込み結果をCSV出力
           </a>
+          <a
+            href={`/api/orders/export-core-system?${exportQuery.toString()}`}
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+          >
+            通販ゲート取込用CSV出力(Stripe注文のみ)
+          </a>
         </div>
       </div>
 
