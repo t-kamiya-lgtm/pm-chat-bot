@@ -10,7 +10,8 @@ export type CheckoutFieldKey =
   | "city"
   | "line1"
   | "deliveryDate"
-  | "deliveryTimeSlot";
+  | "deliveryTimeSlot"
+  | "invoiceNote";
 
 export const CHECKOUT_FIELD_KEYS: CheckoutFieldKey[] = [
   "paymentMethod",
@@ -25,6 +26,7 @@ export const CHECKOUT_FIELD_KEYS: CheckoutFieldKey[] = [
   "line1",
   "deliveryDate",
   "deliveryTimeSlot",
+  "invoiceNote",
 ];
 
 export const CHECKOUT_FIELD_LABELS: Record<CheckoutFieldKey, string> = {
@@ -40,7 +42,11 @@ export const CHECKOUT_FIELD_LABELS: Record<CheckoutFieldKey, string> = {
   line1: "番地・建物名",
   deliveryDate: "お届け希望日",
   deliveryTimeSlot: "お届け希望時間帯",
+  invoiceNote: "送り状の記載内容",
 };
+
+/** 送り状記載内容(任意)は基幹システムの伝票記事欄に反映するため、文字数上限がある。 */
+export const INVOICE_NOTE_MAX_LENGTH = 40;
 
 export const DEFAULT_CHECKOUT_FIELD_ORDER: CheckoutFieldKey[] = [...CHECKOUT_FIELD_KEYS];
 

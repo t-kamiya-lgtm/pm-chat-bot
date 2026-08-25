@@ -37,6 +37,8 @@ export const checkoutBaseSchema = z.object({
   customer: customerInputSchema,
   deliveryDate: z.string().optional(),
   deliveryTimeSlot: z.string().optional(),
+  /** 送り状への記載内容の指示(任意)。 */
+  invoiceNote: z.string().max(40).optional(),
   agreedTerms: z.literal(true),
   agreedPrivacy: z.literal(true),
   addonProductId: z.string().uuid().optional(),

@@ -15,6 +15,7 @@ import {
   DELIVERY_FIELD_KEYS,
   DELIVERY_KEY_SET,
   DELIVERY_TIME_SLOTS,
+  INVOICE_NOTE_MAX_LENGTH,
   MIN_DELIVERY_LEAD_BUSINESS_DAYS,
   type CheckoutFieldKey,
 } from "@/lib/checkout-fields";
@@ -103,7 +104,7 @@ function scrollFieldIntoView(e: React.FocusEvent<HTMLElement>) {
  * レイアウトが描画されるより先にキーボードが開こうとして表示が崩れることがある。
  * refコールバックでフォーカスを次フレームに遅らせることでこれを避ける。
  */
-function focusOnNextFrame(node: HTMLInputElement | null) {
+function focusOnNextFrame(node: HTMLInputElement | HTMLTextAreaElement | null) {
   if (!node) return;
   requestAnimationFrame(() => node.focus());
 }
@@ -253,6 +254,10 @@ function validateField(key: CheckoutFieldKey, value: string): string | null {
       return (DELIVERY_TIME_SLOTS as readonly string[]).includes(trimmed)
         ? null
         : "お届け希望時間帯を選択してください";
+    case "invoiceNote":
+      return trimmed.length > INVOICE_NOTE_MAX_LENGTH
+        ? `${INVOICE_NOTE_MAX_LENGTH}文字以内で入力してください`
+        : null;
     default:
       return null;
   }
@@ -295,6 +300,7 @@ function stepQuestionText(step: WizardStep): string {
   if (step.kind === "address") return "ご注文者様のご住所を教えてください。";
   if (step.kind === "delivery") return "お届け希望日・時間帯を教えてください。";
   if (step.key === "paymentMethod") return "お支払い方法をお選びください。";
+  if (step.key === "invoiceNote") return "送り状への記載内容の指示がございましたら、下記にご入力ください。";
   return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。`;
 }
 
@@ -510,6 +516,7 @@ export function CheckoutForm({
     line1: "",
     deliveryDate: minDeliveryDate(),
     deliveryTimeSlot: "指定なし",
+    invoiceNote: "",
   });
   const [deliveryDateIsAsap, setDeliveryDateIsAsap] = useState(true);
   const paymentMethod = values.paymentMethod as PaymentMethod;
@@ -780,6 +787,7 @@ export function CheckoutForm({
     const delivery = {
       deliveryDate: postDeliveryRestricted ? "" : values.deliveryDate,
       deliveryTimeSlot: postDeliveryRestricted ? "" : values.deliveryTimeSlot,
+      invoiceNote: values.invoiceNote.trim() || undefined,
       agreedTerms: true as const,
       agreedPrivacy: true as const,
     };
@@ -1422,6 +1430,25 @@ export function CheckoutForm({
               >
                 日付を選択
               </button>
+            )}
+          </label>
+        ) : step.key === "invoiceNote" ? (
+          <label className="block">
+            <textarea
+              ref={focusOnNextFrame}
+              className="input"
+              rows={3}
+              value={values.invoiceNote}
+              onChange={(e) => setValues((prev) => ({ ...prev, invoiceNote: e.target.value }))}
+              onFocus={scrollFieldIntoView}
+              onBlur={() => setTouched((prev) => ({ ...prev, invoiceNote: true }))}
+              placeholder="特にご指定がなければ空欄のままで結構です"
+            />
+            <p className="mt-1 text-xs text-neutral-400">
+              {values.invoiceNote.length}/{INVOICE_NOTE_MAX_LENGTH}文字
+            </p>
+            {touched.invoiceNote && validateField("invoiceNote", values.invoiceNote) && (
+              <p className="mt-1 text-xs text-red-600">{validateField("invoiceNote", values.invoiceNote)}</p>
             )}
           </label>
         ) : (
