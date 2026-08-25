@@ -82,7 +82,7 @@ export async function GET(request: Request) {
     .eq("payment_method", "stripe")
     .order("created_at", { ascending: false });
   query = applyOrderFilters(query, filters);
-  if (!filters.showAll) query = query.limit(100);
+  if (!filters.showAll && !filters.orderIds?.length) query = query.limit(100);
 
   const { data: orders, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

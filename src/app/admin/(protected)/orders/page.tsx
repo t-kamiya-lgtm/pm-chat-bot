@@ -46,18 +46,6 @@ export default async function AdminOrdersPage({
         <h1 className="text-2xl font-semibold">注文</h1>
         <div className="flex items-start gap-2">
           <ShipmentImportForm />
-          <a
-            href={`/api/orders/export?${exportQuery.toString()}`}
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
-          >
-            この絞り込み結果をCSV出力
-          </a>
-          <a
-            href={`/api/orders/export-core-system?${exportQuery.toString()}`}
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
-          >
-            通販ゲート取込用CSV出力(Stripe注文のみ)
-          </a>
         </div>
       </div>
 
@@ -120,7 +108,7 @@ export default async function AdminOrdersPage({
         </p>
       )}
 
-      <OrdersTable orders={orders ?? []} />
+      <OrdersTable orders={orders ?? []} exportQuery={exportQuery.toString()} />
     </div>
   );
 }
