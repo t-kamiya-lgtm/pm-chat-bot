@@ -186,6 +186,7 @@ export async function GET(request: Request) {
       shippingMethodLabel,
       deliveryDate: order.delivery_date ? toCoreSystemDate(order.delivery_date as string) : "",
       deliveryTimeSlot: toCoreSystemDeliveryTimeSlot(order.delivery_time_slot as string | null),
+      invoiceNote: (order.invoice_note as string | null) ?? "",
       productSubtotal,
       shippingFee,
       paymentFee,
@@ -214,8 +215,8 @@ export async function GET(request: Request) {
         "",
         // 35列: 配送方法
         orderLevelColumns.shippingMethodLabel,
-        // 36列: 伝票記事(未使用)
-        "",
+        // 36列: 伝票記事(送り状への記載内容の指示。決済フォームで収集)
+        orderLevelColumns.invoiceNote,
         // 37〜38列: 配送希望日/配送時間
         orderLevelColumns.deliveryDate,
         orderLevelColumns.deliveryTimeSlot,
