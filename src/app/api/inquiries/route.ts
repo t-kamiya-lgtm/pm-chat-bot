@@ -42,7 +42,11 @@ export async function POST(request: Request) {
 
   try {
     const templates = await getEmailTemplates(supabase);
-    const vars = { customer_name: parsed.data.name, message: parsed.data.message };
+    const vars = {
+      customer_name: parsed.data.name,
+      message: parsed.data.message,
+      chat_url: parsed.data.chatUrl ?? "",
+    };
     await sendResendEmail({
       to: parsed.data.email,
       from: resolveScenarioFrom(scenario, "inquiry_auto_reply_from"),

@@ -479,7 +479,7 @@ export function ProductForm({
             checked={values.isSet}
             onChange={(e) => setValues((p) => ({ ...p, isSet: e.target.checked }))}
           />
-          セット品として販売する(お客様が内訳を選ぶ商品)
+          より取り品番として販売する(お客様が内訳を選ぶ商品)
         </label>
         {values.isSet && (
           <div className="mt-3 space-y-3">

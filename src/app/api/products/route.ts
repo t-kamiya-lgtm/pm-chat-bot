@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   }
   if (input.isSet && (!input.setItemCount || input.setOptionProductIds.length === 0)) {
     return NextResponse.json(
-      { error: "セット品は、セット構成数と、選択肢の商品を1つ以上登録してください" },
+      { error: "より取り品番は、セット構成数と、選択肢の商品を1つ以上登録してください" },
       { status: 400 },
     );
   }

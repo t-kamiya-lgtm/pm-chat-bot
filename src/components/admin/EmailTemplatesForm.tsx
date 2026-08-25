@@ -194,7 +194,7 @@ export function EmailTemplatesForm({
             チャット内の「その他のご質問」フォームからお客様が問い合わせを送信した際、お客様へ自動で送信されます
             (社内担当者への通知メールとは別です)。差し込み項目:
             {" "}
-            {"{{customer_name}} {{message}}"}
+            {"{{customer_name}} {{message}} {{chat_url}}"}
           </p>
         </div>
         <label className="block text-sm">
