@@ -6,6 +6,8 @@ export interface CustomerInput {
   name: string;
   nameKana: string;
   phone?: string | null;
+  gender?: string | null;
+  birthDate?: string | null;
   address: Address;
 }
 
@@ -16,6 +18,8 @@ export interface CustomerRow {
   name_kana: string | null;
   phone: string | null;
   address: Address | null;
+  gender: string | null;
+  birth_date: string | null;
   smaregi_member_id: string | null;
   stripe_customer_id: string | null;
 }
@@ -32,6 +36,8 @@ export async function upsertCustomer(input: CustomerInput): Promise<CustomerRow>
         name: input.name,
         name_kana: input.nameKana,
         phone: input.phone ?? null,
+        gender: input.gender || null,
+        birth_date: input.birthDate || null,
         address: input.address,
       },
       { onConflict: "email" },

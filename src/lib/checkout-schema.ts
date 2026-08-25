@@ -13,6 +13,10 @@ export const customerInputSchema = z.object({
   nameKana: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional(),
+  /** 任意回答。 */
+  gender: z.string().optional(),
+  /** 任意回答("YYYY-MM-DD")。 */
+  birthDate: z.string().optional(),
   address: addressSchema,
 });
 

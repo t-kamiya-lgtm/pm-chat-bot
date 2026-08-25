@@ -212,6 +212,10 @@ export interface Customer {
   nameKana: string | null;
   phone: string | null;
   address: Address | null;
+  /** 任意回答。基幹システム連携(通販ゲート)の「注文者・性別」向け。 */
+  gender: string | null;
+  /** 任意回答("YYYY-MM-DD")。基幹システム連携(通販ゲート)の「注文者・誕生日」向け。 */
+  birthDate: string | null;
   smaregiMemberId: string | null;
   stripeCustomerId: string | null;
   createdAt: string;

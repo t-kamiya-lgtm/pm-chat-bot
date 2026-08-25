@@ -502,6 +502,8 @@ export function CheckoutForm({
     name: "",
     email: "",
     phone: "",
+    gender: "",
+    birthday: "",
     postalCode: "",
     prefecture: "",
     city: "",
@@ -766,6 +768,8 @@ export function CheckoutForm({
       nameKana,
       email: values.email,
       phone: values.phone || undefined,
+      gender: values.gender || undefined,
+      birthDate: values.birthday || undefined,
       address: {
         postalCode: values.postalCode,
         prefecture: values.prefecture,
@@ -1365,6 +1369,61 @@ export function CheckoutForm({
               </label>
             ))}
           </div>
+        ) : step.key === "gender" ? (
+          <div className="space-y-2">
+            {["男性", "女性", "回答しない"].map((option) => {
+              const selected =
+                option === "回答しない" ? values.gender === "" : values.gender === option;
+              return (
+                <label
+                  key={option}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border p-2 text-sm ${
+                    selected ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    checked={selected}
+                    onChange={() =>
+                      setValues((prev) => ({ ...prev, gender: option === "回答しない" ? "" : option }))
+                    }
+                  />
+                  {option}
+                </label>
+              );
+            })}
+          </div>
+        ) : step.key === "birthday" ? (
+          <label className="block">
+            <label className="mb-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!values.birthday}
+                onChange={(e) => {
+                  if (e.target.checked) setValues((prev) => ({ ...prev, birthday: "" }));
+                }}
+              />
+              回答しない
+            </label>
+            {values.birthday !== "" && (
+              <input
+                type="date"
+                className="input"
+                value={values.birthday}
+                onChange={(e) => setValues((prev) => ({ ...prev, birthday: e.target.value }))}
+                onFocus={scrollFieldIntoView}
+              />
+            )}
+            {values.birthday === "" && (
+              <button
+                type="button"
+                className="input text-left text-neutral-400"
+                onClick={() => setValues((prev) => ({ ...prev, birthday: formatLocalDate(new Date()) }))}
+              >
+                日付を選択
+              </button>
+            )}
+          </label>
         ) : (
           <label className="block">
             <input

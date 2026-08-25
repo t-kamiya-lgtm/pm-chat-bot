@@ -41,6 +41,9 @@ const SURVEY_ANSWER_TYPE_LABELS: Record<SurveyAnswerType, string> = {
   text_long: "フリーコメント(長文)",
 };
 
+/** 生年月日は決済フォーム側で収集するため、新規設問の選択肢からは外す(既存データの表示は維持)。 */
+const SURVEY_ANSWER_TYPE_OPTIONS: SurveyAnswerType[] = ["checkbox", "radio", "text_short", "text_long"];
+
 const NODE_TYPE_LABELS: Record<ScenarioNodeType, string> = {
   message: "メッセージ表示",
   choice: "選択肢分岐",
@@ -1322,11 +1325,13 @@ function SurveyQuestionsEditor({
                 value={type}
                 onChange={(e) => update(index, { type: e.target.value as SurveyAnswerType })}
               >
-                {(Object.keys(SURVEY_ANSWER_TYPE_LABELS) as SurveyAnswerType[]).map((t) => (
-                  <option key={t} value={t}>
-                    {SURVEY_ANSWER_TYPE_LABELS[t]}
-                  </option>
-                ))}
+                {(type === "date" ? [...SURVEY_ANSWER_TYPE_OPTIONS, "date" as const] : SURVEY_ANSWER_TYPE_OPTIONS).map(
+                  (t) => (
+                    <option key={t} value={t}>
+                      {SURVEY_ANSWER_TYPE_LABELS[t]}
+                    </option>
+                  ),
+                )}
               </select>
             </label>
             {isChoice && (
