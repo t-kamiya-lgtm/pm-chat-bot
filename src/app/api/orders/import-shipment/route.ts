@@ -9,6 +9,7 @@ interface ParsedRow {
   orderNumber: string;
   shipDate: string;
   carrierName: string;
+  trackingNumber: string;
 }
 
 /**
@@ -36,6 +37,7 @@ function parseShipmentWorkbook(buffer: ArrayBuffer): ParsedRow[] {
       orderNumber,
       shipDate: String(record["出荷日"] ?? "").trim(),
       carrierName: String(record["配送方法"] ?? "").trim(),
+      trackingNumber: String(record["問合せ番号"] ?? "").trim(),
     });
   });
   return rows;
@@ -126,6 +128,7 @@ export async function POST(request: Request) {
         import_status_updated_at: new Date().toISOString(),
         shipped_at: shippedAt.toISOString(),
         carrier_name: row.carrierName || null,
+        tracking_number: row.trackingNumber || null,
       })
       .eq("id", order.id);
 

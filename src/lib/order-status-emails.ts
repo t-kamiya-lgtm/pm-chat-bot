@@ -65,7 +65,9 @@ export async function sendShipmentCompleteEmail(orderId: string): Promise<void> 
       .update({ shipment_email_sent_at: new Date().toISOString() })
       .eq("id", orderId)
       .is("shipment_email_sent_at", null)
-      .select("order_number, customer_id, product_id, scenario_id, shipped_at, carrier_name, tracking_number")
+      .select(
+        "order_number, customer_id, product_id, scenario_id, shipped_at, carrier_name, tracking_number, delivery_date, delivery_time_slot",
+      )
       .maybeSingle();
     if (!order) return;
 
@@ -83,6 +85,12 @@ export async function sendShipmentCompleteEmail(orderId: string): Promise<void> 
     if (!customer?.email) return;
 
     const templates = await getEmailTemplates(supabase);
+    // お届け希望日時は、配送方法が宅急便(宅配便)の場合のみ案内する
+    // (メール便=郵メールはポスト投函のため日時指定を受け付けていない)。
+    const deliveryDateTimeLine =
+      order.carrier_name === "宅急便" && order.delivery_date
+        ? `\n■お届け希望日時: ${new Date(order.delivery_date).toLocaleDateString("ja-JP")} ${order.delivery_time_slot ?? ""}`.trimEnd()
+        : "";
     const vars = {
       customer_name: customer.name ?? "",
       product_name: product?.name ?? "",
@@ -90,6 +98,7 @@ export async function sendShipmentCompleteEmail(orderId: string): Promise<void> 
       ship_date: order.shipped_at ? new Date(order.shipped_at).toLocaleDateString("ja-JP") : "",
       carrier_name: order.carrier_name ?? "",
       tracking_number: order.tracking_number ?? "",
+      delivery_datetime_line: deliveryDateTimeLine,
     };
 
     await sendResendEmail({

@@ -251,7 +251,9 @@ export function EmailTemplatesForm({
             送り状データCSVの取込みで受注ステータスが「出荷済」になった際、購入者へ送信されます。
             代引き・後払いの注文には送信されません。差し込み項目:
             {" "}
-            {"{{customer_name}} {{product_name}} {{order_number}} {{ship_date}} {{carrier_name}} {{tracking_number}}"}
+            {"{{customer_name}} {{product_name}} {{order_number}} {{ship_date}} {{carrier_name}} {{tracking_number}} {{delivery_datetime_line}}"}
+            <br />
+            {"{{delivery_datetime_line}}"}は「■お届け希望日時: ...」の行(配送方法が宅急便の場合のみ、それ以外は空欄)です。
           </p>
         </div>
         <label className="block text-sm">

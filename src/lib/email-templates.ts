@@ -79,7 +79,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■商品: {{product_name}}
 ■出荷日: {{ship_date}}
 ■配送業者: {{carrier_name}}
-■お問い合わせ番号: {{tracking_number}}
+■お問い合わせ番号: {{tracking_number}}{{delivery_datetime_line}}
 
 商品到着まで今しばらくお待ちください。`,
 };
