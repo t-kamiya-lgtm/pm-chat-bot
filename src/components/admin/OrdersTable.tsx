@@ -95,6 +95,9 @@ export interface OrderRow {
   quantity: number;
   shipping_fee: number;
   payment_fee: number;
+  addon_amount: number | null;
+  discount_amount: number | null;
+  first_time_discount_amount: number | null;
   status: string;
   delivery_date: string | null;
   delivery_time_slot: string | null;
@@ -107,6 +110,7 @@ export interface OrderRow {
   tracking_number: string | null;
   customers: { name: string; email: string } | null;
   products: { name: string } | null;
+  addon_products: { name: string } | null;
 }
 
 function formatDeliveryDate(value: string | null) {
@@ -357,7 +361,12 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
                   <td className="px-4 py-2 font-mono break-all">{order.order_number ?? "-"}</td>
                   <td className="px-4 py-2">{new Date(order.created_at).toLocaleString("ja-JP")}</td>
                   <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
-                  <td className="px-4 py-2">{order.products?.name ?? "-"}</td>
+                  <td className="px-4 py-2">
+                    {order.products?.name ?? "-"}
+                    {order.addon_products?.name && (
+                      <div className="mt-0.5 text-xs text-neutral-400">+ {order.addon_products.name}</div>
+                    )}
+                  </td>
                   <td className="px-4 py-2">{order.quantity}</td>
                   <td className="px-4 py-2">
                     {order.type === "subscription" ? "定期" : "単発"}
@@ -369,7 +378,36 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
                   </td>
                   <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[order.payment_method]}</td>
                   <td className="px-4 py-2">
-                    {(order.amount + order.shipping_fee + order.payment_fee).toLocaleString()}円
+                    <span
+                      title={[
+                        `商品代金合計: ${(order.amount + (order.addon_amount ?? 0)).toLocaleString()}円`,
+                        `送料: ${order.shipping_fee.toLocaleString()}円`,
+                        `手数料: ${order.payment_fee.toLocaleString()}円`,
+                        (order.discount_amount || order.first_time_discount_amount) &&
+                          `値引: ${((order.discount_amount ?? 0) + (order.first_time_discount_amount ?? 0)).toLocaleString()}円`,
+                        `請求額: ${(
+                          order.amount +
+                          (order.addon_amount ?? 0) +
+                          order.shipping_fee +
+                          order.payment_fee -
+                          (order.discount_amount ?? 0) -
+                          (order.first_time_discount_amount ?? 0)
+                        ).toLocaleString()}円`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n")}
+                      className="cursor-help underline decoration-dotted"
+                    >
+                      {(
+                        order.amount +
+                        (order.addon_amount ?? 0) +
+                        order.shipping_fee +
+                        order.payment_fee -
+                        (order.discount_amount ?? 0) -
+                        (order.first_time_discount_amount ?? 0)
+                      ).toLocaleString()}
+                      円
+                    </span>
                   </td>
                   <td className="px-4 py-2">{STATUS_LABELS[order.status]}</td>
                   <td className="px-4 py-2">

@@ -8,6 +8,9 @@ export interface CustomerDetailOrder {
   type: string;
   payment_method: string;
   amount: number;
+  addon_amount: number | null;
+  discount_amount: number | null;
+  first_time_discount_amount: number | null;
   shipping_fee: number;
   payment_fee: number;
   quantity: number;

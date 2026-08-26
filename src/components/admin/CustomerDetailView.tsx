@@ -33,6 +33,18 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString("ja-JP");
 }
 
+/** アドオン加算・値引反映後の請求額(スマレジ連携・CSV出力と同じ計算式)。 */
+function orderTotal(o: CustomerDetailOrder): number {
+  return (
+    o.amount +
+    (o.addon_amount ?? 0) +
+    o.shipping_fee +
+    o.payment_fee -
+    (o.discount_amount ?? 0) -
+    (o.first_time_discount_amount ?? 0)
+  );
+}
+
 function formatDate(value: string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("ja-JP");
@@ -84,10 +96,7 @@ export function CustomerDetailView({
 
   const confirmedOrders = orders.filter((o) => CONFIRMED_ORDER_STATUSES.includes(o.status));
   const totalPurchaseCount = confirmedOrders.length;
-  const totalPurchaseAmount = confirmedOrders.reduce(
-    (sum, o) => sum + o.amount + o.shipping_fee + o.payment_fee,
-    0,
-  );
+  const totalPurchaseAmount = confirmedOrders.reduce((sum, o) => sum + orderTotal(o), 0);
   // ordersはcreated_at降順で渡されるため、先頭が最新の注文
   const latestOrder = orders[0] ?? null;
   const latestShippingAddress = latestOrder?.shipping_address ?? null;
@@ -201,7 +210,7 @@ export function CustomerDetailView({
                   <td className="px-4 py-2">{o.quantity}</td>
                   <td className="px-4 py-2">{o.type === "subscription" ? "定期" : "単発"}</td>
                   <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[o.payment_method]}</td>
-                  <td className="px-4 py-2">{(o.amount + o.shipping_fee + o.payment_fee).toLocaleString()}円</td>
+                  <td className="px-4 py-2">{orderTotal(o).toLocaleString()}円</td>
                   <td className="px-4 py-2">{STATUS_LABELS[o.status]}</td>
                   <td className="px-4 py-2">
                     {o.survey_responses && Object.keys(o.survey_responses).length > 0 ? (

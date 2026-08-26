@@ -10,6 +10,9 @@ export interface OrderRow {
   scenario_id: string | null;
   product_id: string;
   amount: number;
+  addon_amount: number | null;
+  discount_amount: number | null;
+  first_time_discount_amount: number | null;
   shipping_fee: number;
   payment_fee: number;
   utm_source: string | null;
@@ -33,8 +36,25 @@ function adKey(utmSource: string | null, utmMedium: string | null, utmCampaign: 
   return `${utmSource ?? ""} ${utmMedium ?? ""} ${utmCampaign ?? ""}`;
 }
 
-export function orderRevenue(order: OrderRow): number {
-  return order.amount + order.shipping_fee + order.payment_fee;
+interface OrderMoneyFields {
+  amount: number;
+  addon_amount: number | null;
+  shipping_fee: number;
+  payment_fee: number;
+  discount_amount: number | null;
+  first_time_discount_amount: number | null;
+}
+
+/** アドオン加算・値引反映後の請求額(スマレジ連携・CSV出力と同じ計算式)。 */
+export function orderRevenue(order: OrderMoneyFields): number {
+  return (
+    order.amount +
+    (order.addon_amount ?? 0) +
+    order.shipping_fee +
+    order.payment_fee -
+    (order.discount_amount ?? 0) -
+    (order.first_time_discount_amount ?? 0)
+  );
 }
 
 export interface Stats {
@@ -61,7 +81,7 @@ function withConversion(stats: Stats): StatsWithConversion {
 /** アクセスログ・注文一覧から、グルーピングキー別の集計テーブルを組み立てる。 */
 function aggregateBy(
   accessLogs: TaggedRow[],
-  orders: (TaggedRow & { amount: number; shipping_fee: number; payment_fee: number })[],
+  orders: (TaggedRow & OrderMoneyFields)[],
   keyOf: (row: TaggedRow) => string,
   labelOf: (row: TaggedRow) => string,
 ): { key: string; label: string; stats: StatsWithConversion }[] {
@@ -81,7 +101,7 @@ function aggregateBy(
   for (const order of orders) {
     const entry = bucket(order);
     entry.stats.purchaseCount += 1;
-    entry.stats.revenue += order.amount + order.shipping_fee + order.payment_fee;
+    entry.stats.revenue += orderRevenue(order);
   }
 
   return Array.from(table.entries())

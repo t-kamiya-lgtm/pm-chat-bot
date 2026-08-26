@@ -21,7 +21,7 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       .eq("id", orderId)
       .is("completion_email_sent_at", null)
       .select(
-        "order_number, quantity, amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number, scenario_id",
+        "order_number, quantity, amount, addon_amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number, scenario_id",
       )
       .maybeSingle();
     if (!order) return;
@@ -42,6 +42,7 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
     const templates = await getEmailTemplates(supabase);
     const total =
       order.amount +
+      (order.addon_amount ?? 0) +
       order.shipping_fee +
       order.payment_fee -
       order.discount_amount -
