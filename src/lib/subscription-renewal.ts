@@ -5,7 +5,6 @@ import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
 import { getProductById } from "@/lib/products";
 import { getPaymentFee } from "@/lib/fees";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
-import { fulfillOrder } from "@/lib/order-fulfillment";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import type { Address, SubscriptionInterval } from "@/lib/types";
 
@@ -98,9 +97,9 @@ export async function createSubscriptionRenewalOrder(params: {
 /**
  * 代引き・後払いの定期購入について、次回お届け予定日が近づいた注文データを
  * チャットシステム側で新規生成する(/api/cron/subscription-renewalsから呼ばれる)。
- * スマレジのperiodical_order(自動継続)機能は使わず、毎回このチャットシステムが
- * 受注データを作成してスマレジへ連携する方式に統一する(初回特別価格・クーポンといった
- * 値引きがスマレジ側の自動継続に乗って2回目以降にも残ってしまう問題を避けるため)。
+ * スマレジ連携は廃止したため、Stripe注文の定期継続分と同様、生成した注文データは
+ * スタッフが通販ゲートCSV書き出し・出荷報告CSV取込で進めていく(import_statusは
+ * デフォルト(not_imported)のまま生成する)。
  * 与信判定は基幹システム側(coreSystem.submitOrder)が毎回の受注データ生成時に行う運用のため、
  * チャットシステム側では判定結果を受け取るだけでよい。
  */
@@ -232,15 +231,6 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       .eq("id", newOrder.id);
 
     if (accepted) {
-      try {
-        await fulfillOrder(newOrder.id);
-      } catch (err) {
-        // スマレジ連携の失敗で処理全体を止めない(失敗はimport_status/アラートで通知済み)。
-        console.error("[subscription-renewal] fulfillOrder failed for deferred renewal", {
-          orderId: newOrder.id,
-          err,
-        });
-      }
       await sendOrderCompletionEmail(newOrder.id);
     }
   } catch (err) {

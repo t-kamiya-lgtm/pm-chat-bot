@@ -53,8 +53,9 @@ function parseShipDate(value: string): Date | null {
 }
 
 /**
- * 出荷報告データ(.xlsx)を取り込み、対応するStripe注文の受注ステータスを「出荷済」に進めて
- * 出荷完了メールを送信する。代引き・後払いの注文は対象外(スマレジ側で完結するため)。
+ * 出荷報告データ(.xlsx)を取り込み、対応する注文の受注ステータスを「出荷済」に進めて
+ * 出荷完了メールを送信する。支払方法を問わずすべての注文が対象
+ * (スマレジ連携は廃止し、代引き・後払いもStripeと同様にこの出荷報告CSV取込で進める運用に統一したため)。
  */
 export async function POST(request: Request) {
   const roleCheck = await requireCatalogRole();
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
   for (const row of rows) {
     const { data: matches, error: findError } = await supabase
       .from("orders")
-      .select("id, payment_method, import_status")
+      .select("id, import_status")
       .eq("order_number", row.orderNumber);
 
     if (findError) {
@@ -111,14 +112,6 @@ export async function POST(request: Request) {
     }
 
     const order = matches[0];
-    if (order.payment_method !== "stripe") {
-      errors.push({
-        line: row.line,
-        orderNumber: row.orderNumber,
-        reason: "Stripe決済以外の注文は出荷済に設定できません(代引き・後払いは対象外)",
-      });
-      continue;
-    }
 
     const shippedAt = parseShipDate(row.shipDate) ?? new Date();
     const { error: updateError } = await supabase
