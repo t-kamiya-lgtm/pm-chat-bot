@@ -111,18 +111,22 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
 
   const shippingFee = order.shipping_fee as number;
   const paymentFee = order.payment_fee as number;
-  // スマレジは「調整額[discount]」(初回特別価格など、割引の内訳を持つ一般的な値引き)と
-  // 「クーポン利用[coupon_total]」を別物として扱う。請求額[payment_total]は
-  // 合計額[total]－クーポン利用[coupon_total]－ポイント利用[use_point]で検証されるため、
-  // クーポン分は discount/other_discount に含めず、coupon_total側で送る必要がある
-  // (実際の受注データ調査により、discount=0の注文はすべてtotal=subtotal-0+deliv_fee+charge、
-  // payment_total=total-coupon_total-use_pointの関係が成立することを確認済み)。
+  // 実際の送信内容と結果を突き合わせた結果、請求額[payment_total]の整合性チェックは
+  // 「調整額[discount]/その他調整額[other_discount]」を一切考慮せず、
+  // 合計額[total]を常に subtotal+deliv_fee+charge(値引き前)として再計算した上で
+  // total－クーポン利用[coupon_total]－ポイント利用[use_point] と比較しているとみられる
+  // (discountだけを差し引いたtotalを送ったケース、discount+coupon_totalを分離したケースの
+  // 両方で、その時点で未反映の割引額分だけ一致しないエラーが再現したため)。
+  // そのため、初回特別価格・クーポンを問わずすべての値引きをcoupon_totalに合算して送る。
+  // discount/other_discountは内訳チェック[BEOC01C000127]用に自己整合していればよいため、
+  // 実際の値引き内容が分かるよう初回特別価格分のみを入れておく(coupon_totalとの重複計上ではない)。
   const otherDiscount = (order.first_time_discount_amount as number | null) ?? 0;
   const couponDiscount = (order.discount_amount as number) ?? 0;
+  const totalDiscount = otherDiscount + couponDiscount;
   const subtotal = productTotal + addonAmount;
   const totalTax = productTax + addonTax;
-  const total = Math.max(0, subtotal - otherDiscount + shippingFee + paymentFee);
-  const paymentTotal = Math.max(0, total - couponDiscount);
+  const total = Math.max(0, subtotal + shippingFee + paymentFee);
+  const paymentTotal = Math.max(0, total - totalDiscount);
 
   const paymentId =
     order.payment_method === "cod"
@@ -153,9 +157,10 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       charge: paymentFee,
       tax: totalTax,
       payment_total: paymentTotal,
-      // クーポン利用額。請求額[payment_total]は合計額[total]からこの値とポイント利用額を
-      // 差し引いた金額と一致する必要がある。
-      coupon_total: couponDiscount,
+      // 請求額[payment_total]は合計額[total]からこの値とポイント利用額を差し引いた金額と
+      // 一致する必要がある。discount/other_discountはこの計算に反映されないため、
+      // 初回特別価格分・クーポン分を問わずすべての値引きをここに合算する。
+      coupon_total: totalDiscount,
       // ポイント利用機能は導入していないため常に0(必須項目のため明示的に指定する)。
       use_point: 0,
       // 受注登録時点ではまだ入金(代引きの集金・後払いの支払い)が完了していないため0。
