@@ -231,16 +231,26 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
       body: JSON.stringify({ orderIds: Array.from(selected), importStatus: bulkStatus }),
     });
     setApplying(false);
-    if (res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.ok !== false) {
       setSelected(new Set());
       setToast({ message: "選択した注文に一括適用しました", type: "success" });
       router.refresh();
-    } else {
-      const body = await res.json().catch(() => ({}));
+    } else if (res.ok && Array.isArray(body.failed) && body.updated > 0) {
+      setSelected(new Set());
       setToast({
-        message: typeof body.error === "string" ? body.error : "一括適用に失敗しました",
+        message: `${body.updated}件を適用しましたが、${body.failed.length}件は遷移が許可されず失敗しました`,
         type: "error",
       });
+      router.refresh();
+    } else {
+      const firstError =
+        Array.isArray(body.failed) && body.failed[0]?.error
+          ? body.failed[0].error
+          : typeof body.error === "string"
+            ? body.error
+            : "一括適用に失敗しました";
+      setToast({ message: firstError, type: "error" });
     }
   }
 
@@ -253,7 +263,11 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
     if (res.ok) {
       router.refresh();
     } else {
-      setToast({ message: "取り込み状況の更新に失敗しました", type: "error" });
+      const body = await res.json().catch(() => ({}));
+      setToast({
+        message: typeof body.error === "string" ? body.error : "取り込み状況の更新に失敗しました",
+        type: "error",
+      });
     }
   }
 
