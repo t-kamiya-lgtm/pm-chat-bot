@@ -161,6 +161,8 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       payment_id: paymentId,
       payment_status: "0",
       deliv_id: delivId,
+      // 配送区分(必須項目)。実際に処理された受注データを調査した結果、通常の商品配送は"0"だった。
+      hasso_deliv_kbn: "0",
       reserve_type: isSubscription ? "3" : "0",
       order_date: toJstDateTime(order.created_at as string),
       tax_calc_type: "明細単位",
@@ -175,6 +177,9 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
     },
     order_detail: [
       {
+        // ご購入明細区分(必須項目)。実際に処理された受注データを調査した結果、
+        // 定期・単品にかかわらず商品明細行はすべて"商品"だった(product_reg_flagとは別項目)。
+        detail_kbn: "商品",
         product_code: (product.smaregi_product_id as string | null) ?? product.id,
         product_name: product.name,
         product_quantity: quantity,
@@ -191,6 +196,7 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       ...(addonProduct
         ? [
             {
+              detail_kbn: "商品",
               product_code: (addonProduct.smaregi_product_id as string | null) ?? (addonProduct.id as string),
               product_name: addonProduct.name as string,
               product_quantity: 1,
