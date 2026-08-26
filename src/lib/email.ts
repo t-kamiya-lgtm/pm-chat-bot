@@ -50,6 +50,47 @@ export async function sendInquiryNotification(input: InquiryInput): Promise<void
   }
 }
 
+export interface SmaregiSyncFailureAlertInput {
+  orderId: string;
+  orderNumber: string | null;
+  errorMessage: string;
+}
+
+/**
+ * 代引き・後払い注文のスマレジEC連携に失敗した際、運用担当へ即時通知する。
+ * 管理画面上は取込みエラー(ピンク表示)になるが、気づかず出荷対応が漏れることを防ぐための能動的アラート。
+ * SMAREGI_SYNC_ALERT_EMAIL未設定時は問い合わせ通知と同じ宛先(INQUIRY_NOTIFICATION_EMAIL)にフォールバックする。
+ */
+export async function sendSmaregiSyncFailureAlert(input: SmaregiSyncFailureAlertInput): Promise<void> {
+  const webhookUrl = process.env.GAS_MAIL_WEBHOOK_URL;
+  const secret = process.env.GAS_MAIL_SECRET;
+  const to = process.env.SMAREGI_SYNC_ALERT_EMAIL || process.env.INQUIRY_NOTIFICATION_EMAIL;
+
+  if (!webhookUrl || !secret || !to) {
+    console.error("[smaregi-sync-alert] notification email not configured, logging instead:", input);
+    return;
+  }
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      secret,
+      from: process.env.INQUIRY_FROM_EMAIL ?? "chatbot@example.com",
+      to,
+      subject: `【要対応】スマレジ連携エラー(注文番号: ${input.orderNumber ?? input.orderId})`,
+      text: `代引き・後払い注文のスマレジEC連携に失敗しました。管理画面(受注管理)で内容を確認し、必要に応じてスマレジ側へ手動で受注登録してください。\n\n注文番号: ${
+        input.orderNumber ?? "-"
+      }\n注文ID: ${input.orderId}\n\nエラー内容:\n${input.errorMessage}`,
+      senderName: "プライムダイレクト",
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to send smaregi sync failure alert: ${res.status}`);
+  }
+}
+
 export interface SendEmailInput {
   to: string;
   from: string;

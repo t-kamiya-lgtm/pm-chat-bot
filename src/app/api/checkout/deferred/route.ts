@@ -120,9 +120,8 @@ export async function POST(request: Request) {
       shipping_fee: product.shipping_fee,
       payment_fee: paymentFee,
       status: "pending",
-      // 代引き・後払いはスマレジECに即時自動連携されるため、生成時から「取込み済み」扱いにする
-      import_status: "imported",
-      import_status_updated_at: new Date().toISOString(),
+      // import_statusはデフォルト(not_imported)のまま作成し、fulfillOrder内のスマレジ連携結果
+      // (成功imported/失敗import_error)に応じて更新する(連携失敗時も「取込み済み」表示になる不具合を防ぐため)。
       delivery_date: deliveryDate || null,
       delivery_time_slot: deliveryTimeSlot || null,
       invoice_note: invoiceNote || null,
