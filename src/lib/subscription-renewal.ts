@@ -2,8 +2,6 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateOrderNumber } from "@/lib/order-number";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
-import { getProductById } from "@/lib/products";
-import { getPaymentFee } from "@/lib/fees";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import type { Address, SubscriptionInterval } from "@/lib/types";
@@ -140,13 +138,14 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       .maybeSingle();
     if (existing) return;
 
-    const product = await getProductById(original.product_id);
-    if (!product) return;
-
     const quantity = original.quantity as number;
     // 2回目以降は常に通常価格(初回特別価格・クーポンは初回のみ適用)。
-    const amount = product.price * quantity;
-    const paymentFee = await getPaymentFee(original.payment_method, "subscription");
+    // 商品マスタの現在値ではなく、初回注文時点のスナップショット(original.amount等)を使う
+    // (配信後にマスタ価格を変更しても、既存の定期購入者には反映されず、変更以後の新規受注にのみ
+    // 反映されるようにするため)。
+    const amount = original.amount as number;
+    const shippingFee = original.shipping_fee as number;
+    const paymentFee = original.payment_fee as number;
     const deliveryDate = subscriptionRow.next_billing_date as string;
 
     const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
@@ -162,7 +161,7 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
         payment_method: original.payment_method,
         amount,
         quantity,
-        shipping_fee: product.shipping_fee,
+        shipping_fee: shippingFee,
         payment_fee: paymentFee,
         status: "pending",
         delivery_date: deliveryDate,
@@ -220,7 +219,7 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       paymentMethod: original.payment_method,
       product: { id: original.product_id, quantity },
       amount,
-      shippingFee: product.shipping_fee,
+      shippingFee,
       paymentFee,
       addonProduct:
         original.is_addon_subscription && original.addon_product_id
