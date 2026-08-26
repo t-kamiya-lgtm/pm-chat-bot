@@ -88,7 +88,6 @@ export function CustomerDetailView({
     (o) =>
       o.type === "subscription" &&
       !o.parent_order_id &&
-      o.payment_method === "stripe" &&
       o.subscriptions?.[0]?.status === "active",
   );
 
@@ -303,7 +302,8 @@ function SubscriptionEditPanel({
             ? { postalCode, prefecture, city, line1, line2: line2 || undefined, recipientName, recipientPhone }
             : null,
         deliveryTimeSlot,
-        subscriptionInterval,
+        // 頻度変更はStripeの定期購入のみ対応(代引き・後払いはStripeサブスクリプションが無いため対象外)。
+        ...(order.payment_method === "stripe" && { subscriptionInterval }),
       }),
     });
 
@@ -383,20 +383,22 @@ function SubscriptionEditPanel({
         </label>
       </div>
 
-      <label className="block">
-        <span className="mb-1 block text-xs text-neutral-500">お届け頻度</span>
-        <select
-          className="input max-w-xs"
-          value={subscriptionInterval}
-          onChange={(e) => setSubscriptionInterval(e.target.value as SubscriptionInterval)}
-        >
-          {(Object.keys(INTERVAL_LABELS) as SubscriptionInterval[]).map((key) => (
-            <option key={key} value={key}>
-              {INTERVAL_LABELS[key]}
-            </option>
-          ))}
-        </select>
-      </label>
+      {order.payment_method === "stripe" && (
+        <label className="block">
+          <span className="mb-1 block text-xs text-neutral-500">お届け頻度</span>
+          <select
+            className="input max-w-xs"
+            value={subscriptionInterval}
+            onChange={(e) => setSubscriptionInterval(e.target.value as SubscriptionInterval)}
+          >
+            {(Object.keys(INTERVAL_LABELS) as SubscriptionInterval[]).map((key) => (
+              <option key={key} value={key}>
+                {INTERVAL_LABELS[key]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <div className="flex items-center justify-between pt-2">
         <button

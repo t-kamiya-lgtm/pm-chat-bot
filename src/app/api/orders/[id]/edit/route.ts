@@ -21,8 +21,10 @@ type RouteParams = { params: Promise<{ id: string }> };
  * 金額が変わる変更は再注文が必要なため対象外。
  * お届け先・頻度の変更は、この(定期の親)注文に対して行うことで、以降の定期継続分
  * (createSubscriptionRenewalOrderがこの注文を元に生成するもの)にも自動的に反映される。
- * 頻度変更・解約はStripeの定期購入(サブスクリプション)自体も更新する
- * (Stripe決済の定期購入のみ対応。後払い・代引きの定期はスマレジ側での対応となる)。
+ * 頻度変更はStripe決済の定期購入のみ対応(Stripeのサブスクリプション自体も更新する必要があるため)。
+ * 解約は支払方法を問わずすべての定期購入で対応する。代引き・後払いは当システム側で
+ * 2回目以降の受注データを生成する方式のため、subscriptions.statusをcanceledにするだけで
+ * 以後の生成バッチ(/api/cron/subscription-renewals)の対象外になる。
  */
 export async function PATCH(request: Request, { params }: RouteParams) {
   const roleCheck = await requireAdminRole();
@@ -100,20 +102,25 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
 
   if (input.cancelSubscription) {
-    if (!isStripeSubscription || !order.stripe_subscription_id) {
-      return NextResponse.json(
-        { error: "Stripeの定期購入以外はこの画面から解約できません" },
-        { status: 400 },
-      );
+    if (order.type !== "subscription") {
+      return NextResponse.json({ error: "定期購入の注文ではありません" }, { status: 400 });
     }
-    try {
-      const stripe = getStripeClient();
-      await stripe.subscriptions.cancel(order.stripe_subscription_id);
-      await supabase.from("subscriptions").update({ status: "canceled" }).eq("order_id", order.id);
-    } catch (err) {
-      console.error("[orders/edit] failed to cancel subscription", { orderId: id, err });
-      return NextResponse.json({ error: "Stripeでの解約処理に失敗しました" }, { status: 500 });
+    if (isStripeSubscription) {
+      if (!order.stripe_subscription_id) {
+        return NextResponse.json(
+          { error: "Stripeのサブスクリプション情報が見つかりません" },
+          { status: 400 },
+        );
+      }
+      try {
+        const stripe = getStripeClient();
+        await stripe.subscriptions.cancel(order.stripe_subscription_id);
+      } catch (err) {
+        console.error("[orders/edit] failed to cancel subscription", { orderId: id, err });
+        return NextResponse.json({ error: "Stripeでの解約処理に失敗しました" }, { status: 500 });
+      }
     }
+    await supabase.from("subscriptions").update({ status: "canceled" }).eq("order_id", order.id);
   }
 
   return NextResponse.json({ ok: true });
