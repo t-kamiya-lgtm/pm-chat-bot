@@ -18,7 +18,11 @@ function csvCell(value: string): string {
   return value;
 }
 
-/** 注文一覧(Stripe決済のみ)を、基幹システム「通販ゲート」の受注データ取込フォーマット(59列)でCSV出力する。 */
+/**
+ * 注文一覧を、基幹システム「通販ゲート」の受注データ取込フォーマット(59列)でCSV出力する。
+ * 支払方法を問わずすべての注文が対象(スマレジ連携は廃止し、代引き・後払いもStripeと同様に
+ * このCSV書き出し→通販ゲートへの手動取り込みで進める運用に統一したため)。
+ */
 export async function GET(request: Request) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
@@ -30,7 +34,6 @@ export async function GET(request: Request) {
   let query = supabase
     .from("orders")
     .select("*")
-    .eq("payment_method", "stripe")
     .order("created_at", { ascending: false });
   query = applyOrderFilters(query, filters);
   if (!filters.showAll && !filters.orderIds?.length) query = query.limit(100);

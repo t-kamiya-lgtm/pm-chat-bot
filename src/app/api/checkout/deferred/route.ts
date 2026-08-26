@@ -5,7 +5,6 @@ import { upsertCustomer } from "@/lib/customers";
 import { getPaymentFee, calculateTotal } from "@/lib/fees";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
-import { fulfillOrder } from "@/lib/order-fulfillment";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 import { generateOrderNumber } from "@/lib/order-number";
@@ -15,7 +14,8 @@ import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 /**
  * 後払い(スコアあと払い)・代金引換の注文受付。
  * 与信・請求は行わず、基幹システム連携アダプタ経由で顧客情報・注文内容を連携するのみ。
- * 与信不要のため、受理後ただちに会員情報移行(スマレジ連携)まで行う。
+ * スマレジへのリアルタイム連携は行わない(スマレジ連携は廃止し、Stripe注文と同様に
+ * スタッフが受注データをCSV書き出し→基幹システム「通販ゲート」へ手動取り込みする運用に統一)。
  */
 export async function POST(request: Request) {
   const body = await request.json();
@@ -120,8 +120,8 @@ export async function POST(request: Request) {
       shipping_fee: product.shipping_fee,
       payment_fee: paymentFee,
       status: "pending",
-      // import_statusはデフォルト(not_imported)のまま作成し、fulfillOrder内のスマレジ連携結果
-      // (成功imported/失敗import_error)に応じて更新する(連携失敗時も「取込み済み」表示になる不具合を防ぐため)。
+      // import_statusはデフォルト(not_imported)のまま作成する。Stripe注文と同様、
+      // スタッフが通販ゲートCSV書き出し・出荷報告CSV取込を行うことで進めていく。
       delivery_date: deliveryDate || null,
       delivery_time_slot: deliveryTimeSlot || null,
       invoice_note: invoiceNote || null,
@@ -184,12 +184,6 @@ export async function POST(request: Request) {
     .eq("id", order.id);
 
   if (accepted) {
-    try {
-      await fulfillOrder(order.id);
-    } catch (err) {
-      // スマレジ連携の失敗で、お客様の注文確定自体をブロックしない(エラー内容はsmaregi_sync_logsに記録済み)。
-      console.error("[checkout/deferred] fulfillOrder failed", { orderId: order.id, err });
-    }
     await sendOrderCompletionEmail(order.id);
     await assignCustomerNumberIfNeeded(customer.id);
     if (appliedCoupon) {

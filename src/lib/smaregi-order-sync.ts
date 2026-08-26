@@ -1,14 +1,17 @@
 import { smaregiWrite } from "@/lib/adapters/smaregi-client";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
-import type { Address, ShippingAddress, SubscriptionInterval } from "@/lib/types";
+import type { Address, ShippingAddress } from "@/lib/types";
 
 /**
  * 代引き・後払いの注文を、スマレジEC・リピートの受注APIへ連携する。
  * customer_id: -1(名寄せ・新規会員作成)を指定する。パスワード未設定の本会員が自動作成されるが、
  * 顧客マスタにも反映させたいという要望のためこちらを採用する(顧客管理はチャットシステム側で行うため、
- * スマレジ側のログイン可否は運用上問題としない)。定期の場合はperiodical_orderを同時に埋め込み、
- * 1回のAPI呼び出しで受注データと定期申込データを同時作成する(受注APIドキュメント記載の仕様)。
+ * スマレジ側のログイン可否は運用上問題としない)。
+ * 定期便の2回目以降は、スマレジのperiodical_order(自動継続)機能を使わず、当システム側
+ * (subscription-renewal.tsのcreateDeferredSubscriptionRenewalOrder)が毎回新しい注文データを
+ * 生成してこの関数を呼ぶため、この関数自体は常に単発の受注として送るだけでよい
+ * (periodical_orderは初回受注データを2回目以降もそのままコピーする仕組みのため、
+ * 初回特別価格・クーポン等の値引きが2回目以降にも残ってしまう問題があった)。
  *
  * 以下はスマレジ側マスタ設定に基づく固定値(2026年時点でヒアリング済み):
  * - ec_type: 16 (スマレジEC・リピート)
@@ -35,10 +38,6 @@ function formatAddressLine(address: { city?: string | null; line1?: string | nul
 /** 税込価格から消費税額を算出する(tax_rule=2: 切り捨て)。 */
 function calcTax(priceInclTax: number, taxRatePercent: number): number {
   return Math.floor(priceInclTax - priceInclTax / (1 + taxRatePercent / 100));
-}
-
-function toDateString(iso: string): string {
-  return iso.slice(0, 10);
 }
 
 /** DB保存(UTC)の日時を日本時間(JST, UTC+9)の"YYYY-MM-DD HH:mm:ss"形式に変換する。 */
@@ -81,16 +80,6 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   }
 
   const isSubscription = order.type === "subscription";
-  let subscriptionRow: { interval: SubscriptionInterval; next_billing_date: string | null } | null = null;
-  if (isSubscription) {
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("interval, next_billing_date")
-      .eq("order_id", orderId)
-      .single();
-    if (error) throw error;
-    subscriptionRow = data;
-  }
 
   const address = customer.address as Address | null;
   const shippingAddress = order.shipping_address as ShippingAddress | null;
@@ -226,19 +215,6 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
         : []),
     ],
   };
-
-  if (isSubscription && subscriptionRow) {
-    const periodDay = SUBSCRIPTION_INTERVAL_DAYS[subscriptionRow.interval];
-    const nextPeriod = subscriptionRow.next_billing_date ?? toDateString(order.created_at as string);
-    // order/create に periodical_order を埋め込む場合、顧客・金額・住所等はorder側の値がそのまま
-    // 使われるため指定できない(指定するとエラーになる)。周期情報のみを指定する。
-    record.periodical_order = {
-      periodical_order_id: -1,
-      period_type: "date",
-      period_day: periodDay,
-      next_period: nextPeriod,
-    };
-  }
 
   try {
     const response = await smaregiWrite<{ orders: { id: string | null; result: number; log_info?: string }[] }>(
