@@ -20,7 +20,7 @@ export default async function AdminOrdersPage({
   const supabase = createSupabaseAdminClient();
   let query = supabase
     .from("orders")
-    .select("*, customers(name, email), products!product_id(name)")
+    .select("*, customers(name, email), products!product_id(name), addon_products:products!addon_product_id(name)")
     .order("created_at", { ascending: false });
   query = applyOrderFilters(query, filters);
   if (!filters.showAll) query = query.limit(100);
