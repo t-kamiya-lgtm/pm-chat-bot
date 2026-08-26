@@ -111,11 +111,18 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
 
   const shippingFee = order.shipping_fee as number;
   const paymentFee = order.payment_fee as number;
-  const firstTimeDiscount = (order.first_time_discount_amount as number | null) ?? 0;
-  const discount = ((order.discount_amount as number) ?? 0) + firstTimeDiscount;
+  // スマレジは「調整額[discount]」(初回特別価格など、割引の内訳を持つ一般的な値引き)と
+  // 「クーポン利用[coupon_total]」を別物として扱う。請求額[payment_total]は
+  // 合計額[total]－クーポン利用[coupon_total]－ポイント利用[use_point]で検証されるため、
+  // クーポン分は discount/other_discount に含めず、coupon_total側で送る必要がある
+  // (実際の受注データ調査により、discount=0の注文はすべてtotal=subtotal-0+deliv_fee+charge、
+  // payment_total=total-coupon_total-use_pointの関係が成立することを確認済み)。
+  const otherDiscount = (order.first_time_discount_amount as number | null) ?? 0;
+  const couponDiscount = (order.discount_amount as number) ?? 0;
   const subtotal = productTotal + addonAmount;
   const totalTax = productTax + addonTax;
-  const total = Math.max(0, subtotal - discount + shippingFee + paymentFee);
+  const total = Math.max(0, subtotal - otherDiscount + shippingFee + paymentFee);
+  const paymentTotal = Math.max(0, total - couponDiscount);
 
   const paymentId =
     order.payment_method === "cod"
@@ -137,21 +144,24 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       order_addr01: formatAddressLine(address),
       order_addr02: address?.line2 ?? "",
       subtotal,
-      discount,
+      discount: otherDiscount,
       // 調整額[discount]は「うちその他調整額」等の内訳合計と一致する必要があるため、
-      // 内訳を持たないクーポン・初回特別価格分の値引きはすべてその他調整額として計上する。
-      other_discount: discount,
+      // 内訳を持たない初回特別価格分の値引きはその他調整額として計上する(クーポン分は含めない)。
+      other_discount: otherDiscount,
       total,
       deliv_fee: shippingFee,
       charge: paymentFee,
       tax: totalTax,
-      payment_total: total,
+      payment_total: paymentTotal,
+      // クーポン利用額。請求額[payment_total]は合計額[total]からこの値とポイント利用額を
+      // 差し引いた金額と一致する必要がある。
+      coupon_total: couponDiscount,
+      // ポイント利用機能は導入していないため常に0(必須項目のため明示的に指定する)。
+      use_point: 0,
       // 受注登録時点ではまだ入金(代引きの集金・後払いの支払い)が完了していないため0。
       // 必須項目のため明示的に指定する(未指定だとAPIに拒否される)。
       payment_amount_total: 0,
-      // total_notax/total_taxも合計額[total]の内訳として整合性チェックされるため、
-      // subtotal(値引き前)ではなく値引き後の金額から算出する。
-      total_notax: subtotal - totalTax - discount,
+      total_notax: total - totalTax,
       total_tax: totalTax,
       deliv_fee_notax: shippingFee,
       charge_notax: paymentFee,
