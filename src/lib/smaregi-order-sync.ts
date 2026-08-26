@@ -96,13 +96,24 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
   const shippingAddress = order.shipping_address as ShippingAddress | null;
 
   const quantity = order.quantity as number;
-  // 明細の単価は常に通常価格(product.price)を使う。初回特別価格の差額は、
-  // Stripeの初回請求限定の値引きと同じ考え方で、注文全体の値引き額(discount)として扱う
-  // (スマレジの商品マスタ側の設定に影響されず、こちら側だけで完結させるため)。
   const unitPrice = product.price as number;
   const productTotal = unitPrice * quantity;
   const taxRate = (product.tax_rate as number) ?? 8;
-  const productTax = calcTax(productTotal, taxRate);
+
+  // discount/other_discount/coupon_totalの各フィールドを使って値引きを表現する方法は、
+  // 実際の送信内容と結果を何パターンも突き合わせても請求額[payment_total]の整合性チェックに
+  // 通らないことが判明した(coupon_totalは金額を直接指定できる項目ではなく、スマレジ側に
+  // 事前登録されたクーポンマスタへの参照が必要な項目である可能性が高い)。
+  // そのため、初回特別価格・クーポンを問わずすべての値引きを商品単価そのものに反映し、
+  // discount系フィールドは使わない(実際に正常処理された注文はすべてdiscount=0だったため、
+  // この構造に合わせる)。割引はメイン商品の明細にのみ適用する(アドオンは定価のまま)。
+  // 定期便は2回目以降がスマレジ側で自動生成されるため、この値引きは初回注文のみに適用される。
+  const otherDiscount = (order.first_time_discount_amount as number | null) ?? 0;
+  const couponDiscount = (order.discount_amount as number) ?? 0;
+  const totalDiscount = otherDiscount + couponDiscount;
+  const discountedProductTotal = Math.max(0, productTotal - totalDiscount);
+  const discountedUnitPrice = quantity > 0 ? Math.round(discountedProductTotal / quantity) : discountedProductTotal;
+  const productTax = calcTax(discountedProductTotal, taxRate);
 
   // アドオン金額は order.addon_amount(注文時点の価格)を正とする。
   const addonAmount = addonProduct ? ((order.addon_amount as number | null) ?? 0) : 0;
@@ -111,22 +122,9 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
 
   const shippingFee = order.shipping_fee as number;
   const paymentFee = order.payment_fee as number;
-  // 実際の送信内容と結果を突き合わせた結果、請求額[payment_total]の整合性チェックは
-  // 「調整額[discount]/その他調整額[other_discount]」を一切考慮せず、
-  // 合計額[total]を常に subtotal+deliv_fee+charge(値引き前)として再計算した上で
-  // total－クーポン利用[coupon_total]－ポイント利用[use_point] と比較しているとみられる
-  // (discountだけを差し引いたtotalを送ったケース、discount+coupon_totalを分離したケースの
-  // 両方で、その時点で未反映の割引額分だけ一致しないエラーが再現したため)。
-  // そのため、初回特別価格・クーポンを問わずすべての値引きをcoupon_totalに合算して送る。
-  // discount/other_discountは内訳チェック[BEOC01C000127]用に自己整合していればよいため、
-  // 実際の値引き内容が分かるよう初回特別価格分のみを入れておく(coupon_totalとの重複計上ではない)。
-  const otherDiscount = (order.first_time_discount_amount as number | null) ?? 0;
-  const couponDiscount = (order.discount_amount as number) ?? 0;
-  const totalDiscount = otherDiscount + couponDiscount;
-  const subtotal = productTotal + addonAmount;
+  const subtotal = discountedProductTotal + addonAmount;
   const totalTax = productTax + addonTax;
   const total = Math.max(0, subtotal + shippingFee + paymentFee);
-  const paymentTotal = Math.max(0, total - totalDiscount);
 
   const paymentId =
     order.payment_method === "cod"
@@ -148,20 +146,15 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       order_addr01: formatAddressLine(address),
       order_addr02: address?.line2 ?? "",
       subtotal,
-      discount: otherDiscount,
-      // 調整額[discount]は「うちその他調整額」等の内訳合計と一致する必要があるため、
-      // 内訳を持たない初回特別価格分の値引きはその他調整額として計上する(クーポン分は含めない)。
-      other_discount: otherDiscount,
+      // 値引きは商品単価側に反映済みのため、調整額・クーポン利用・ポイント利用はすべて0。
+      discount: 0,
+      other_discount: 0,
       total,
       deliv_fee: shippingFee,
       charge: paymentFee,
       tax: totalTax,
-      payment_total: paymentTotal,
-      // 請求額[payment_total]は合計額[total]からこの値とポイント利用額を差し引いた金額と
-      // 一致する必要がある。discount/other_discountはこの計算に反映されないため、
-      // 初回特別価格分・クーポン分を問わずすべての値引きをここに合算する。
-      coupon_total: totalDiscount,
-      // ポイント利用機能は導入していないため常に0(必須項目のため明示的に指定する)。
+      payment_total: total,
+      coupon_total: 0,
       use_point: 0,
       // 受注登録時点ではまだ入金(代引きの集金・後払いの支払い)が完了していないため0。
       // 必須項目のため明示的に指定する(未指定だとAPIに拒否される)。
@@ -204,8 +197,8 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
         tax_rule: 2,
         product_postage_flag: "込",
         product_daibiki_flag: "込",
-        product_price: unitPrice,
-        product_total: productTotal,
+        product_price: discountedUnitPrice,
+        product_total: discountedProductTotal,
         tax_rate: taxRate,
         product_tax: productTax,
         product_reg_flag: isSubscription ? "定期" : "商品",
