@@ -139,7 +139,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
         <table className="w-full min-w-[820px] text-sm">
           <thead className="bg-sky-100 text-left text-neutral-600">
             <tr>
-              <th className="px-4 py-2">スマレジ商品ID</th>
+              <th className="px-4 py-2">商品コード</th>
               <th className="px-4 py-2">商品名</th>
               <th className="px-4 py-2">アイテム</th>
               <th className="px-4 py-2">価格</th>
