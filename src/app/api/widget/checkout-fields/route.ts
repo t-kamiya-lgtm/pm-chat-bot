@@ -6,12 +6,17 @@ import {
   type CheckoutFieldKey,
 } from "@/lib/checkout-fields";
 
-/** チャットウィジェット用: 決済フォーム(1問1答)の質問表示順(認証不要)。 */
-export async function GET() {
+/** チャットウィジェット用: 決済フォーム(1問1答)の質問表示順(シナリオ単位、認証不要)。 */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const scenarioId = searchParams.get("scenarioId");
+  if (!scenarioId) return NextResponse.json({ order: DEFAULT_CHECKOUT_FIELD_ORDER });
+
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("checkout_field_order")
     .select("field_key")
+    .eq("scenario_id", scenarioId)
     .order("display_order", { ascending: true });
 
   if (error || !data || data.length === 0) {

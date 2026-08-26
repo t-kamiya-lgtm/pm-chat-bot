@@ -290,7 +290,7 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
           }
           className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
         >
-          {selected.size > 0 ? `選択した${selected.size}件をCSV出力` : "この絞り込み結果をCSV出力"}
+          {selected.size > 0 ? `選択した${selected.size}件を全データCSV出力` : "全データCSV出力(全決済方法)"}
         </a>
         <a
           href={

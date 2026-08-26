@@ -2,6 +2,30 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Toast } from "@/components/admin/Toast";
+import type { EmailTemplates } from "@/lib/email-templates";
+
+/** 件名・本文の入力欄と、デフォルト文言に戻すボタンをまとめたセクション見出し。 */
+function TemplateSectionHeader({
+  title,
+  description,
+  onReset,
+}: {
+  title: string;
+  description: React.ReactNode;
+  onReset: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-neutral-700">{title}</p>
+        <button type="button" onClick={onReset} className="shrink-0 text-xs text-blue-600 hover:underline">
+          デフォルト文章に戻す
+        </button>
+      </div>
+      <p className="mt-0.5 text-xs text-neutral-500">{description}</p>
+    </div>
+  );
+}
 
 export function EmailTemplatesForm({
   initialOrderCompletionSubject,
@@ -16,6 +40,7 @@ export function EmailTemplatesForm({
   initialCancellationBody,
   initialShipmentCompleteSubject,
   initialShipmentCompleteBody,
+  defaults,
 }: {
   initialOrderCompletionSubject: string;
   initialOrderCompletionBody: string;
@@ -29,6 +54,8 @@ export function EmailTemplatesForm({
   initialCancellationBody: string;
   initialShipmentCompleteSubject: string;
   initialShipmentCompleteBody: string;
+  /** 誤って編集してしまった場合に戻せるよう、コード側に保持している初期文言(DBの保存内容とは独立)。 */
+  defaults: EmailTemplates;
 }) {
   const [orderCompletionSubject, setOrderCompletionSubject] = useState(initialOrderCompletionSubject);
   const [orderCompletionBody, setOrderCompletionBody] = useState(initialOrderCompletionBody);
@@ -106,14 +133,20 @@ export function EmailTemplatesForm({
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <div className="space-y-3 rounded-md border border-neutral-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-700">注文完了メール</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
-            決済確定時に購入者へ送信されます。差し込み項目:
-            {" "}
-            {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}}"}
-          </p>
-        </div>
+        <TemplateSectionHeader
+          title="注文完了メール"
+          onReset={() => {
+            setOrderCompletionSubject(defaults.orderCompletionSubject);
+            setOrderCompletionBody(defaults.orderCompletionBody);
+          }}
+          description={
+            <>
+              決済確定時に購入者へ送信されます。差し込み項目:
+              {" "}
+              {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}}"}
+            </>
+          }
+        />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">件名</span>
           <input
@@ -134,14 +167,20 @@ export function EmailTemplatesForm({
       </div>
 
       <div className="space-y-3 rounded-md border border-neutral-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-700">定期便メール(2回目以降のお届け)</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
-            定期購入の2回目以降の周期課金が完了するたびに送信されます。差し込み項目:
-            {" "}
-            {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}}"}
-          </p>
-        </div>
+        <TemplateSectionHeader
+          title="定期便メール(2回目以降のお届け)"
+          onReset={() => {
+            setRenewalSubject(defaults.renewalSubject);
+            setRenewalBody(defaults.renewalBody);
+          }}
+          description={
+            <>
+              定期購入の2回目以降の周期課金が完了するたびに送信されます。差し込み項目:
+              {" "}
+              {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}}"}
+            </>
+          }
+        />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">件名</span>
           <input className="input" value={renewalSubject} onChange={(e) => setRenewalSubject(e.target.value)} />
@@ -158,16 +197,22 @@ export function EmailTemplatesForm({
       </div>
 
       <div className="space-y-3 rounded-md border border-neutral-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-700">離脱者リマインドメール</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
-            注文フォームの入力途中で1時間以上離脱したお客様へ送信されます。差し込み項目:
-            {" "}
-            {"{{customer_name}} {{product_name}} {{chat_url}} {{unsubscribe_url}}"}
-            <br />
-            配信停止リンク({"{{unsubscribe_url}}"})は特定電子メール法対応のため必ず本文に含めてください。
-          </p>
-        </div>
+        <TemplateSectionHeader
+          title="離脱者リマインドメール"
+          onReset={() => {
+            setAbandonedLeadSubject(defaults.abandonedLeadSubject);
+            setAbandonedLeadBody(defaults.abandonedLeadBody);
+          }}
+          description={
+            <>
+              注文フォームの入力途中で1時間以上離脱したお客様へ送信されます。差し込み項目:
+              {" "}
+              {"{{customer_name}} {{product_name}} {{chat_url}} {{unsubscribe_url}}"}
+              <br />
+              配信停止リンク({"{{unsubscribe_url}}"})は特定電子メール法対応のため必ず本文に含めてください。
+            </>
+          }
+        />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">件名</span>
           <input
@@ -188,15 +233,21 @@ export function EmailTemplatesForm({
       </div>
 
       <div className="space-y-3 rounded-md border border-neutral-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-700">問い合わせ受付の自動返信メール</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
-            チャット内の「その他のご質問」フォームからお客様が問い合わせを送信した際、お客様へ自動で送信されます
-            (社内担当者への通知メールとは別です)。差し込み項目:
-            {" "}
-            {"{{customer_name}} {{message}}"}
-          </p>
-        </div>
+        <TemplateSectionHeader
+          title="問い合わせ受付の自動返信メール"
+          onReset={() => {
+            setInquiryAutoReplySubject(defaults.inquiryAutoReplySubject);
+            setInquiryAutoReplyBody(defaults.inquiryAutoReplyBody);
+          }}
+          description={
+            <>
+              チャット内の「その他のご質問」フォームからお客様が問い合わせを送信した際、お客様へ自動で送信されます
+              (社内担当者への通知メールとは別です)。差し込み項目:
+              {" "}
+              {"{{customer_name}} {{message}} {{chat_url}}"}
+            </>
+          }
+        />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">件名</span>
           <input
@@ -217,14 +268,20 @@ export function EmailTemplatesForm({
       </div>
 
       <div className="space-y-3 rounded-md border border-neutral-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-700">キャンセル確認メール</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
-            注文一覧で受注ステータスを「キャンセル」に変更した際、購入者へ送信されます。差し込み項目:
-            {" "}
-            {"{{customer_name}} {{product_name}} {{order_number}}"}
-          </p>
-        </div>
+        <TemplateSectionHeader
+          title="キャンセル確認メール"
+          onReset={() => {
+            setCancellationSubject(defaults.cancellationSubject);
+            setCancellationBody(defaults.cancellationBody);
+          }}
+          description={
+            <>
+              注文一覧で受注ステータスを「キャンセル」に変更した際、購入者へ送信されます。差し込み項目:
+              {" "}
+              {"{{customer_name}} {{product_name}} {{order_number}}"}
+            </>
+          }
+        />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">件名</span>
           <input
@@ -245,15 +302,23 @@ export function EmailTemplatesForm({
       </div>
 
       <div className="space-y-3 rounded-md border border-neutral-200 p-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-700">出荷完了メール(Stripe注文のみ)</p>
-          <p className="mt-0.5 text-xs text-neutral-500">
-            送り状データCSVの取込みで受注ステータスが「出荷済」になった際、購入者へ送信されます。
-            代引き・後払いの注文には送信されません。差し込み項目:
-            {" "}
-            {"{{customer_name}} {{product_name}} {{order_number}} {{ship_date}} {{carrier_name}} {{tracking_number}}"}
-          </p>
-        </div>
+        <TemplateSectionHeader
+          title="出荷完了メール(Stripe注文のみ)"
+          onReset={() => {
+            setShipmentCompleteSubject(defaults.shipmentCompleteSubject);
+            setShipmentCompleteBody(defaults.shipmentCompleteBody);
+          }}
+          description={
+            <>
+              送り状データCSVの取込みで受注ステータスが「出荷済」になった際、購入者へ送信されます。
+              代引き・後払いの注文には送信されません。差し込み項目:
+              {" "}
+              {"{{customer_name}} {{product_name}} {{order_number}} {{ship_date}} {{carrier_name}} {{tracking_number}} {{delivery_datetime_line}}"}
+              <br />
+              {"{{delivery_datetime_line}}"}は「■お届け希望日時: ...」の行(配送方法が宅急便の場合のみ、それ以外は空欄)です。
+            </>
+          }
+        />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-neutral-700">件名</span>
           <input

@@ -61,6 +61,8 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■お問い合わせ内容
 {{message}}
 
+本お問い合わせは以下のページから送信されました: {{chat_url}}
+
 ※本メールは自動返信です。このメールへの返信はできません。`,
   cancellationSubject: "【ご注文キャンセルのご連絡】{{product_name}}(注文番号: {{order_number}})",
   cancellationBody: `{{customer_name}} 様
@@ -79,7 +81,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■商品: {{product_name}}
 ■出荷日: {{ship_date}}
 ■配送業者: {{carrier_name}}
-■お問い合わせ番号: {{tracking_number}}
+■お問い合わせ番号: {{tracking_number}}{{delivery_datetime_line}}
 
 商品到着まで今しばらくお待ちください。`,
 };

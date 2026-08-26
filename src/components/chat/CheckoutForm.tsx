@@ -589,13 +589,14 @@ export function CheckoutForm({
   }, [stage, agreedPrivacy, clientSecret]);
 
   useEffect(() => {
-    fetch("/api/widget/checkout-fields")
+    const query = scenarioId ? `?scenarioId=${encodeURIComponent(scenarioId)}` : "";
+    fetch(`/api/widget/checkout-fields${query}`)
       .then((res) => res.json())
       .then((body: { order?: CheckoutFieldKey[] }) => {
         if (body.order) setFieldOrder(body.order);
       })
       .catch(() => {});
-  }, []);
+  }, [scenarioId]);
 
   useEffect(() => {
     fetch("/api/widget/business-closed-dates")

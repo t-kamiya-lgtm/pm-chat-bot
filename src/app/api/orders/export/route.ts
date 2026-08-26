@@ -1,9 +1,16 @@
+import iconv from "iconv-lite";
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 import { readOrderFilters, applyOrderFilters } from "@/lib/order-filters";
-import type { Address, ShippingAddress } from "@/lib/types";
+import {
+  buildCoreSystemExportRows,
+  CORE_SYSTEM_EXPORT_HEADER,
+  type CoreSystemCustomerRow,
+  type CoreSystemProductRow,
+} from "@/lib/core-system-export";
 
+/** カンマ・改行・ダブルクオートを含む値のみ引用符で囲む(仕様の「引用符: 必要な値のみ」に合わせる)。 */
 function csvCell(value: string): string {
   if (/[",\n]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
@@ -11,36 +18,11 @@ function csvCell(value: string): string {
   return value;
 }
 
-function addressParts(address: Address | null): [string, string, string, string] {
-  if (!address) return ["", "", "", ""];
-  return [address.postalCode, address.prefecture, address.city, `${address.line1}${address.line2 ?? ""}`];
-}
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  stripe: "即時決済(Stripe)",
-  deferred_invoice: "後払い(スコアあと払い)",
-  cod: "代金引換",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "処理中",
-  accepted: "受付済み",
-  paid: "支払い完了",
-  failed: "失敗",
-  canceled: "キャンセル",
-};
-
-const IMPORT_STATUS_LABELS: Record<string, string> = {
-  imported: "取込み済み",
-  on_hold: "保留",
-  not_imported: "未取込み",
-  import_error: "取込みエラー",
-  excluded: "対象外",
-  shipped: "出荷済",
-  canceled: "キャンセル",
-};
-
-/** 注文一覧(絞り込み結果)のCSVダウンロード。 */
+/**
+ * 注文一覧(全決済方法)のCSVダウンロード。
+ * 「通販ゲート取込用CSV出力」と同じ59列フォーマットで出力するが、対象は全決済方法(Stripe以外も含む)。
+ * 後払い・代引きは通販ゲートへの取込対象ではないため、対応するデータがない項目は空欄になる。
+ */
 export async function GET(request: Request) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
@@ -49,90 +31,52 @@ export async function GET(request: Request) {
   const filters = readOrderFilters((key) => searchParams.get(key));
 
   const supabase = createSupabaseAdminClient();
-  let query = supabase
-    .from("orders")
-    .select("*, customers(name, email, phone, address), products!product_id(name, smaregi_product_id)")
-    .order("created_at", { ascending: false });
+  let query = supabase.from("orders").select("*").order("created_at", { ascending: false });
   query = applyOrderFilters(query, filters);
   if (!filters.showAll && !filters.orderIds?.length) query = query.limit(100);
 
   const { data: orders, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const header = [
-    "注文番号",
-    "日時",
-    "顧客",
-    "メールアドレス",
-    "商品",
-    "スマレジ商品ID",
-    "数量",
-    "種別",
-    "支払い方法",
-    "金額",
-    "決済状況",
-    "お届け希望日",
-    "お届け希望時間帯",
-    "受注ステータス",
-    "出荷日",
-    "運送会社名",
-    "送り状番号",
-    "注文者電話番号",
-    "注文者郵便番号",
-    "注文者都道府県",
-    "注文者市区町村",
-    "注文者番地",
-    "お届け先名",
-    "お届け先電話番号",
-    "お届け先郵便番号",
-    "お届け先都道府県",
-    "お届け先市区町村",
-    "お届け先番地",
+  const customerIds = [...new Set((orders ?? []).map((o) => o.customer_id as string))];
+  const productIds = [
+    ...new Set(
+      (orders ?? []).flatMap((o) =>
+        [o.product_id as string, o.addon_product_id as string | null].filter((id): id is string => Boolean(id)),
+      ),
+    ),
   ];
-  const rows = (orders ?? []).map((order) => {
-    const customer = order.customers as { name: string; email: string; phone: string | null; address: Address | null } | null;
-    const shippingAddress = order.shipping_address as ShippingAddress | null;
-    const [orderPostal, orderPref, orderCity, orderLine] = addressParts(customer?.address ?? null);
-    const [shipPostal, shipPref, shipCity, shipLine] = addressParts(shippingAddress);
 
-    return [
-      (order.order_number as string | null) ?? "",
-      new Date(order.created_at as string).toLocaleString("ja-JP"),
-      customer?.name ?? "",
-      customer?.email ?? "",
-      (order.products as { name: string } | null)?.name ?? "",
-      (order.products as { smaregi_product_id: string | null } | null)?.smaregi_product_id ?? "",
-      String(order.quantity as number),
-      order.type === "subscription" ? "定期" : "単発",
-      PAYMENT_METHOD_LABELS[order.payment_method as string] ?? (order.payment_method as string),
-      String((order.amount as number) + (order.shipping_fee as number) + (order.payment_fee as number)),
-      STATUS_LABELS[order.status as string] ?? (order.status as string),
-      (order.delivery_date as string | null) ?? "",
-      (order.delivery_time_slot as string | null) ?? "",
-      IMPORT_STATUS_LABELS[order.import_status as string] ?? (order.import_status as string),
-      order.shipped_at ? new Date(order.shipped_at as string).toLocaleDateString("ja-JP") : "",
-      (order.carrier_name as string | null) ?? "",
-      (order.tracking_number as string | null) ?? "",
-      customer?.phone ?? "",
-      orderPostal,
-      orderPref,
-      orderCity,
-      orderLine,
-      shippingAddress?.recipientName ?? customer?.name ?? "",
-      shippingAddress?.recipientPhone ?? customer?.phone ?? "",
-      shipPostal || orderPostal,
-      shipPref || orderPref,
-      shipCity || orderCity,
-      shipLine || orderLine,
-    ];
-  });
+  const [{ data: customers, error: customersError }, { data: products, error: productsError }] = await Promise.all([
+    supabase
+      .from("customers")
+      .select("id, name, name_kana, email, phone, address, gender, birth_date, smaregi_member_id")
+      .in("id", customerIds),
+    supabase
+      .from("products")
+      .select("id, name, price, smaregi_product_id, is_mail_deliverable")
+      .in("id", productIds),
+  ]);
+  if (customersError) return NextResponse.json({ error: customersError.message }, { status: 500 });
+  if (productsError) return NextResponse.json({ error: productsError.message }, { status: 500 });
 
-  const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const bom = "﻿";
+  const customerById = new Map<string, CoreSystemCustomerRow>(
+    (customers ?? []).map((c) => [c.id as string, c as CoreSystemCustomerRow]),
+  );
+  const productById = new Map<string, CoreSystemProductRow>(
+    (products ?? []).map((p) => [p.id as string, p as CoreSystemProductRow]),
+  );
 
-  return new NextResponse(bom + csv, {
+  const rows = buildCoreSystemExportRows({ orders: orders ?? [], customerById, productById });
+
+  const csv = [Array.from(CORE_SYSTEM_EXPORT_HEADER), ...rows]
+    .map((row) => row.map(csvCell).join(","))
+    .join("\r\n");
+  const buffer = iconv.encode(csv, "cp932");
+
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      "content-type": "text/csv; charset=utf-8",
+      "content-type": "text/csv",
       "content-disposition": `attachment; filename="orders_${new Date().toISOString().slice(0, 10)}.csv"`,
     },
   });

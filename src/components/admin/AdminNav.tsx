@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { href: "/admin/customers", label: "顧客管理" },
   { href: "/admin/coupons", label: "クーポン" },
   { href: "/admin/leads", label: "アクセスログ" },
-  { href: "/admin/checkout-fields", label: "決済フォーム設定" },
+  { href: "/admin/checkout-fields", label: "基本設定" },
   { href: "/admin/email-templates", label: "自動メール設定" },
   { href: "/admin/email-addresses", label: "メールアドレス管理" },
   { href: "/admin/business-days", label: "営業日設定" },

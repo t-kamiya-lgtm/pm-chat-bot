@@ -125,7 +125,7 @@ export async function GET(request: Request) {
     }));
   }
 
-  // セット品(構成数の分だけ内訳を選ばせる商品)の選択肢を、対象商品にまとめて付与する
+  // より取り品番(構成数の分だけ内訳を選ばせる商品)の選択肢を、対象商品にまとめて付与する
   const setProductIds = products.filter((p) => p.is_set).map((p) => p.id as string);
   if (setProductIds.length > 0) {
     const { data: setOptionRows, error: setOptionsError } = await supabase

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ScenarioEditor } from "@/components/admin/ScenarioEditor";
+import { DEFAULT_CHECKOUT_FIELD_ORDER, mergeCheckoutFieldOrder, type CheckoutFieldKey } from "@/lib/checkout-fields";
 import type { Coupon, MenuItemActionType, ScenarioMenuItem, ScenarioNode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,7 @@ export default async function ScenarioEditorPage({
     { data: products, error: productsError },
     { data: menuItems },
     { data: coupons },
+    { data: checkoutFieldOrderRows },
   ] = await Promise.all([
     supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
     supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
@@ -88,9 +90,19 @@ export default async function ScenarioEditorPage({
       .eq("type", "scenario_auto")
       .order("created_at", { ascending: true })
       .limit(1),
+    supabase
+      .from("checkout_field_order")
+      .select("field_key")
+      .eq("scenario_id", id)
+      .order("display_order", { ascending: true }),
   ]);
 
   if (!scenario) notFound();
+
+  const checkoutFieldOrder =
+    checkoutFieldOrderRows && checkoutFieldOrderRows.length > 0
+      ? mergeCheckoutFieldOrder(checkoutFieldOrderRows.map((row) => row.field_key as CheckoutFieldKey))
+      : DEFAULT_CHECKOUT_FIELD_ORDER;
 
   return (
     <div>
@@ -149,6 +161,7 @@ export default async function ScenarioEditorPage({
         }))}
         menuItems={(menuItems ?? []).map(mapMenuItemRow)}
         coupon={coupons && coupons.length > 0 ? mapCouponRow(coupons[0]) : null}
+        checkoutFieldOrder={checkoutFieldOrder}
       />
     </div>
   );
