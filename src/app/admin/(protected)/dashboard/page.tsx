@@ -67,7 +67,9 @@ export default async function AdminDashboardPage({
 
   let orderQuery = supabase
     .from("orders")
-    .select("scenario_id, product_id, amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at")
+    .select(
+      "scenario_id, product_id, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at",
+    )
     .in("status", CONFIRMED_ORDER_STATUSES)
     .gte("created_at", `${dateFrom}T00:00:00+09:00`)
     .lte("created_at", `${dateTo}T23:59:59+09:00`);
