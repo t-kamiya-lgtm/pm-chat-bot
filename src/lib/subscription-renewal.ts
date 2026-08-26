@@ -64,6 +64,8 @@ export async function createSubscriptionRenewalOrder(params: {
         delivery_time_slot: original.delivery_time_slot,
         agreed_terms_at: original.agreed_terms_at,
         shipping_address: original.shipping_address,
+        // よりどり(セット品)の内訳選択は、定期継続中は初回と同じ内容を引き継ぐ。
+        set_selections: original.set_selections,
         parent_order_id: original.id,
         billing_cycle_number: nextCycleNumber,
         // アドオンが定期便として同時申込されている場合のみ、2回目以降の注文にも引き継ぐ
