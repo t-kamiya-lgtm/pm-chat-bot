@@ -138,6 +138,9 @@ export async function syncOrderToSmaregi(orderId: string): Promise<void> {
       order_addr02: address?.line2 ?? "",
       subtotal,
       discount,
+      // 調整額[discount]は「うちその他調整額」等の内訳合計と一致する必要があるため、
+      // 内訳を持たないクーポン・初回特別価格分の値引きはすべてその他調整額として計上する。
+      other_discount: discount,
       total,
       deliv_fee: shippingFee,
       charge: paymentFee,
