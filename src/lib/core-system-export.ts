@@ -2,17 +2,20 @@ import type { Address, ShippingAddress } from "@/lib/types";
 
 /**
  * 通販ゲート受注データ取込フォーマット(59項目)向けの固定値・変換ロジック。
- * 「通販ゲート取込用CSV出力」(Stripe決済のみ)と、全決済方法を含む「全データCSV出力」の
- * どちらもこのフォーマット(59列)で出力する。後払い・代引きはスマレジ側で完結しており
- * 通販ゲートへの取込対象ではないため、対応するデータがない項目は空欄で出力する。
+ * 「通販ゲート取込用CSV出力」「全データCSV出力」のどちらもこのフォーマット(59列)で出力する。
+ * スマレジ連携は廃止したため、支払方法を問わずすべての注文がこのCSVの取込対象。
  */
 
-/** 決済方法(column 28)。Stripe以外は通販ゲート側の対応コードが定義されていないため空欄とする。 */
-export const CORE_SYSTEM_PAYMENT_METHOD_LABEL = "77 ストライプ決済";
+/** 決済方法(column 28)。支払方法ごとの通販ゲート側対応コード。 */
+export const CORE_SYSTEM_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  stripe: "77 ストライプ決済",
+  cod: "2 代金引換",
+  deferred_invoice: "19 後払い",
+};
 
 /** 決済方法(column 28)の値を、注文の決済方法から解決する。 */
 export function resolveCoreSystemPaymentMethodLabel(paymentMethod: string): string {
-  return paymentMethod === "stripe" ? CORE_SYSTEM_PAYMENT_METHOD_LABEL : "";
+  return CORE_SYSTEM_PAYMENT_METHOD_LABELS[paymentMethod] ?? "";
 }
 
 /** 媒体CD(column 55)。チャットボット(PDchatbot)用に発行された値。 */
