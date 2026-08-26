@@ -14,7 +14,7 @@ export async function GET() {
 
   try {
     const response = await smaregiSearch("/api/v2/orders/search", {
-      searchOptions: { limit: 5 },
+      searchOptions: { limit: 20 },
       searchFields: [
         "order.order_id",
         "order.ec_order_id",
@@ -34,6 +34,19 @@ export async function GET() {
         "order.order_root",
         "order.order_root_name",
         "order.order_date",
+        // 割引・クーポン関連の実際の値を確認するための項目(payment_total不一致エラーの調査用)。
+        "order.subtotal",
+        "order.discount",
+        "order.other_discount",
+        "order.total",
+        "order.tax",
+        "order.total_notax",
+        "order.total_tax",
+        "order.deliv_fee",
+        "order.charge",
+        "order.payment_total",
+        "order.coupon_total",
+        "order.use_point",
         "order_detail.detail_kbn",
         "order_detail.product_code",
         "order_detail.product_reg_flag",
