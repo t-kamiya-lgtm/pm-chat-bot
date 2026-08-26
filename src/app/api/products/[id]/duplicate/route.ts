@@ -5,8 +5,9 @@ import { requireCatalogRole } from "@/lib/require-role";
 type RouteParams = { params: Promise<{ id: string }> };
 
 /**
- * 品番の複製。全く同じ商品登録を避けるため、スマレジ品番はダブりチェックのキーとなるので
- * 複製先には引き継がず未設定にする(必要であれば管理画面から新しいIDを登録する)。
+ * 品番の複製。商品コード(旧スマレジ品番)は複製先にもそのまま引き継ぐ
+ * (同じ商品コードのまま初回価格だけ変えたオファーパターンをテストできるようにするため。
+ * 重複登録を防ぐ制約は廃止済み)。
  */
 export async function POST(_request: Request, { params }: RouteParams) {
   const roleCheck = await requireCatalogRole();
@@ -51,7 +52,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       is_mail_deliverable: source.is_mail_deliverable,
       image_url: source.image_url,
       image_urls: source.image_urls,
-      smaregi_product_id: null,
+      smaregi_product_id: source.smaregi_product_id,
       order_type: source.order_type,
       subscription_intervals: source.subscription_intervals,
       is_set: source.is_set,

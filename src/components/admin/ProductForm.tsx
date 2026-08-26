@@ -454,7 +454,7 @@ export function ProductForm({
         </button>
       </div>
 
-      <Field label="スマレジ商品ID(紐付け用)">
+      <Field label="商品コード">
         <input
           value={values.smaregiProductId}
           onChange={(e) => setValues((p) => ({ ...p, smaregiProductId: e.target.value }))}
