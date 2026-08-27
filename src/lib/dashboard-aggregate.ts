@@ -1,8 +1,10 @@
 export interface AccessLogRow {
   scenario_id: string | null;
+  session_id: string;
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
+  referrer: string | null;
   created_at: string;
 }
 
@@ -19,8 +21,25 @@ export interface OrderRow {
   utm_medium: string | null;
   utm_campaign: string | null;
   created_at: string;
+  session_id: string | null;
   /** 1=新規(単品または定期初回)、2以上=定期の継続分。 */
   billing_cycle_number: number;
+}
+
+/**
+ * アクセスログのreferrer(document.referrer)を「ホスト+パス」単位に正規化する。
+ * クエリ文字列・フラグメントは除く(追跡パラメータでの過剰な分散を防ぐため)。
+ * LP側のReferrer-Policy設定によっては、パスが送られずホストのみ、または空になることがある。
+ */
+export function normalizeReferrer(referrer: string | null): string {
+  if (!referrer) return "(流入元不明・直接アクセス)";
+  try {
+    const url = new URL(referrer);
+    const path = url.pathname === "/" ? "" : url.pathname;
+    return `${url.hostname}${path}`;
+  } catch {
+    return referrer;
+  }
 }
 
 /** アクセスログ・注文の両方が共通して持つ、集計キーの元になるフィールド。 */
@@ -209,6 +228,44 @@ export function aggregateByScenarioSplit(
     (row) => row.scenario_id ?? "",
     (row) => (row.scenario_id ? (scenarioNames[row.scenario_id] ?? "(削除済みシナリオ)") : "(シナリオ不明)"),
   ).sort((a, b) => b.stats.accessCount - a.stats.accessCount || b.stats.totalRevenue - a.stats.totalRevenue);
+}
+
+/**
+ * 流入元(LPのreferrerを正規化したもの)別の集計。
+ * 注文にはreferrer自体が保存されていないため、呼び出し側でsession_idを介して
+ * アクセスログのreferrerを引き当てた上で、各注文にreferrerLabelを付与して渡す。
+ */
+export function aggregateByReferrerSplit(
+  accessLogs: AccessLogRow[],
+  orders: (OrderRow & { referrerLabel: string })[],
+): SplitRow[] {
+  const table = new Map<string, { label: string; stats: SplitStats }>();
+
+  function bucket(label: string) {
+    let entry = table.get(label);
+    if (!entry) {
+      entry = { label, stats: emptySplitStats() };
+      table.set(label, entry);
+    }
+    return entry;
+  }
+
+  for (const log of accessLogs) bucket(normalizeReferrer(log.referrer)).stats.accessCount += 1;
+  for (const order of orders) {
+    const entry = bucket(order.referrerLabel);
+    const revenue = orderRevenue(order);
+    if (order.billing_cycle_number > 1) {
+      entry.stats.continuingPurchaseCount += 1;
+      entry.stats.continuingRevenue += revenue;
+    } else {
+      entry.stats.newPurchaseCount += 1;
+      entry.stats.newRevenue += revenue;
+    }
+  }
+
+  return Array.from(table.entries())
+    .map(([key, { label, stats }]) => ({ key, label, stats: withSplitDerived(stats) }))
+    .sort((a, b) => b.stats.accessCount - a.stats.accessCount || b.stats.totalRevenue - a.stats.totalRevenue);
 }
 
 /** 商品はアクセスログに紐付かないため、注文のみを商品別に集計する。 */
