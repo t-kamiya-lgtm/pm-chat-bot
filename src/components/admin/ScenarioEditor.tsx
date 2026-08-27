@@ -1827,7 +1827,7 @@ export function ScenarioEditor({
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setToast({
-        message: `識別コードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        message: `シナリオコードの設定に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
         type: "error",
       });
       return;
@@ -2608,7 +2608,7 @@ export function ScenarioEditor({
               autoFocus
               value={orderCodeDraft}
               onChange={(e) => setOrderCodeDraft(e.target.value)}
-              placeholder="半角英数字のみ(空欄でデフォルトのXXを使用)"
+              placeholder="英字2文字+数字4桁(例: PM0001、空欄でデフォルトのXXを使用)"
               className="input max-w-xs"
             />
             <button
@@ -2632,7 +2632,7 @@ export function ScenarioEditor({
         ) : (
           <>
             <span>
-              注文番号の識別コード:{" "}
+              シナリオコード(受注番号の識別コード。英字2文字+数字4桁):{" "}
               <span className="font-mono text-neutral-700">{scenario.orderCode || "(未設定・XXを使用)"}</span>
             </span>
             <button
