@@ -6,24 +6,65 @@ import { usePathname, useRouter } from "next/navigation";
 import { hasUnsavedChanges, subscribeUnsavedChanges, triggerSave } from "@/lib/unsaved-changes";
 import { SaveConfirmDialog } from "@/components/admin/SaveConfirmDialog";
 
-const NAV_ITEMS = [
-  { href: "/admin/dashboard", label: "実績ダッシュボード" },
-  { href: "/admin/scenarios", label: "シナリオ" },
-  { href: "/admin/faqs", label: "商品QA" },
-  { href: "/admin/orders", label: "注文" },
-  { href: "/admin/customers", label: "顧客管理" },
-  { href: "/admin/coupons", label: "クーポン" },
-  { href: "/admin/leads", label: "アクセスログ" },
-  { href: "/admin/checkout-fields", label: "基本設定" },
-  { href: "/admin/email-templates", label: "自動メール設定" },
-  { href: "/admin/email-addresses", label: "メールアドレス管理" },
-  { href: "/admin/business-days", label: "営業日設定" },
-];
+interface NavItem {
+  href: string;
+  label: string;
+  adminOnly?: boolean;
+}
 
-const CATALOG_ITEMS = [
-  { href: "/admin/brands", label: "ブランド" },
-  { href: "/admin/product-groups", label: "アイテム" },
-  { href: "/admin/products", label: "商品(品番)" },
+interface NavGroup {
+  key: string;
+  label: string;
+  items: NavItem[];
+}
+
+/** ダッシュボード(/admin)のカード分類と揃えた5つの大メニュー。 */
+const NAV_GROUPS: NavGroup[] = [
+  {
+    key: "performance",
+    label: "実績",
+    items: [
+      { href: "/admin/dashboard", label: "実績ダッシュボード" },
+      { href: "/admin/leads", label: "アクセスログ" },
+    ],
+  },
+  {
+    key: "catalog",
+    label: "商品管理",
+    items: [
+      { href: "/admin/brands", label: "ブランド管理" },
+      { href: "/admin/product-groups", label: "アイテム管理" },
+      { href: "/admin/products", label: "商品(品番)管理" },
+      { href: "/admin/faqs", label: "商品QA" },
+    ],
+  },
+  {
+    key: "scenario",
+    label: "シナリオ管理",
+    items: [
+      { href: "/admin/scenarios", label: "シナリオ" },
+      { href: "/admin/coupons", label: "クーポン" },
+    ],
+  },
+  {
+    key: "orders",
+    label: "注文管理",
+    items: [
+      { href: "/admin/orders", label: "注文一覧" },
+      { href: "/admin/customers", label: "顧客管理" },
+    ],
+  },
+  {
+    key: "settings",
+    label: "設定",
+    items: [
+      { href: "/admin/checkout-fields", label: "基本設定" },
+      { href: "/admin/email-settings", label: "メール設定" },
+      { href: "/admin/business-days", label: "営業日設定" },
+      { href: "/admin/users", label: "ユーザー権限", adminOnly: true },
+      { href: "/admin/smaregi", label: "スマレジ連携", adminOnly: true },
+    ],
+  },
 ];
 
 const linkClass = "text-neutral-600 transition-colors hover:text-neutral-900 active:text-blue-600";
@@ -32,26 +73,34 @@ const activeLinkClass = "font-semibold text-blue-600";
 export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [catalogOpen, setCatalogOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [pendingHref, setPendingHref] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => subscribeUnsavedChanges(() => setDirty(hasUnsavedChanges())), []);
 
   function isActive(href: string) {
     return pathname === href || Boolean(pathname?.startsWith(`${href}/`));
   }
 
-  const catalogActive = CATALOG_ITEMS.some((item) => isActive(item.href));
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.adminOnly || isAdmin),
+  })).filter((group) => group.items.length > 0);
 
-  const allItems = [
-    ...NAV_ITEMS,
-    ...CATALOG_ITEMS,
-    ...(isAdmin ? [{ href: "/admin/smaregi", label: "スマレジ連携" }] : []),
-    ...(isAdmin ? [{ href: "/admin/users", label: "ユーザー権限" }] : []),
-  ];
+  function groupActive(group: NavGroup) {
+    return group.items.some((item) => isActive(item.href));
+  }
+
+  const allItems = visibleGroups.flatMap((g) => g.items);
+
+  const [openGroupKey, setOpenGroupKey] = useState<string | null>(
+    () => visibleGroups.find(groupActive)?.key ?? null,
+  );
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileOpenGroupKey, setMobileOpenGroupKey] = useState<string | null>(
+    () => visibleGroups.find(groupActive)?.key ?? null,
+  );
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => subscribeUnsavedChanges(() => setDirty(hasUnsavedChanges())), []);
 
   /**
    * グローバルメニュー(スマホの「⋯」から開くメニュー)のリンクタッチを横取りする。
@@ -85,43 +134,40 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
         <SaveConfirmDialog saving={saving} onCancel={() => setPendingHref(null)} onSave={handleConfirmSave} />
       )}
 
-      {/* デスクトップ表示: 常時展開のナビ */}
+      {/* デスクトップ表示: 大メニュー(▼)ごとに中メニューを展開する */}
       <nav className="hidden flex-wrap items-center gap-4 sm:flex">
-        <button
-          type="button"
-          onClick={() => setCatalogOpen((prev) => !prev)}
-          className={`flex items-center gap-1 ${catalogActive ? activeLinkClass : linkClass}`}
-        >
-          商品登録
-          <span className={`text-xs transition-transform ${catalogOpen || catalogActive ? "rotate-180" : ""}`}>
-            ▼
-          </span>
-        </button>
-        {NAV_ITEMS.map((item) => (
-          <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
-            {item.label}
-          </Link>
-        ))}
-        {isAdmin && (
-          <Link href="/admin/smaregi" className={isActive("/admin/smaregi") ? activeLinkClass : linkClass}>
-            スマレジ連携
-          </Link>
-        )}
-        {isAdmin && (
-          <Link href="/admin/users" className={isActive("/admin/users") ? activeLinkClass : linkClass}>
-            ユーザー権限
-          </Link>
-        )}
+        {visibleGroups.map((group) => {
+          const active = groupActive(group);
+          const open = openGroupKey === group.key;
+          return (
+            <button
+              key={group.key}
+              type="button"
+              onClick={() => setOpenGroupKey((prev) => (prev === group.key ? null : group.key))}
+              className={`flex items-center gap-1 ${active ? activeLinkClass : linkClass}`}
+            >
+              {group.label}
+              <span className={`text-xs transition-transform ${open || active ? "rotate-180" : ""}`}>▼</span>
+            </button>
+          );
+        })}
       </nav>
-      {(catalogOpen || catalogActive) && (
-        <div className="mt-2 hidden flex-wrap gap-4 border-t border-neutral-100 pt-2 pl-4 text-sm sm:flex">
-          {CATALOG_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
+      {visibleGroups.map((group) => {
+        const open = openGroupKey === group.key || groupActive(group);
+        if (!open) return null;
+        return (
+          <div
+            key={group.key}
+            className="mt-2 hidden flex-wrap gap-4 border-t border-neutral-100 pt-2 pl-4 text-sm sm:flex"
+          >
+            {group.items.map((item) => (
+              <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        );
+      })}
 
       {/* スマホ表示: 現在地のみ表示し、「⋯」でメニュー全体を展開する
           (フルのナビを常時表示すると複数行に折り返してヘッダーが長くなり、スクロールで隠れやすいため) */}
@@ -145,17 +191,41 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
         </button>
       </div>
       {mobileMenuOpen && (
-        <div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-neutral-200 bg-white p-3 text-sm sm:hidden">
-          {allItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={(e) => handleMobileLinkClick(e, item.href)}
-              className={`truncate ${isActive(item.href) ? activeLinkClass : linkClass}`}
-            >
-              {item.label}
-            </Link>
-          ))}
+        <div className="mt-2 space-y-1 rounded-md border border-neutral-200 bg-white p-3 text-sm sm:hidden">
+          {visibleGroups.map((group) => {
+            const active = groupActive(group);
+            const open = mobileOpenGroupKey === group.key || active;
+            return (
+              <div key={group.key}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMobileOpenGroupKey((prev) => (prev === group.key ? null : group.key))
+                  }
+                  className={`flex w-full items-center justify-between py-1.5 ${
+                    active ? activeLinkClass : linkClass
+                  }`}
+                >
+                  {group.label}
+                  <span className={`text-xs transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+                </button>
+                {open && (
+                  <div className="grid grid-cols-2 gap-2 py-1 pl-3">
+                    {group.items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={(e) => handleMobileLinkClick(e, item.href)}
+                        className={`truncate ${isActive(item.href) ? activeLinkClass : linkClass}`}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
