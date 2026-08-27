@@ -1,5 +1,6 @@
 import { orderRevenue, normalizeReferrer } from "@/lib/dashboard-aggregate";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
+import { incrementalProfit } from "@/lib/order-cost-snapshot";
 
 export interface LtvOrderRow {
   id: string;
@@ -9,6 +10,7 @@ export interface LtvOrderRow {
   type: "one_time" | "subscription";
   payment_method: string;
   billing_cycle_number: number;
+  quantity: number;
   amount: number;
   addon_amount: number | null;
   discount_amount: number | null;
@@ -17,6 +19,10 @@ export interface LtvOrderRow {
   payment_fee: number;
   created_at: string;
   session_id: string | null;
+  cost_amount: number | null;
+  bundle_insert_cost: number | null;
+  shipping_cost: number | null;
+  sales_commission_amount: number | null;
 }
 
 export interface LtvCustomerRow {
@@ -154,10 +160,20 @@ export interface CustomerLtvProfile {
   subscriptionRevenue: number;
   lifetimeRevenue: number;
   isSubscriber: boolean;
+  /** 継続回数(この顧客の定期注文の件数=請求された周期数)。 */
+  subscriptionCycleCount: number;
+  /** 定期注文の数量合計(1回あたりの平均購入点数の算出に使う)。 */
+  subscriptionQuantityTotal: number;
+  /**
+   * 全注文(定期+単品)の広告費除く増分利益の合計。コストスナップショットの無い
+   * (導入前の)注文は0円として扱う(除外ではなく合算しない)ため、導入前の注文が
+   * 混在する顧客は実際より少なく計上される点に注意。
+   */
+  totalIncrementalProfit: number;
 }
 
 /**
- * 確定済み注文を顧客ごとにまとめ、定期LTV(定期関連売上)と顧客生涯LTV(単品含む全売上)、
+ * 確定済み注文を顧客ごとにまとめ、定期LTV(定期関連売上)と売上LTV(単品含む全売上)、
  * 初回注文・初回定期注文を求める。「案A」の設計に基づき、単品購入は回数(billing_cycle_number)
  * の系列には影響させず、独立した指標(単品→定期引き上げ率)として扱う。
  */
@@ -172,11 +188,11 @@ export function buildCustomerProfiles(orders: LtvOrderRow[]): CustomerLtvProfile
   for (const [customerId, custOrders] of byCustomer) {
     const sorted = [...custOrders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     const firstOrder = sorted[0];
-    const firstSubOrder = sorted.find((o) => o.type === "subscription") ?? null;
-    const subscriptionRevenue = sorted
-      .filter((o) => o.type === "subscription")
-      .reduce((sum, o) => sum + orderRevenue(o), 0);
+    const subscriptionOrders = sorted.filter((o) => o.type === "subscription");
+    const firstSubOrder = subscriptionOrders[0] ?? null;
+    const subscriptionRevenue = subscriptionOrders.reduce((sum, o) => sum + orderRevenue(o), 0);
     const lifetimeRevenue = sorted.reduce((sum, o) => sum + orderRevenue(o), 0);
+    const totalIncrementalProfit = sorted.reduce((sum, o) => sum + (incrementalProfit(o) ?? 0), 0);
     profiles.push({
       customerId,
       firstOrder,
@@ -184,6 +200,9 @@ export function buildCustomerProfiles(orders: LtvOrderRow[]): CustomerLtvProfile
       subscriptionRevenue,
       lifetimeRevenue,
       isSubscriber: firstSubOrder !== null,
+      subscriptionCycleCount: subscriptionOrders.length,
+      subscriptionQuantityTotal: subscriptionOrders.reduce((sum, o) => sum + o.quantity, 0),
+      totalIncrementalProfit,
     });
   }
   return profiles;
@@ -192,15 +211,27 @@ export function buildCustomerProfiles(orders: LtvOrderRow[]): CustomerLtvProfile
 export interface LtvSegmentRow {
   segment: string;
   customerCount: number;
+  /** 定期LTV = 定期契約者の定期関連売上合計 ÷ 定期契約者数。 */
   subscriptionLtv: number;
-  lifetimeLtv: number;
+  /** 売上LTV = 同じ定期契約者集団の、単品購入分も含めた全売上合計 ÷ 定期契約者数(期間内合計)。 */
+  revenueLtv: number;
+  /** 継続回数(定期の請求周期数)の平均。 */
+  avgCycleCount: number;
+  /** 定期注文1回あたりの平均売上単価。 */
+  avgOrderRevenue: number;
+  /** 定期注文1回あたりの平均購入点数。 */
+  avgQuantityPerOrder: number;
+  /** 広告費除く増分利益の合計(コストスナップショットの無い注文は0円扱い)。 */
+  totalIncrementalProfit: number;
+  /** 増分利益LTV = 期間合計増分利益 ÷ 定期契約者数。 */
+  incrementalProfitLtv: number;
 }
 
 /**
- * セグメント別LTVランキング(定期契約者のみが対象)。
+ * セグメント別LTVランキング(定期契約者のみが対象、期間内に存在した全件を表示する)。
  * 定期LTV = そのセグメントの定期契約者の定期関連売上合計 ÷ 定期契約者数。
- * 顧客生涯LTV(単品含む)は同じ定期契約者集団について、単品購入分も含めた全売上を使う
- * (単品購入の有無で定期LTV自体は変わらない)。
+ * 売上LTV(旧:顧客生涯LTV(単品含む))は同じ定期契約者集団について、単品購入分も
+ * 含めた全売上を使う(単品購入の有無で定期LTV自体は変わらない)。
  */
 export function buildLtvRanking(
   profiles: CustomerLtvProfile[],
@@ -208,24 +239,52 @@ export function buildLtvRanking(
   axis: SegmentAxis,
   ctx: SegmentContext,
 ): LtvSegmentRow[] {
-  const table = new Map<string, { count: number; subRevenue: number; lifeRevenue: number }>();
+  const table = new Map<
+    string,
+    {
+      count: number;
+      subRevenue: number;
+      lifeRevenue: number;
+      cycleCountTotal: number;
+      orderCountTotal: number;
+      quantityTotal: number;
+      incrementalProfitTotal: number;
+    }
+  >();
   for (const p of profiles) {
     if (!p.isSubscriber || !p.firstSubOrder) continue;
     const customer = customersById.get(p.customerId);
     if (!customer) continue;
     const label = resolveSegmentLabel(axis, p.firstSubOrder, customer, ctx);
-    const entry = table.get(label) ?? { count: 0, subRevenue: 0, lifeRevenue: 0 };
+    const entry = table.get(label) ?? {
+      count: 0,
+      subRevenue: 0,
+      lifeRevenue: 0,
+      cycleCountTotal: 0,
+      orderCountTotal: 0,
+      quantityTotal: 0,
+      incrementalProfitTotal: 0,
+    };
     entry.count += 1;
     entry.subRevenue += p.subscriptionRevenue;
     entry.lifeRevenue += p.lifetimeRevenue;
+    entry.cycleCountTotal += p.subscriptionCycleCount;
+    entry.orderCountTotal += p.subscriptionCycleCount;
+    entry.quantityTotal += p.subscriptionQuantityTotal;
+    entry.incrementalProfitTotal += p.totalIncrementalProfit;
     table.set(label, entry);
   }
   return Array.from(table.entries())
-    .map(([segment, { count, subRevenue, lifeRevenue }]) => ({
+    .map(([segment, { count, subRevenue, lifeRevenue, cycleCountTotal, orderCountTotal, quantityTotal, incrementalProfitTotal }]) => ({
       segment,
       customerCount: count,
       subscriptionLtv: count > 0 ? subRevenue / count : 0,
-      lifetimeLtv: count > 0 ? lifeRevenue / count : 0,
+      revenueLtv: count > 0 ? lifeRevenue / count : 0,
+      avgCycleCount: count > 0 ? cycleCountTotal / count : 0,
+      avgOrderRevenue: orderCountTotal > 0 ? subRevenue / orderCountTotal : 0,
+      avgQuantityPerOrder: orderCountTotal > 0 ? quantityTotal / orderCountTotal : 0,
+      totalIncrementalProfit: incrementalProfitTotal,
+      incrementalProfitLtv: count > 0 ? incrementalProfitTotal / count : 0,
     }))
     .sort((a, b) => b.subscriptionLtv - a.subscriptionLtv);
 }

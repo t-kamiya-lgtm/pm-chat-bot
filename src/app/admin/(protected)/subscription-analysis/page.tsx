@@ -50,7 +50,7 @@ export default async function AdminSubscriptionAnalysisPage({
     supabase
       .from("orders")
       .select(
-        "id, customer_id, scenario_id, product_id, type, payment_method, billing_cycle_number, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, created_at, session_id",
+        "id, customer_id, scenario_id, product_id, type, payment_method, billing_cycle_number, quantity, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, created_at, session_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount",
       )
       .in("status", CONFIRMED_ORDER_STATUSES),
     supabase.from("scenarios").select("id, name, order_code"),
