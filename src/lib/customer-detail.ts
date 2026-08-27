@@ -1,7 +1,24 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { maskEmail, maskPhone, maskAddress } from "@/lib/mask";
 import { getCustomerChangeLogs, type CustomerChangeLogRow } from "@/lib/customer-change-log";
+import { resolveCustomerBrandId } from "@/lib/brand-resolution";
 import type { Address, ShippingAddress, UserRole } from "@/lib/types";
+
+export interface CustomerRetentionCampaignType {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
+export interface CustomerRetentionAction {
+  id: string;
+  campaignTypeId: string;
+  campaignTitle: string;
+  performedMonth: string;
+  subscriptionId: string | null;
+  detail: string | null;
+  createdAt: string;
+}
 
 export interface CustomerDetailSubscriptionItem {
   id: string;
@@ -71,6 +88,12 @@ export interface CustomerDetailResult {
    * 定期購入がなければnull。
    */
   tenureMonths: number | null;
+  /** 顧客の直近の注文から推定したブランド。継続施策タイトルの選択肢を絞り込むために使う。 */
+  brandId: string | null;
+  /** ブランドに登録されている継続施策タイトルの選択肢(顧客管理画面⑥の入力フォーム用)。 */
+  availableCampaignTypes: CustomerRetentionCampaignType[];
+  /** この顧客に記録済みの継続施策ログ。 */
+  retentionActions: CustomerRetentionAction[];
 }
 
 const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30;
@@ -163,6 +186,42 @@ export async function getCustomerDetail(
 
   const address = customer.address as Address | null;
 
+  const brandId = await resolveCustomerBrandId(supabase, customerId);
+
+  const availableCampaignTypes: CustomerRetentionCampaignType[] = [];
+  if (brandId) {
+    const { data: campaignTypes } = await supabase
+      .from("retention_campaign_types")
+      .select("id, title, description")
+      .eq("brand_id", brandId)
+      .order("created_at", { ascending: true });
+    availableCampaignTypes.push(...((campaignTypes ?? []) as CustomerRetentionCampaignType[]));
+  }
+
+  const { data: retentionActionRows } = await supabase
+    .from("customer_retention_actions")
+    .select("id, campaign_type_id, performed_month, subscription_id, detail, created_at, retention_campaign_types(title)")
+    .eq("customer_id", customerId)
+    .order("performed_month", { ascending: false });
+
+  const retentionActions: CustomerRetentionAction[] = ((retentionActionRows ?? []) as unknown as {
+    id: string;
+    campaign_type_id: string;
+    performed_month: string;
+    subscription_id: string | null;
+    detail: string | null;
+    created_at: string;
+    retention_campaign_types: { title: string } | null;
+  }[]).map((row) => ({
+    id: row.id,
+    campaignTypeId: row.campaign_type_id,
+    campaignTitle: row.retention_campaign_types?.title ?? "(削除された施策)",
+    performedMonth: row.performed_month,
+    subscriptionId: row.subscription_id,
+    detail: row.detail,
+    createdAt: row.created_at,
+  }));
+
   return {
     customer: {
       id: customer.id,
@@ -178,5 +237,8 @@ export async function getCustomerDetail(
     orders: rows,
     changeLogs,
     tenureMonths,
+    brandId,
+    availableCampaignTypes,
+    retentionActions,
   };
 }

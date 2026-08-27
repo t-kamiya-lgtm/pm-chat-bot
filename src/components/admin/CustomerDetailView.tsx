@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toast } from "@/components/admin/Toast";
 import type { Address, SubscriptionInterval } from "@/lib/types";
-import type { CustomerDetailOrder, CustomerDetailSubscription } from "@/lib/customer-detail";
+import type {
+  CustomerDetailOrder,
+  CustomerDetailSubscription,
+  CustomerRetentionAction,
+  CustomerRetentionCampaignType,
+} from "@/lib/customer-detail";
 import type { CustomerChangeLogRow } from "@/lib/customer-change-log";
 
 const INTERVAL_LABELS: Record<string, string> = {
@@ -98,6 +103,8 @@ export function CustomerDetailView({
   orders,
   changeLogs,
   tenureMonths,
+  availableCampaignTypes,
+  retentionActions,
   isAdmin,
 }: {
   customer: {
@@ -114,6 +121,8 @@ export function CustomerDetailView({
   orders: CustomerDetailOrder[];
   changeLogs: CustomerChangeLogRow[];
   tenureMonths: number | null;
+  availableCampaignTypes: CustomerRetentionCampaignType[];
+  retentionActions: CustomerRetentionAction[];
   isAdmin: boolean;
 }) {
   const router = useRouter();
@@ -309,6 +318,15 @@ export function CustomerDetailView({
 
       {/* ⑤ 変更履歴 */}
       <ChangeHistorySection changeLogs={changeLogs} isAdmin={isAdmin} />
+
+      {/* ⑥ 継続施策 */}
+      <RetentionActionsSection
+        customerId={customer.id}
+        subscriptionOrders={subscriptionOrders}
+        availableCampaignTypes={availableCampaignTypes}
+        retentionActions={retentionActions}
+        isAdmin={isAdmin}
+      />
     </div>
   );
 }
@@ -1212,6 +1230,173 @@ function ChangeHistorySection({
               ))}
             </div>
             <div className="mt-1 text-[11px] text-neutral-400">変更者: {log.changed_by_email}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatMonth(value: string) {
+  const d = new Date(value);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+}
+
+function RetentionActionsSection({
+  customerId,
+  subscriptionOrders,
+  availableCampaignTypes,
+  retentionActions,
+  isAdmin,
+}: {
+  customerId: string;
+  subscriptionOrders: CustomerDetailOrder[];
+  availableCampaignTypes: CustomerRetentionCampaignType[];
+  retentionActions: CustomerRetentionAction[];
+  isAdmin: boolean;
+}) {
+  const router = useRouter();
+  const [showForm, setShowForm] = useState(false);
+  const [campaignTypeId, setCampaignTypeId] = useState("");
+  const [performedMonth, setPerformedMonth] = useState("");
+  const [subscriptionId, setSubscriptionId] = useState("");
+  const [detail, setDetail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!campaignTypeId || !performedMonth) return;
+    setSaving(true);
+    setToast(null);
+    const res = await fetch(`/api/customers/${customerId}/retention-actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        campaignTypeId,
+        performedMonth,
+        subscriptionId: subscriptionId || undefined,
+        detail: detail.trim() || undefined,
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setShowForm(false);
+      setCampaignTypeId("");
+      setPerformedMonth("");
+      setSubscriptionId("");
+      setDetail("");
+      router.refresh();
+    } else {
+      const body = await res.json().catch(() => null);
+      setToast({ message: body?.error ? JSON.stringify(body.error) : "登録に失敗しました", type: "error" });
+    }
+  }
+
+  async function handleDelete(actionId: string) {
+    if (!window.confirm("この施策ログを削除します。よろしいですか?")) return;
+    const res = await fetch(`/api/customers/${customerId}/retention-actions/${actionId}`, { method: "DELETE" });
+    if (res.ok) {
+      router.refresh();
+    } else {
+      const body = await res.json().catch(() => null);
+      setToast({ message: body?.error ?? "削除に失敗しました", type: "error" });
+    }
+  }
+
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">⑥ 継続施策</h2>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700"
+          >
+            {showForm ? "閉じる" : "＋ 施策を記録"}
+          </button>
+        )}
+      </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm sm:grid-cols-2">
+          {availableCampaignTypes.length === 0 ? (
+            <p className="text-xs text-amber-700 sm:col-span-2">
+              このブランドには継続施策タイトルが登録されていません。ブランド管理画面で先に登録してください。
+            </p>
+          ) : (
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">施策タイトル</span>
+              <select className="input" value={campaignTypeId} onChange={(e) => setCampaignTypeId(e.target.value)} required>
+                <option value="">選択してください</option>
+                {availableCampaignTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">実施年月</span>
+            <input
+              type="month"
+              className="input"
+              value={performedMonth}
+              onChange={(e) => setPerformedMonth(e.target.value)}
+              required
+            />
+          </label>
+          {subscriptionOrders.length > 0 && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-xs text-neutral-500">対象の定期(任意)</span>
+              <select className="input" value={subscriptionId} onChange={(e) => setSubscriptionId(e.target.value)}>
+                <option value="">指定しない</option>
+                {subscriptionOrders.map((o) =>
+                  o.subscriptions?.[0] ? (
+                    <option key={o.subscriptions[0].id} value={o.subscriptions[0].id}>
+                      {o.products?.name ?? "-"}
+                    </option>
+                  ) : null,
+                )}
+              </select>
+            </label>
+          )}
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-xs text-neutral-500">施策詳細(任意)</span>
+            <textarea className="input" rows={2} value={detail} onChange={(e) => setDetail(e.target.value)} />
+          </label>
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={saving || availableCampaignTypes.length === 0}
+              className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              記録する
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="divide-y divide-neutral-100 rounded-lg border border-neutral-200 bg-white">
+        {retentionActions.length === 0 && <p className="p-4 text-sm text-neutral-400">記録された継続施策はありません</p>}
+        {retentionActions.map((a) => (
+          <div key={a.id} className="flex flex-wrap items-start justify-between gap-2 p-3 text-sm">
+            <div>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="font-medium">{formatMonth(a.performedMonth)}</span>
+                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">{a.campaignTitle}</span>
+              </div>
+              {a.detail && <div className="mt-1 text-xs text-neutral-600">{a.detail}</div>}
+            </div>
+            {isAdmin && (
+              <button type="button" onClick={() => handleDelete(a.id)} className="text-xs text-red-600 hover:underline">
+                削除
+              </button>
+            )}
           </div>
         ))}
       </div>
