@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
   const { data: dueSubscriptions, error } = await supabase
     .from("subscriptions")
-    .select("id, order_id")
+    .select("id, order_id, override_payment_method")
     .eq("status", "active")
     .lte("next_billing_date", cutoffDate);
 
@@ -42,14 +42,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ processed: 0 });
   }
 
+  // 実効の決済方法(スタッフによる個別上書きがあればそちらを優先)がcod/deferred_invoiceのものだけを対象にする。
   const orderIds = dueSubscriptions.map((s) => s.order_id);
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id")
-    .in("id", orderIds)
-    .in("payment_method", ["cod", "deferred_invoice"]);
-  const targetOrderIds = new Set((orders ?? []).map((o) => o.id));
-  const targets = dueSubscriptions.filter((s) => targetOrderIds.has(s.order_id));
+  const { data: orders } = await supabase.from("orders").select("id, payment_method").in("id", orderIds);
+  const paymentMethodByOrderId = new Map((orders ?? []).map((o) => [o.id, o.payment_method]));
+  const targets = dueSubscriptions.filter((s) => {
+    const effective = s.override_payment_method ?? paymentMethodByOrderId.get(s.order_id);
+    return effective === "cod" || effective === "deferred_invoice";
+  });
 
   for (const sub of targets) {
     try {

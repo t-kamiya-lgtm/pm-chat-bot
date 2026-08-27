@@ -138,14 +138,17 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       .maybeSingle();
     if (existing) return;
 
-    const quantity = original.quantity as number;
     // 2回目以降は常に通常価格(初回特別価格・クーポンは初回のみ適用)。
     // 商品マスタの現在値ではなく、初回注文時点のスナップショット(original.amount等)を使う
     // (配信後にマスタ価格を変更しても、既存の定期購入者には反映されず、変更以後の新規受注にのみ
-    // 反映されるようにするため)。
-    const amount = original.amount as number;
-    const shippingFee = original.shipping_fee as number;
-    const paymentFee = original.payment_fee as number;
+    // 反映されるようにするため)。ただし顧客管理画面でスタッフが個別に上書き設定した場合は、
+    // そちらを優先する(subscriptionsのoverride列、初回注文自体の記録は書き換えない)。
+    const productId = (subscriptionRow.override_product_id as string | null) ?? original.product_id;
+    const quantity = (subscriptionRow.override_quantity as number | null) ?? (original.quantity as number);
+    const amount = (subscriptionRow.override_amount as number | null) ?? (original.amount as number);
+    const shippingFee = (subscriptionRow.override_shipping_fee as number | null) ?? (original.shipping_fee as number);
+    const paymentFee = (subscriptionRow.override_payment_fee as number | null) ?? (original.payment_fee as number);
+    const paymentMethod = (subscriptionRow.override_payment_method as string | null) ?? original.payment_method;
     const deliveryDate = subscriptionRow.next_billing_date as string;
 
     const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
@@ -153,12 +156,12 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       .from("orders")
       .insert({
         customer_id: original.customer_id,
-        product_id: original.product_id,
+        product_id: productId,
         scenario_id: original.scenario_id,
         order_number: orderNumber,
         session_id: original.session_id,
         type: "subscription",
-        payment_method: original.payment_method,
+        payment_method: paymentMethod,
         amount,
         quantity,
         shipping_fee: shippingFee,
@@ -216,8 +219,8 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
         address: customer.address as Address,
       },
       orderType: "subscription",
-      paymentMethod: original.payment_method,
-      product: { id: original.product_id, quantity },
+      paymentMethod: paymentMethod as "cod" | "deferred_invoice",
+      product: { id: productId, quantity },
       amount,
       shippingFee,
       paymentFee,
@@ -228,10 +231,40 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       shippingAddress: original.shipping_address ?? undefined,
     });
 
-    await supabase
-      .from("orders")
-      .update({ status: accepted ? "accepted" : "failed" })
-      .eq("id", newOrder.id);
+    const newStatus = accepted ? "accepted" : "failed";
+    await supabase.from("orders").update({ status: newStatus }).eq("id", newOrder.id);
+
+    // 定期プランに後から追加された商品(同梱設定)を、本体と同じ配送日・同じ周期番号で
+    // 追加の注文行として生成する(送料・手数料は本体側にのみ計上するため0円)。
+    const { data: bundledItems } = await supabase
+      .from("subscription_items")
+      .select("id, product_id, quantity, unit_amount")
+      .eq("subscription_id", subscriptionRowId)
+      .is("removed_at", null);
+
+    for (const item of bundledItems ?? []) {
+      const itemOrderNumber = await generateOrderNumber(supabase, original.scenario_id);
+      await supabase.from("orders").insert({
+        customer_id: original.customer_id,
+        product_id: item.product_id,
+        scenario_id: original.scenario_id,
+        order_number: itemOrderNumber,
+        type: "subscription",
+        payment_method: paymentMethod,
+        amount: item.unit_amount * item.quantity,
+        quantity: item.quantity,
+        shipping_fee: 0,
+        payment_fee: 0,
+        status: newStatus,
+        delivery_date: deliveryDate,
+        delivery_time_slot: original.delivery_time_slot,
+        agreed_terms_at: original.agreed_terms_at,
+        shipping_address: original.shipping_address,
+        parent_order_id: original.id,
+        billing_cycle_number: nextCycleNumber,
+        subscription_item_id: item.id,
+      });
+    }
 
     if (accepted) {
       await sendOrderCompletionEmail(newOrder.id);
