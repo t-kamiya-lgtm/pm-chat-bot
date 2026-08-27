@@ -15,18 +15,30 @@ const createSchema = z.object({
   description: z.string().optional(),
 });
 
-/** 同梱物セット一覧・登録。定期分析(同梱効果測定)のセグメント軸として使う。 */
+/**
+ * 同梱物セット一覧・登録。定期分析(同梱効果測定)のセグメント軸として使う。
+ * brandsとの結合(embed)はPostgRESTのリレーションキャッシュが新しいFKに追随するまで
+ * 失敗することがあるため使わず、別々に取得してJS側で紐付ける。
+ */
 export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("bundle_insert_sets")
-    .select("*, brands(id, name, code)")
-    .order("period_start", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ bundleInsertSets: data });
+  const [setsRes, brandsRes] = await Promise.all([
+    supabase.from("bundle_insert_sets").select("*").order("period_start", { ascending: false }),
+    supabase.from("brands").select("id, name, code"),
+  ]);
+  if (setsRes.error) return NextResponse.json({ error: setsRes.error.message }, { status: 500 });
+  if (brandsRes.error) return NextResponse.json({ error: brandsRes.error.message }, { status: 500 });
+
+  const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
+  const bundleInsertSets = (setsRes.data ?? []).map((set) => ({
+    ...set,
+    brands: brandById.get(set.brand_id as string) ?? null,
+  }));
+
+  return NextResponse.json({ bundleInsertSets });
 }
 
 export async function POST(request: Request) {
@@ -55,7 +67,7 @@ export async function POST(request: Request) {
       target_product_ids: parsed.data.targetProductIds ?? null,
       description: parsed.data.description || null,
     })
-    .select("*, brands(id, name, code)")
+    .select("*")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ bundleInsertSet: data }, { status: 201 });

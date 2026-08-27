@@ -5,16 +5,20 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminBundleInsertSetsPage() {
   const supabase = createSupabaseAdminClient();
+  // brandsとの結合(embed)はPostgRESTのリレーションキャッシュが新しいFKに追随するまで
+  // 失敗することがあるため使わず、別々に取得してJS側で紐付ける。
   const [setsRes, brandsRes, productsRes] = await Promise.all([
-    supabase
-      .from("bundle_insert_sets")
-      .select("*, brands(id, name, code)")
-      .order("period_start", { ascending: false }),
+    supabase.from("bundle_insert_sets").select("*").order("period_start", { ascending: false }),
     supabase.from("brands").select("id, name, code").order("name", { ascending: true }),
     supabase.from("products").select("id, name, smaregi_product_id").order("smaregi_product_id", { ascending: true }),
   ]);
 
   const loadError = setsRes.error ?? brandsRes.error ?? productsRes.error;
+  const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
+  const sets = (setsRes.data ?? []).map((set) => ({
+    ...set,
+    brands: brandById.get(set.brand_id as string) ?? null,
+  }));
 
   return (
     <div>
@@ -29,7 +33,7 @@ export default async function AdminBundleInsertSetsPage() {
         </p>
       )}
       <BundleInsertSetsList
-        initialSets={(setsRes.data ?? []) as never}
+        initialSets={sets as never}
         brands={(brandsRes.data ?? []) as { id: string; name: string; code: string | null }[]}
         products={(productsRes.data ?? []) as { id: string; name: string; smaregi_product_id: string | null }[]}
       />

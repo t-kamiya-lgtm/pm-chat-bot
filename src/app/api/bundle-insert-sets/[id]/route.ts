@@ -43,7 +43,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       ...(parsed.data.description !== undefined && { description: parsed.data.description }),
     })
     .eq("id", id)
-    .select("*, brands(id, name, code)")
+    .select("*")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ bundleInsertSet: data });
