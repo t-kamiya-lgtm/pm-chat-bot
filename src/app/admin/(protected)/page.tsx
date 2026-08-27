@@ -17,6 +17,11 @@ const SECTIONS: { title: string; cards: DashboardCard[] }[] = [
         title: "実績ダッシュボード",
         description: "アクセス数・購入数・売上を広告・シナリオ別に確認",
       },
+      {
+        href: "/admin/subscription-analysis",
+        title: "定期分析",
+        description: "セグメント別の定期LTVランキング・単品→定期引き上げ率",
+      },
       { href: "/admin/leads", title: "アクセスログ", description: "チャット開始・離脱状況の確認と連絡管理" },
     ],
   },
