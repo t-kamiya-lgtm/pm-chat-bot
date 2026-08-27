@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { countDistributedOrders } from "@/lib/bundle-insert-distribution";
+import { listBundleInsertSetsWithDetails, sumItemDistribution } from "@/lib/bundle-insert-sets-query";
 import { BundleInsertTabs } from "@/components/admin/BundleInsertTabs";
 
 export const dynamic = "force-dynamic";
@@ -8,39 +8,20 @@ export default async function AdminBundleInsertSetsPage() {
   const supabase = createSupabaseAdminClient();
   // brandsとの結合(embed)はPostgRESTのリレーションキャッシュが新しいFKに追随するまで
   // 失敗することがあるため使わず、別々に取得してJS側で紐付ける。
-  const [setsRes, itemsRes, brandsRes, productsRes] = await Promise.all([
-    supabase.from("bundle_insert_sets").select("*").order("period_start", { ascending: false }),
+  const [itemsRes, brandsRes, productsRes, { sets, error: setsError }] = await Promise.all([
     supabase.from("bundle_insert_items").select("*").order("registered_date", { ascending: false }),
     supabase.from("brands").select("id, name, code").order("name", { ascending: true }),
     supabase.from("products").select("id, name, smaregi_product_id").order("smaregi_product_id", { ascending: true }),
+    listBundleInsertSetsWithDetails(supabase),
   ]);
 
-  const loadError = setsRes.error ?? itemsRes.error ?? brandsRes.error ?? productsRes.error;
+  const loadError = itemsRes.error?.message ?? brandsRes.error?.message ?? productsRes.error?.message ?? setsError;
   const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
-  const itemById = new Map((itemsRes.data ?? []).map((i) => [i.id as string, i]));
-
-  const sets = await Promise.all(
-    (setsRes.data ?? []).map(async (set) => {
-      const distributedCount = await countDistributedOrders(supabase, {
-        brandId: set.brand_id as string,
-        periodStart: set.period_start as string,
-        periodEnd: set.period_end as string | null,
-        targetOrderType: set.target_order_type as "subscription" | "one_time" | "both",
-        targetCycleNumbers: set.target_cycle_numbers as number[] | null,
-        targetProductIds: set.target_product_ids as string[] | null,
-      });
-      return {
-        ...set,
-        brands: brandById.get(set.brand_id as string) ?? null,
-        items: ((set.item_ids as string[] | null) ?? []).map((id) => itemById.get(id)).filter(Boolean),
-        distributedCount,
-      };
-    }),
-  );
 
   const items = (itemsRes.data ?? []).map((item) => ({
     ...item,
     brands: brandById.get(item.brand_id as string) ?? null,
+    distributedCount: sumItemDistribution(sets, item.id as string),
   }));
 
   return (
@@ -51,7 +32,7 @@ export default async function AdminBundleInsertSetsPage() {
       </p>
       {loadError && (
         <p className="mb-4 rounded-md bg-red-50 p-2 text-xs text-red-700">
-          データの取得に失敗しました: {loadError.message}
+          データの取得に失敗しました: {loadError}
         </p>
       )}
       <BundleInsertTabs

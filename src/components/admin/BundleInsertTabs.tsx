@@ -36,12 +36,15 @@ export function BundleInsertTabs({
   products: ProductOption[];
 }) {
   const [tab, setTab] = useState<TabKey>("items");
-  const itemOptions: BundleInsertItemOption[] = items.map((i) => ({
-    id: i.id,
-    brand_id: i.brand_id,
-    name: i.name,
-    item_type: i.item_type,
-  }));
+  // 無効化した同梱物は新規セットの選択肢から外す(過去に選択済みのセットの表示には影響しない)。
+  const itemOptions: BundleInsertItemOption[] = items
+    .filter((i) => i.status === "active")
+    .map((i) => ({
+      id: i.id,
+      brand_id: i.brand_id,
+      name: i.name,
+      item_type: i.item_type,
+    }));
 
   return (
     <div>
