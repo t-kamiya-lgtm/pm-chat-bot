@@ -1,5 +1,4 @@
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getStripeClient } from "@/lib/stripe";
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -33,10 +32,11 @@ export function isValidImportStatusTransition(from: ImportStatus, to: ImportStat
 }
 
 /**
- * 受注ステータスを変更する。定期購入のルート注文をキャンセルにする場合は、
- * Stripeの定期購入自体も解約し(専用の「定期解約」操作と同じ効果)、
- * subscriptions.statusもcanceledにする(代引き・後払いも含めすべての支払方法で、
- * 以後の定期継続分の生成を止めるため)。
+ * 受注ステータスを変更する。個別受注のキャンセル(この関数)は、あくまで対象の注文
+ * 1件のimport_statusを書き換えるだけで、Stripe定期購入の解約やsubscriptionsテーブルの
+ * 更新など他データには一切関与しない(請求取消などは運用担当が個別対応する想定のため)。
+ * 定期購入自体の解約は、専用の「定期解約」操作(cancelSubscription、
+ * src/app/api/orders/[id]/edit/route.ts)からのみ行う。
  * 遷移が許可されていない場合はエラーを返す。
  */
 export async function applyImportStatusChange(
@@ -46,7 +46,7 @@ export async function applyImportStatusChange(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: order, error: fetchError } = await supabase
     .from("orders")
-    .select("id, import_status, type, payment_method, stripe_subscription_id, parent_order_id")
+    .select("id, import_status")
     .eq("id", orderId)
     .maybeSingle();
   if (fetchError) return { ok: false, error: fetchError.message };
@@ -65,18 +65,6 @@ export async function applyImportStatusChange(
     .update({ import_status: newStatus, import_status_updated_at: new Date().toISOString() })
     .eq("id", orderId);
   if (updateError) return { ok: false, error: updateError.message };
-
-  if (newStatus === "canceled" && order.type === "subscription" && !order.parent_order_id) {
-    if (order.payment_method === "stripe" && order.stripe_subscription_id) {
-      try {
-        const stripe = getStripeClient();
-        await stripe.subscriptions.cancel(order.stripe_subscription_id);
-      } catch (err) {
-        console.error("[order-import-status] failed to cancel stripe subscription", { orderId, err });
-      }
-    }
-    await supabase.from("subscriptions").update({ status: "canceled" }).eq("order_id", orderId);
-  }
 
   return { ok: true };
 }
