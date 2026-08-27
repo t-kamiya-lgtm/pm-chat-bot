@@ -20,7 +20,13 @@ export default async function AdminCustomerDetailPage({
 
   return (
     <div>
-      <CustomerDetailView customer={detail.customer} orders={detail.orders} isAdmin={user.role === "admin"} />
+      <CustomerDetailView
+        customer={detail.customer}
+        orders={detail.orders}
+        changeLogs={detail.changeLogs}
+        tenureMonths={detail.tenureMonths}
+        isAdmin={user.role === "admin"}
+      />
     </div>
   );
 }
