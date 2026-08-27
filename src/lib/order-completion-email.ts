@@ -2,6 +2,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendResendEmail } from "@/lib/email";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
 import { resolveScenarioFrom } from "@/lib/scenario-email";
+import { SUBSCRIPTION_INTERVAL_LABELS } from "@/lib/subscription-intervals";
+import type { SubscriptionInterval } from "@/lib/types";
 
 /**
  * 注文確定(初回はfulfillOrder呼び出しと同じタイミング、定期便2回目以降は注文データ生成時)で
@@ -21,22 +23,32 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       .eq("id", orderId)
       .is("completion_email_sent_at", null)
       .select(
-        "order_number, quantity, amount, addon_amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number, scenario_id",
+        "order_number, type, quantity, amount, addon_product_id, addon_amount, shipping_fee, payment_fee, discount_amount, first_time_discount_amount, customer_id, product_id, billing_cycle_number, scenario_id, delivery_date",
       )
       .maybeSingle();
     if (!order) return;
 
-    const [{ data: customer }, { data: product }, { data: scenario }] = await Promise.all([
-      supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
-      supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
-      order.scenario_id
-        ? supabase
-            .from("scenarios")
-            .select("email_from_address, order_confirmation_from")
-            .eq("id", order.scenario_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+    const isSubscription = order.type === "subscription";
+    const isRenewal = order.billing_cycle_number > 1;
+
+    const [{ data: customer }, { data: product }, { data: addonProduct }, { data: scenario }, { data: subscription }] =
+      await Promise.all([
+        supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
+        supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
+        order.addon_product_id
+          ? supabase.from("products").select("name").eq("id", order.addon_product_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        order.scenario_id
+          ? supabase
+              .from("scenarios")
+              .select("email_from_address, order_confirmation_from")
+              .eq("id", order.scenario_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        isSubscription && !isRenewal
+          ? supabase.from("subscriptions").select("interval").eq("order_id", orderId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
     if (!customer?.email) return;
 
     const templates = await getEmailTemplates(supabase);
@@ -47,6 +59,18 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       order.payment_fee -
       order.discount_amount -
       (order.first_time_discount_amount ?? 0);
+
+    // アドオン商品は本体と別行で明示する(本体の商品名・数量に混ぜて分からなくならないようにするため)。
+    const addonLine = addonProduct
+      ? `\n■アドオン商品: ${addonProduct.name} x1(${(order.addon_amount ?? 0).toLocaleString("ja-JP")}円)`
+      : "";
+
+    // 定期便の初回注文のみ、初回お届け日・お届け頻度を案内する(2回目以降は「第N回」の件名・本文で分かるため対象外)。
+    const subscriptionInfoBlock =
+      isSubscription && !isRenewal && subscription
+        ? `\n■初回お届け日: ${order.delivery_date ? new Date(order.delivery_date).toLocaleDateString("ja-JP") : "追ってご連絡いたします"}\n■お届け頻度: ${SUBSCRIPTION_INTERVAL_LABELS[subscription.interval as SubscriptionInterval] ?? subscription.interval}`
+        : "";
+
     const vars = {
       customer_name: customer.name ?? "",
       product_name: product?.name ?? "",
@@ -54,9 +78,9 @@ export async function sendOrderCompletionEmail(orderId: string): Promise<void> {
       quantity: String(order.quantity),
       total_amount: total.toLocaleString("ja-JP"),
       cycle_number: String(order.billing_cycle_number),
+      addon_line: addonLine,
+      subscription_info_block: subscriptionInfoBlock,
     };
-
-    const isRenewal = order.billing_cycle_number > 1;
 
     await sendResendEmail({
       to: customer.email,
