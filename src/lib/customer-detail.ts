@@ -65,11 +65,38 @@ export interface CustomerDetailResult {
   };
   orders: CustomerDetailOrder[];
   changeLogs: CustomerChangeLogRow[];
-  /** 初回の確定注文からの経過(概算、月単位)。注文がなければnull。 */
+  /**
+   * 継続期間 = 定期初回注文からの経過月 - 休止月(概算、月単位)。
+   * 休止月は、変更履歴上の解約〜再開(または解約中のまま現在まで)の期間を定期ごとに合算したもの。
+   * 定期購入がなければnull。
+   */
   tenureMonths: number | null;
 }
 
-const CONFIRMED_ORDER_STATUSES = ["paid", "accepted"];
+const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30;
+
+/** 特定の定期購入について、解約〜再開(または解約中のまま現在まで)の期間の合計(ミリ秒)を求める。 */
+function calculatePausedMs(subscriptionId: string, changeLogs: CustomerChangeLogRow[], now: number): number {
+  const events = changeLogs
+    .filter((l) => l.subscription_id === subscriptionId && (l.action === "subscription_cancel" || l.action === "subscription_resume"))
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  let pausedMs = 0;
+  let pauseStartedAt: number | null = null;
+  for (const event of events) {
+    const timestamp = new Date(event.created_at).getTime();
+    if (event.action === "subscription_cancel" && pauseStartedAt === null) {
+      pauseStartedAt = timestamp;
+    } else if (event.action === "subscription_resume" && pauseStartedAt !== null) {
+      pausedMs += timestamp - pauseStartedAt;
+      pauseStartedAt = null;
+    }
+  }
+  if (pauseStartedAt !== null) {
+    pausedMs += now - pauseStartedAt;
+  }
+  return pausedMs;
+}
 
 /**
  * 顧客詳細(プロフィール・定期便申込内容・購入履歴・変更履歴)を取得する。
@@ -122,13 +149,17 @@ export async function getCustomerDetail(
     }
   }
 
-  const confirmedCreatedAts = rows
-    .filter((o) => CONFIRMED_ORDER_STATUSES.includes(o.status))
-    .map((o) => new Date(o.created_at).getTime());
-  const tenureMonths =
-    confirmedCreatedAts.length > 0
-      ? Math.floor((Date.now() - Math.min(...confirmedCreatedAts)) / (1000 * 60 * 60 * 24 * 30))
-      : null;
+  const subscriptionRootOrders = rows.filter((o) => o.type === "subscription" && !o.parent_order_id);
+  let tenureMonths: number | null = null;
+  if (subscriptionRootOrders.length > 0) {
+    const now = Date.now();
+    const baseTimestamp = Math.min(...subscriptionRootOrders.map((o) => new Date(o.created_at).getTime()));
+    const pausedMs = subscriptionRootOrders.reduce((sum, o) => {
+      const subscriptionId = o.subscriptions?.[0]?.id;
+      return subscriptionId ? sum + calculatePausedMs(subscriptionId, changeLogs, now) : sum;
+    }, 0);
+    tenureMonths = Math.max(0, Math.floor((now - baseTimestamp - pausedMs) / MS_PER_MONTH));
+  }
 
   const address = customer.address as Address | null;
 

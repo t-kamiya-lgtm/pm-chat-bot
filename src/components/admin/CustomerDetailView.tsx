@@ -152,7 +152,7 @@ export function CustomerDetailView({
           </span>
           {tenureMonths !== null && (
             <span>
-              利用期間(初回注文から):{" "}
+              継続期間(定期初回注文から、休止期間を除く):{" "}
               <strong className="text-neutral-900">
                 {tenureMonths >= 12 ? `${Math.floor(tenureMonths / 12)}年${tenureMonths % 12}ヶ月` : `${tenureMonths}ヶ月`}
               </strong>
