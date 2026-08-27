@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen bg-sky-50">
       <IdleLogout />
       {/* sticky: スマホでノード一覧などを下にスクロールしてもヘッダーが見えなくなるのを防ぐ */}
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white">
+      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white print:hidden">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 py-4">
           <Link href="/admin" className="font-semibold hover:text-neutral-700">
             チャットボット決済システム 管理画面

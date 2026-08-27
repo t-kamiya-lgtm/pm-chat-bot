@@ -25,6 +25,14 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* レポート画面のPDF保存(ブラウザの印刷機能)用。A4縦・余白を明示する。 */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}
+
 @layer components {
   /*
    * text-baseで16px以上を確保する。iOS Safariはフォーカスしたinputのフォント
