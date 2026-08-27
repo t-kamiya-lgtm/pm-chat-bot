@@ -14,6 +14,8 @@ import {
   type ConversionSegmentRow,
 } from "@/lib/subscription-ltv";
 import { SubscriptionLtvRanking } from "@/components/admin/SubscriptionLtvRanking";
+import { CombinedSegmentAnalysis } from "@/components/admin/CombinedSegmentAnalysis";
+import { PrintButton } from "@/components/admin/PrintButton";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,11 @@ export default async function AdminSubscriptionAnalysisPage({
   const dateFrom = getParam("dateFrom") || "";
   const dateTo = getParam("dateTo") || "";
   const brandId = getParam("brandId") || "";
+  const combineParam = sp["combine"];
+  const validAxisKeys = new Set(SEGMENT_AXES.map((a) => a.key));
+  const combineAxes = (Array.isArray(combineParam) ? combineParam : combineParam ? [combineParam] : []).filter(
+    (v): v is SegmentAxis => validAxisKeys.has(v as SegmentAxis),
+  );
 
   const supabase = createSupabaseAdminClient();
 
@@ -122,9 +129,16 @@ export default async function AdminSubscriptionAnalysisPage({
 
   const totalSubscribers = profiles.filter((p) => p.isSubscriber).length;
 
+  const combinedLtvRows = combineAxes.length >= 2 ? buildLtvRanking(profiles, customersById, combineAxes, ctx) : [];
+  const combinedConversionRows =
+    combineAxes.length >= 2 ? buildConversionRanking(profiles, customersById, combineAxes, ctx) : [];
+
   return (
     <div>
-      <h1 className="mb-2 text-2xl font-semibold">定期分析</h1>
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-semibold">定期分析</h1>
+        <PrintButton />
+      </div>
       <p className="mb-4 text-sm text-neutral-500">
         セグメント別に、定期契約者のLTV(定期LTV = 期間内に存在した定期契約者の定期関連売上合計 ÷
         人数)と、単品購入から定期への引き上げ率をランキング表示します。回数(1回目・2回目…)の系列は定期購入のみで数え、単品購入は「単品→定期引き上げ率」として別軸で扱います(単品は0回目として数えません)。
@@ -132,7 +146,7 @@ export default async function AdminSubscriptionAnalysisPage({
 
       <form
         method="get"
-        className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
+        className="print:hidden mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
       >
         <label className="block">
           <span className="mb-1 block text-xs text-neutral-500">獲得日(から、初回注文日基準)</span>
@@ -157,6 +171,9 @@ export default async function AdminSubscriptionAnalysisPage({
         <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
           絞り込む
         </button>
+        {combineAxes.map((axis) => (
+          <input key={axis} type="hidden" name="combine" value={axis} />
+        ))}
       </form>
 
       <p className="mb-4 text-sm text-neutral-600">
@@ -164,6 +181,17 @@ export default async function AdminSubscriptionAnalysisPage({
       </p>
 
       <SubscriptionLtvRanking ltvRankingsByAxis={ltvRankingsByAxis} conversionRankingsByAxis={conversionRankingsByAxis} />
+
+      <div className="mt-8">
+        <CombinedSegmentAnalysis
+          selectedAxes={combineAxes}
+          ltvRows={combinedLtvRows}
+          conversionRows={combinedConversionRows}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          brandId={brandId}
+        />
+      </div>
     </div>
   );
 }

@@ -153,6 +153,25 @@ export function resolveSegmentLabel(
   }
 }
 
+/** 複数のセグメント軸を組み合わせたラベル(例:「シナリオ名 × LP名 × オファー名」)。 */
+function resolveCombinedSegmentLabel(
+  axes: SegmentAxis[],
+  order: LtvOrderRow,
+  customer: LtvCustomerRow,
+  ctx: SegmentContext,
+): string {
+  return axes.map((axis) => resolveSegmentLabel(axis, order, customer, ctx)).join(" × ");
+}
+
+function resolveLabel(
+  axis: SegmentAxis | SegmentAxis[],
+  order: LtvOrderRow,
+  customer: LtvCustomerRow,
+  ctx: SegmentContext,
+): string {
+  return Array.isArray(axis) ? resolveCombinedSegmentLabel(axis, order, customer, ctx) : resolveSegmentLabel(axis, order, customer, ctx);
+}
+
 export interface CustomerLtvProfile {
   customerId: string;
   firstOrder: LtvOrderRow;
@@ -236,7 +255,7 @@ export interface LtvSegmentRow {
 export function buildLtvRanking(
   profiles: CustomerLtvProfile[],
   customersById: Map<string, LtvCustomerRow>,
-  axis: SegmentAxis,
+  axis: SegmentAxis | SegmentAxis[],
   ctx: SegmentContext,
 ): LtvSegmentRow[] {
   const table = new Map<
@@ -255,7 +274,7 @@ export function buildLtvRanking(
     if (!p.isSubscriber || !p.firstSubOrder) continue;
     const customer = customersById.get(p.customerId);
     if (!customer) continue;
-    const label = resolveSegmentLabel(axis, p.firstSubOrder, customer, ctx);
+    const label = resolveLabel(axis, p.firstSubOrder, customer, ctx);
     const entry = table.get(label) ?? {
       count: 0,
       subRevenue: 0,
@@ -303,7 +322,7 @@ export interface ConversionSegmentRow {
 export function buildConversionRanking(
   profiles: CustomerLtvProfile[],
   customersById: Map<string, LtvCustomerRow>,
-  axis: SegmentAxis,
+  axis: SegmentAxis | SegmentAxis[],
   ctx: SegmentContext,
 ): ConversionSegmentRow[] {
   const table = new Map<string, { total: number; converted: number }>();
@@ -311,7 +330,7 @@ export function buildConversionRanking(
     if (p.firstOrder.type !== "one_time") continue;
     const customer = customersById.get(p.customerId);
     if (!customer) continue;
-    const label = resolveSegmentLabel(axis, p.firstOrder, customer, ctx);
+    const label = resolveLabel(axis, p.firstOrder, customer, ctx);
     const entry = table.get(label) ?? { total: 0, converted: 0 };
     entry.total += 1;
     if (p.isSubscriber) entry.converted += 1;
