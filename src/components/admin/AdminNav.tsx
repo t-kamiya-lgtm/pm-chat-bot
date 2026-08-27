@@ -36,6 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/product-groups", label: "アイテム管理" },
       { href: "/admin/products", label: "商品(品番)管理" },
       { href: "/admin/faqs", label: "商品QA" },
+      { href: "/admin/bundle-insert-sets", label: "同梱物設定" },
     ],
   },
   {

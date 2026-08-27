@@ -25,6 +25,8 @@ export default async function AdminCustomerDetailPage({
         orders={detail.orders}
         changeLogs={detail.changeLogs}
         tenureMonths={detail.tenureMonths}
+        availableCampaignTypes={detail.availableCampaignTypes}
+        retentionActions={detail.retentionActions}
         isAdmin={user.role === "admin"}
       />
     </div>

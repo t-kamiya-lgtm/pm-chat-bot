@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { DashboardViewToggle } from "@/components/admin/DashboardViewToggle";
+import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
   aggregateByAd,
   aggregateByDateSplit,
@@ -33,15 +34,6 @@ function formatYen(amount: number): string {
 
 function formatRate(rate: number | null): string {
   return rate === null ? "-" : `${(rate * 100).toFixed(1)}%`;
-}
-
-/** シナリオコード(英字2文字+数字4桁)の先頭2文字とブランドコードを突き合わせてブランドを判定する。 */
-function resolveScenarioBrandId(
-  orderCode: string | null,
-  brandCodeToId: Map<string, string>,
-): string | null {
-  if (!orderCode || orderCode.length < 2) return null;
-  return brandCodeToId.get(orderCode.slice(0, 2).toUpperCase()) ?? null;
 }
 
 export default async function AdminDashboardPage({

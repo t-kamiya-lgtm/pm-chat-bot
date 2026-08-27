@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
+import { RetentionCampaignTypesPanel } from "@/components/admin/RetentionCampaignTypesPanel";
 
 export interface BrandRow {
   id: string;
@@ -149,6 +150,7 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
             ))}
             {brand.groups.length === 0 && <p className="text-sm text-neutral-400">紐づくアイテムがありません</p>}
           </div>
+          <RetentionCampaignTypesPanel brandId={brand.id} />
         </div>
       ))}
       {initialBrands.length === 0 && (
