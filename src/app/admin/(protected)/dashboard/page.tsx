@@ -19,6 +19,7 @@ import {
   type SplitStatsWithDerived,
 } from "@/lib/dashboard-aggregate";
 import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/customer-lifetime-ltv";
+import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 
 export const dynamic = "force-dynamic";
 
@@ -105,19 +106,25 @@ export default async function AdminDashboardPage({
     ? { data: [], error: null }
     : await orderQuery;
 
-  // 生涯LTV・12ヶ月LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
+  // 生涯LTV・年間LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
   // 画面の期間フィルタ(dateFrom/dateTo)の影響を受けず常に全期間で計算する(ブランド絞り込みのみ適用)。
   let lifetimeOrderQuery = supabase
     .from("orders")
     .select(
-      "customer_id, created_at, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount, scenario_id",
+      "id, customer_id, created_at, type, billing_cycle_number, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount, scenario_id",
     )
     .in("status", CONFIRMED_ORDER_STATUSES);
   if (scenarioIdsForBrand) lifetimeOrderQuery = lifetimeOrderQuery.in("scenario_id", scenarioIdsForBrand);
-  const { data: lifetimeOrders } = brandFilterYieldsNoResults
-    ? { data: [] }
-    : await lifetimeOrderQuery;
-  const lifetimeAndAnnualLtv = buildLifetimeAndAnnualLtv((lifetimeOrders ?? []) as LifetimeLtvOrderRow[], new Date().toISOString());
+  const [{ data: lifetimeOrders }, { data: lifetimeSubscriptions }] = brandFilterYieldsNoResults
+    ? [{ data: [] }, { data: [] }]
+    : await Promise.all([lifetimeOrderQuery, supabase.from("subscriptions").select("order_id, interval")]);
+  const lifetimeIntervalByOrderId = new Map((lifetimeSubscriptions ?? []).map((s) => [s.order_id as string, s.interval as string]));
+  const lifetimeAndAnnualLtv = buildLifetimeAndAnnualLtv(
+    (lifetimeOrders ?? []) as LifetimeLtvOrderRow[],
+    new Date().toISOString(),
+    lifetimeIntervalByOrderId,
+    SUBSCRIPTION_INTERVAL_DAYS,
+  );
 
   const accessLogRows: AccessLogRow[] = accessLogs ?? [];
   const orderRows: OrderRow[] = orders ?? [];
@@ -174,14 +181,14 @@ export default async function AdminDashboardPage({
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-neutral-700">蓄積実績LTV(確定値・全期間{brandId ? "・このブランドのみ" : "・全ブランド"})</h2>
           <p className="text-xs text-neutral-400">
-            画面下部の日付絞り込みの影響を受けません。12ヶ月LTVは獲得日から365日時点の実績で固定し、13ヶ月目以降は更新しません(翌月以降、新たに365日に到達した顧客から順次加算)。
+            画面下部の日付絞り込みの影響を受けません。年間LTVは、お届け頻度別の到達回数(1ヶ月ごと=12回・2ヶ月ごと=6回・2週間ごと=24回、単品のみの顧客は365日)に到達した時点の実績で固定し、それ以降の実績では更新しません(翌月以降、新たに到達した顧客から順次加算)。頻度を途中で変更した顧客は、獲得時点の頻度(実測できる場合は初回→2回目の実際の間隔から判定)を基準にします。
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SummaryCard label="生涯LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.lifetimeRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
           <SummaryCard label="生涯LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.lifetimeIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
-          <SummaryCard label="12ヶ月LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.annualRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
-          <SummaryCard label="12ヶ月LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.annualIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+          <SummaryCard label="年間LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.annualRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+          <SummaryCard label="年間LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.annualIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
         </div>
       </div>
 
