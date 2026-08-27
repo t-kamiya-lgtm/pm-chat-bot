@@ -1,3 +1,5 @@
+import { incrementalProfit as computeIncrementalProfit } from "@/lib/order-cost-snapshot";
+
 export interface AccessLogRow {
   scenario_id: string | null;
   session_id: string;
@@ -11,6 +13,7 @@ export interface AccessLogRow {
 export interface OrderRow {
   scenario_id: string | null;
   product_id: string;
+  type: "one_time" | "subscription";
   amount: number;
   addon_amount: number | null;
   discount_amount: number | null;
@@ -24,6 +27,10 @@ export interface OrderRow {
   session_id: string | null;
   /** 1=新規(単品または定期初回)、2以上=定期の継続分。 */
   billing_cycle_number: number;
+  cost_amount: number | null;
+  bundle_insert_cost: number | null;
+  shipping_cost: number | null;
+  sales_commission_amount: number | null;
 }
 
 /**
@@ -64,6 +71,10 @@ interface OrderMoneyFields {
   payment_fee: number;
   discount_amount: number | null;
   first_time_discount_amount: number | null;
+  cost_amount: number | null;
+  bundle_insert_cost: number | null;
+  shipping_cost: number | null;
+  sales_commission_amount: number | null;
 }
 
 /** アドオン加算・値引反映後の請求額(スマレジ連携・CSV出力と同じ計算式)。 */
@@ -78,14 +89,20 @@ export function orderRevenue(order: OrderMoneyFields): number {
   );
 }
 
+/** 広告費除く増分利益。コストスナップショットの無い(導入前の)注文は0円として扱う。 */
+function orderIncrementalProfit(order: OrderMoneyFields): number {
+  return computeIncrementalProfit(order) ?? 0;
+}
+
 export interface Stats {
   accessCount: number;
   purchaseCount: number;
   revenue: number;
+  incrementalProfit: number;
 }
 
 function emptyStats(): Stats {
-  return { accessCount: 0, purchaseCount: 0, revenue: 0 };
+  return { accessCount: 0, purchaseCount: 0, revenue: 0, incrementalProfit: 0 };
 }
 
 export interface StatsWithConversion extends Stats {
@@ -123,6 +140,7 @@ function aggregateBy(
     const entry = bucket(order);
     entry.stats.purchaseCount += 1;
     entry.stats.revenue += orderRevenue(order);
+    entry.stats.incrementalProfit += orderIncrementalProfit(order);
   }
 
   return Array.from(table.entries())
@@ -144,6 +162,7 @@ export function totalStats(accessLogs: AccessLogRow[], orders: OrderRow[]): Stat
   stats.accessCount = accessLogs.length;
   stats.purchaseCount = orders.length;
   stats.revenue = orders.reduce((sum, o) => sum + orderRevenue(o), 0);
+  stats.incrementalProfit = orders.reduce((sum, o) => sum + orderIncrementalProfit(o), 0);
   return withConversion(stats);
 }
 
@@ -154,14 +173,34 @@ export function totalStats(accessLogs: AccessLogRow[], orders: OrderRow[]): Stat
  */
 export interface SplitStats {
   accessCount: number;
+  /** 新規(単品+定期初回)の合計。 */
   newPurchaseCount: number;
   newRevenue: number;
+  /** 新規のうち定期初回分の内訳(詳細行表示用)。 */
+  newSubscriptionCount: number;
+  newSubscriptionRevenue: number;
+  /** 新規のうち単品購入分の内訳(詳細行表示用)。 */
+  newOneTimeCount: number;
+  newOneTimeRevenue: number;
   continuingPurchaseCount: number;
   continuingRevenue: number;
+  /** 広告費除く増分利益の合計(新規+継続、コストスナップショットの無い注文は0円扱い)。 */
+  incrementalProfit: number;
 }
 
 function emptySplitStats(): SplitStats {
-  return { accessCount: 0, newPurchaseCount: 0, newRevenue: 0, continuingPurchaseCount: 0, continuingRevenue: 0 };
+  return {
+    accessCount: 0,
+    newPurchaseCount: 0,
+    newRevenue: 0,
+    newSubscriptionCount: 0,
+    newSubscriptionRevenue: 0,
+    newOneTimeCount: 0,
+    newOneTimeRevenue: 0,
+    continuingPurchaseCount: 0,
+    continuingRevenue: 0,
+    incrementalProfit: 0,
+  };
 }
 
 export interface SplitStatsWithDerived extends SplitStats {
@@ -181,9 +220,32 @@ function withSplitDerived(stats: SplitStats): SplitStatsWithDerived {
 
 type SplitRow = { key: string; label: string; stats: SplitStatsWithDerived };
 
+type SplitOrderRow = TaggedRow & OrderMoneyFields & { billing_cycle_number: number; type: "one_time" | "subscription" };
+
+/** 新規(billing_cycle_number<=1)の注文1件分を、単品/定期の内訳込みで統計に加算する。 */
+function addSplitOrder(stats: SplitStats, order: SplitOrderRow) {
+  const revenue = orderRevenue(order);
+  const profit = orderIncrementalProfit(order);
+  stats.incrementalProfit += profit;
+  if (order.billing_cycle_number > 1) {
+    stats.continuingPurchaseCount += 1;
+    stats.continuingRevenue += revenue;
+    return;
+  }
+  stats.newPurchaseCount += 1;
+  stats.newRevenue += revenue;
+  if (order.type === "subscription") {
+    stats.newSubscriptionCount += 1;
+    stats.newSubscriptionRevenue += revenue;
+  } else {
+    stats.newOneTimeCount += 1;
+    stats.newOneTimeRevenue += revenue;
+  }
+}
+
 function aggregateSplitBy(
   accessLogs: TaggedRow[],
-  orders: (TaggedRow & OrderMoneyFields & { billing_cycle_number: number })[],
+  orders: SplitOrderRow[],
   keyOf: (row: TaggedRow) => string,
   labelOf: (row: TaggedRow) => string,
 ): SplitRow[] {
@@ -200,17 +262,7 @@ function aggregateSplitBy(
   }
 
   for (const log of accessLogs) bucket(log).stats.accessCount += 1;
-  for (const order of orders) {
-    const entry = bucket(order);
-    const revenue = orderRevenue(order);
-    if (order.billing_cycle_number > 1) {
-      entry.stats.continuingPurchaseCount += 1;
-      entry.stats.continuingRevenue += revenue;
-    } else {
-      entry.stats.newPurchaseCount += 1;
-      entry.stats.newRevenue += revenue;
-    }
-  }
+  for (const order of orders) addSplitOrder(bucket(order).stats, order);
 
   return Array.from(table.entries())
     .map(([key, { label, stats }]) => ({ key, label, stats: withSplitDerived(stats) }))
@@ -251,17 +303,7 @@ export function aggregateByReferrerSplit(
   }
 
   for (const log of accessLogs) bucket(normalizeReferrer(log.referrer)).stats.accessCount += 1;
-  for (const order of orders) {
-    const entry = bucket(order.referrerLabel);
-    const revenue = orderRevenue(order);
-    if (order.billing_cycle_number > 1) {
-      entry.stats.continuingPurchaseCount += 1;
-      entry.stats.continuingRevenue += revenue;
-    } else {
-      entry.stats.newPurchaseCount += 1;
-      entry.stats.newRevenue += revenue;
-    }
-  }
+  for (const order of orders) addSplitOrder(bucket(order.referrerLabel).stats, order);
 
   return Array.from(table.entries())
     .map(([key, { label, stats }]) => ({ key, label, stats: withSplitDerived(stats) }))
@@ -281,14 +323,7 @@ export function aggregateByProductSplit(
       entry = { label: productNames[key] ?? "(削除済み商品)", stats: emptySplitStats() };
       table.set(key, entry);
     }
-    const revenue = orderRevenue(order);
-    if (order.billing_cycle_number > 1) {
-      entry.stats.continuingPurchaseCount += 1;
-      entry.stats.continuingRevenue += revenue;
-    } else {
-      entry.stats.newPurchaseCount += 1;
-      entry.stats.newRevenue += revenue;
-    }
+    addSplitOrder(entry.stats, order);
   }
   return Array.from(table.entries())
     .map(([key, { label, stats }]) => ({ key, label, stats: withSplitDerived(stats) }))

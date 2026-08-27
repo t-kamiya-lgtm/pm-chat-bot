@@ -1,5 +1,8 @@
+import { Fragment } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { DashboardViewToggle } from "@/components/admin/DashboardViewToggle";
+import { PrintButton } from "@/components/admin/PrintButton";
+import { CsvExportButton } from "@/components/admin/CsvExportButton";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
   aggregateByAd,
@@ -12,6 +15,8 @@ import {
   totalStats,
   type AccessLogRow,
   type OrderRow,
+  type StatsWithConversion,
+  type SplitStatsWithDerived,
 } from "@/lib/dashboard-aggregate";
 
 export const dynamic = "force-dynamic";
@@ -88,7 +93,7 @@ export default async function AdminDashboardPage({
   let orderQuery = supabase
     .from("orders")
     .select(
-      "scenario_id, product_id, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number, session_id",
+      "scenario_id, product_id, type, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number, session_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount",
     )
     .in("status", CONFIRMED_ORDER_STATUSES)
     .gte("created_at", `${dateFrom}T00:00:00+09:00`)
@@ -134,11 +139,14 @@ export default async function AdminDashboardPage({
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-semibold">実績ダッシュボード</h1>
+      <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-semibold">実績ダッシュボード</h1>
+        <PrintButton />
+      </div>
       <p className="mb-4 text-sm text-neutral-500">
         チャットボットへのアクセス数・購入数・売上を、シナリオ・商品・日付・広告(UTMパラメータ)・流入元(設置LP)・ブランド別に確認できます。
         アクセス数はウィジェットが開かれた時点でこのアプリが記録したものです。購入数・売上は入金/受注が確定した注文(与信待ち・失敗・キャンセルを除く)のみを集計しています。
-        「新規」は単品購入・定期初回、「継続」は定期の2回目以降を指します。
+        「新規」は単品購入・定期初回、「継続」は定期の2回目以降を指します。増分利益は広告費を除く(売上-原価-同梱物費用-送料原価-販売手数料-支払手数料、コスト設定導入前の注文は0円扱い)。
       </p>
 
       {(accessError || ordersError) && (
@@ -149,7 +157,7 @@ export default async function AdminDashboardPage({
 
       <form
         method="get"
-        className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
+        className="print:hidden mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
       >
         <label className="block">
           <span className="mb-1 block text-xs text-neutral-500">日付(から)</span>
@@ -187,25 +195,41 @@ export default async function AdminDashboardPage({
         </button>
       </form>
 
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <SummaryCard label="アクセス数" value={summary.accessCount.toLocaleString()} />
         <SummaryCard label="購入数" value={summary.purchaseCount.toLocaleString()} />
         <SummaryCard label="売上" value={formatYen(summary.revenue)} />
         <SummaryCard label="コンバージョン率" value={formatRate(summary.conversionRate)} />
+        <SummaryCard label="増分利益" value={formatYen(summary.incrementalProfit)} />
       </div>
 
-      <Section title="広告別内訳">
+      <Section
+        title="広告別内訳"
+        exportButton={
+          <CsvExportButton filename="広告別内訳.csv" headers={STATS_CSV_HEADERS} rows={byAd.map(statsCsvRow)} />
+        }
+      >
         <StatsTable rows={byAd} labelHeader="広告(utm_source / utm_medium / utm_campaign)" />
       </Section>
 
-      <Section title="流入元別(設置LP別)">
+      <Section
+        title="流入元別(設置LP別)"
+        exportButton={
+          <CsvExportButton filename="流入元別内訳.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byReferrer.map(splitStatsCsvRow)} />
+        }
+      >
         <p className="mb-2 text-xs text-neutral-400">
           チャットウィジェットが開かれた直前のページ(referrer)をホスト名+パス単位で集計しています。LP側のReferrer-Policy設定によっては取得できない場合があります。
         </p>
         <SplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />
       </Section>
 
-      <Section title="シナリオ別">
+      <Section
+        title="シナリオ別"
+        exportButton={
+          <CsvExportButton filename="シナリオ別内訳.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byScenario.map(splitStatsCsvRow)} />
+        }
+      >
         <DashboardViewToggle
           pivotLabel="シナリオ×日付"
           listView={<SplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
@@ -213,7 +237,12 @@ export default async function AdminDashboardPage({
         />
       </Section>
 
-      <Section title="商品別">
+      <Section
+        title="商品別"
+        exportButton={
+          <CsvExportButton filename="商品別内訳.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byProduct.map(splitStatsCsvRow)} />
+        }
+      >
         <DashboardViewToggle
           pivotLabel="商品×日付"
           listView={<SplitStatsTable rows={byProduct} labelHeader="商品" hideAccess />}
@@ -221,11 +250,66 @@ export default async function AdminDashboardPage({
         />
       </Section>
 
-      <Section title="日別推移">
+      <Section
+        title="日別推移"
+        exportButton={
+          <CsvExportButton filename="日別推移.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byDate.map(splitStatsCsvRow)} />
+        }
+      >
         <SplitStatsTable rows={byDate} labelHeader="日付" />
       </Section>
     </div>
   );
+}
+
+const STATS_CSV_HEADERS = ["項目", "アクセス数", "購入数", "売上", "CVR", "増分利益"];
+
+function statsCsvRow(row: { label: string; stats: StatsWithConversion }): (string | number)[] {
+  return [
+    row.label,
+    row.stats.accessCount,
+    row.stats.purchaseCount,
+    row.stats.revenue,
+    row.stats.conversionRate === null ? "" : `${(row.stats.conversionRate * 100).toFixed(1)}%`,
+    row.stats.incrementalProfit,
+  ];
+}
+
+const SPLIT_STATS_CSV_HEADERS = [
+  "項目",
+  "アクセス数",
+  "新規購入数(合計)",
+  "新規売上(合計)",
+  "新規購入数(定期)",
+  "新規売上(定期)",
+  "新規購入数(単品)",
+  "新規売上(単品)",
+  "CVR",
+  "平均単価",
+  "継続購入数",
+  "継続売上",
+  "売上合計",
+  "増分利益",
+];
+
+function splitStatsCsvRow(row: { label: string; stats: SplitStatsWithDerived }): (string | number)[] {
+  const s = row.stats;
+  return [
+    row.label,
+    s.accessCount,
+    s.newPurchaseCount,
+    s.newRevenue,
+    s.newSubscriptionCount,
+    s.newSubscriptionRevenue,
+    s.newOneTimeCount,
+    s.newOneTimeRevenue,
+    s.conversionRate === null ? "" : `${(s.conversionRate * 100).toFixed(1)}%`,
+    s.avgUnitPrice === null ? "" : Math.round(s.avgUnitPrice),
+    s.continuingPurchaseCount,
+    s.continuingRevenue,
+    s.totalRevenue,
+    s.incrementalProfit,
+  ];
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
@@ -237,10 +321,21 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  exportButton,
+  children,
+}: {
+  title: string;
+  exportButton?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="mb-8">
-      <h2 className="mb-3 text-sm font-semibold text-neutral-700">{title}</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-neutral-700">{title}</h2>
+        {exportButton}
+      </div>
       {children}
     </div>
   );
@@ -251,7 +346,7 @@ function StatsTable({
   labelHeader,
   hideAccess,
 }: {
-  rows: { key: string; label: string; stats: { accessCount: number; purchaseCount: number; revenue: number; conversionRate: number | null } }[];
+  rows: { key: string; label: string; stats: StatsWithConversion }[];
   labelHeader: string;
   hideAccess?: boolean;
 }) {
@@ -268,6 +363,7 @@ function StatsTable({
             <th className="px-3 py-2 text-right">購入数</th>
             <th className="px-3 py-2 text-right">売上</th>
             {!hideAccess && <th className="px-3 py-2 text-right">CVR</th>}
+            <th className="px-3 py-2 text-right">増分利益</th>
           </tr>
         </thead>
         <tbody>
@@ -278,6 +374,7 @@ function StatsTable({
               <td className="px-3 py-2 text-right">{row.stats.purchaseCount.toLocaleString()}</td>
               <td className="px-3 py-2 text-right">{formatYen(row.stats.revenue)}</td>
               {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
+              <td className="px-3 py-2 text-right">{formatYen(row.stats.incrementalProfit)}</td>
             </tr>
           ))}
         </tbody>
@@ -291,26 +388,14 @@ function SplitStatsTable({
   labelHeader,
   hideAccess,
 }: {
-  rows: {
-    key: string;
-    label: string;
-    stats: {
-      accessCount: number;
-      newPurchaseCount: number;
-      newRevenue: number;
-      conversionRate: number | null;
-      avgUnitPrice: number | null;
-      continuingPurchaseCount: number;
-      continuingRevenue: number;
-      totalRevenue: number;
-    };
-  }[];
+  rows: { key: string; label: string; stats: SplitStatsWithDerived }[];
   labelHeader: string;
   hideAccess?: boolean;
 }) {
   if (rows.length === 0) {
     return <p className="text-sm text-neutral-400">データがありません</p>;
   }
+  const colCount = (hideAccess ? 7 : 9) + 1;
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
       <table className="w-full text-sm">
@@ -325,27 +410,76 @@ function SplitStatsTable({
             <th className="px-3 py-2 text-right">継続購入数</th>
             <th className="px-3 py-2 text-right">継続売上</th>
             <th className="px-3 py-2 text-right">売上合計</th>
+            <th className="px-3 py-2 text-right">増分利益</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.key} className="border-t border-neutral-100">
-              <td className="px-3 py-2">{row.label}</td>
-              {!hideAccess && <td className="px-3 py-2 text-right">{row.stats.accessCount.toLocaleString()}</td>}
-              <td className="px-3 py-2 text-right">{row.stats.newPurchaseCount.toLocaleString()}</td>
-              <td className="px-3 py-2 text-right">{formatYen(row.stats.newRevenue)}</td>
-              {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
-              <td className="px-3 py-2 text-right">
-                {row.stats.avgUnitPrice === null ? "-" : formatYen(Math.round(row.stats.avgUnitPrice))}
-              </td>
-              <td className="px-3 py-2 text-right">{row.stats.continuingPurchaseCount.toLocaleString()}</td>
-              <td className="px-3 py-2 text-right">{formatYen(row.stats.continuingRevenue)}</td>
-              <td className="px-3 py-2 text-right font-semibold">{formatYen(row.stats.totalRevenue)}</td>
-            </tr>
+            <Fragment key={row.key}>
+              <tr className="border-t border-neutral-100">
+                <td className="px-3 py-2">{row.label}</td>
+                {!hideAccess && <td className="px-3 py-2 text-right">{row.stats.accessCount.toLocaleString()}</td>}
+                <td className="px-3 py-2 text-right">{row.stats.newPurchaseCount.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right">{formatYen(row.stats.newRevenue)}</td>
+                {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
+                <td className="px-3 py-2 text-right">
+                  {row.stats.avgUnitPrice === null ? "-" : formatYen(Math.round(row.stats.avgUnitPrice))}
+                </td>
+                <td className="px-3 py-2 text-right">{row.stats.continuingPurchaseCount.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right">{formatYen(row.stats.continuingRevenue)}</td>
+                <td className="px-3 py-2 text-right font-semibold">{formatYen(row.stats.totalRevenue)}</td>
+                <td className="px-3 py-2 text-right">{formatYen(row.stats.incrementalProfit)}</td>
+              </tr>
+              <NewOrderBreakdownRow
+                key={`${row.key}-sub`}
+                colCount={colCount}
+                labelColSpan={hideAccess ? 1 : 2}
+                bgClass="bg-blue-50"
+                label="└ 定期(新規)"
+                count={row.stats.newSubscriptionCount}
+                revenue={row.stats.newSubscriptionRevenue}
+              />
+              <NewOrderBreakdownRow
+                colCount={colCount}
+                labelColSpan={hideAccess ? 1 : 2}
+                bgClass="bg-amber-50"
+                label="└ 単品(新規)"
+                count={row.stats.newOneTimeCount}
+                revenue={row.stats.newOneTimeRevenue}
+              />
+            </Fragment>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** 新規注文の内訳(定期/単品)を表す詳細行。読みやすさのため背景色をつける。 */
+function NewOrderBreakdownRow({
+  colCount,
+  labelColSpan,
+  bgClass,
+  label,
+  count,
+  revenue,
+}: {
+  colCount: number;
+  labelColSpan: number;
+  bgClass: string;
+  label: string;
+  count: number;
+  revenue: number;
+}) {
+  return (
+    <tr className={`${bgClass} text-xs text-neutral-500`}>
+      <td className="px-3 py-1 pl-6" colSpan={labelColSpan}>
+        {label}
+      </td>
+      <td className="px-3 py-1 text-right">{count.toLocaleString()}</td>
+      <td className="px-3 py-1 text-right">{formatYen(revenue)}</td>
+      <td className="px-3 py-1" colSpan={colCount - labelColSpan - 2} />
+    </tr>
   );
 }
 
