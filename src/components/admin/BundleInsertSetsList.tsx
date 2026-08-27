@@ -438,7 +438,13 @@ export function BundleInsertSetsList({
                 <button type="button" onClick={() => startEdit(set)} className="text-blue-600 hover:underline">
                   編集
                 </button>
-                <ConfirmButton label="削除" confirmLabel="この同梱物セットを削除します。よろしいですか?" onConfirm={() => handleDelete(set.id)} />
+                <ConfirmButton
+                  label="削除"
+                  confirmLabel="この同梱物セットを削除します。よろしいですか?"
+                  disabled={set.distributedCount > 0}
+                  title={set.distributedCount > 0 ? "配布実績があるため削除できません" : undefined}
+                  onConfirm={() => handleDelete(set.id)}
+                />
               </div>
             </div>
           </div>

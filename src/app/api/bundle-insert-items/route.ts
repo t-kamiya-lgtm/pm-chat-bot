@@ -8,7 +8,7 @@ const createSchema = z.object({
   brandId: z.string().uuid(),
   itemType: z.string().min(1),
   name: z.string().min(1),
-  url: z.string().url(),
+  url: z.string().url().optional(),
   registeredDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       brand_id: parsed.data.brandId,
       item_type: parsed.data.itemType,
       name: parsed.data.name,
-      url: parsed.data.url,
+      url: parsed.data.url || null,
       ...(parsed.data.registeredDate && { registered_date: parsed.data.registeredDate }),
     })
     .select("*")

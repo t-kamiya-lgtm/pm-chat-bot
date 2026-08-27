@@ -97,7 +97,7 @@ export function BundleInsertItemsList({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.brandId || !form.itemType.trim() || !form.name.trim() || !form.url.trim()) return;
+    if (!form.brandId || !form.itemType.trim() || !form.name.trim()) return;
     setSaving(true);
     setToast(null);
     const url = editingId ? `/api/bundle-insert-items/${editingId}` : "/api/bundle-insert-items";
@@ -108,7 +108,7 @@ export function BundleInsertItemsList({
         ...(!editingId && { brandId: form.brandId }),
         itemType: form.itemType.trim(),
         name: form.name.trim(),
-        url: form.url.trim(),
+        url: form.url.trim() || null,
         registeredDate: form.registeredDate,
       }),
     });
@@ -254,14 +254,13 @@ export function BundleInsertItemsList({
             />
           </label>
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-neutral-500">プレビューURL(Google Driveなどの共有リンク)</span>
+            <span className="mb-1 block text-xs text-neutral-500">プレビューURL(Google Driveなどの共有リンク、任意)</span>
             <input
               type="url"
               className="input"
               value={form.url}
               onChange={(e) => setForm({ ...form, url: e.target.value })}
               placeholder="https://drive.google.com/file/d/..."
-              required
             />
           </label>
           <div className="flex gap-2 sm:col-span-2">
