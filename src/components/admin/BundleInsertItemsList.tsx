@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
@@ -17,6 +17,9 @@ export interface BundleInsertItemRow {
   item_type: string;
   name: string;
   registered_date: string;
+  url: string | null;
+  status: "active" | "inactive";
+  distributedCount: number;
   brands: BrandOption | null;
 }
 
@@ -28,18 +31,32 @@ interface FormState {
   brandId: string;
   itemType: string;
   name: string;
+  url: string;
   registeredDate: string;
 }
 
 function emptyForm(defaultBrandId: string): FormState {
-  return { brandId: defaultBrandId, itemType: "", name: "", registeredDate: todayStr() };
+  return { brandId: defaultBrandId, itemType: "", name: "", url: "", registeredDate: todayStr() };
 }
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("ja-JP");
 }
 
-/** ①同梱物登録: ブランドごとの個々の同梱物マスタ。②同梱物設定でセットに組み込む対象として使う。 */
+/** Google DriveのURLからファイルIDを抜き出し、公開サムネイル画像のURLを組み立てる。 */
+function driveThumbnailUrl(url: string): string | null {
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) ?? url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (!match) return null;
+  return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w400`;
+}
+
+const STATUS_FILTERS = [
+  { key: "active", label: "アクティブ" },
+  { key: "inactive", label: "無効" },
+  { key: "all", label: "すべて" },
+] as const;
+
+/** ①同梱物登録: ブランドごとの個々の同梱物マスタ。②同梱物設定でセットに組み込む対象として使う。ギャラリー表示。 */
 export function BundleInsertItemsList({
   initialItems,
   brands,
@@ -53,6 +70,18 @@ export function BundleInsertItemsList({
   const [form, setForm] = useState<FormState>(emptyForm(brands[0]?.id ?? ""));
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [brandFilter, setBrandFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]["key"]>("active");
+
+  const filteredItems = useMemo(
+    () =>
+      initialItems.filter(
+        (item) =>
+          (brandFilter === "" || item.brand_id === brandFilter) &&
+          (statusFilter === "all" || item.status === statusFilter),
+      ),
+    [initialItems, brandFilter, statusFilter],
+  );
 
   function startCreate() {
     setForm(emptyForm(brands[0]?.id ?? ""));
@@ -61,14 +90,14 @@ export function BundleInsertItemsList({
   }
 
   function startEdit(item: BundleInsertItemRow) {
-    setForm({ brandId: item.brand_id, itemType: item.item_type, name: item.name, registeredDate: item.registered_date });
+    setForm({ brandId: item.brand_id, itemType: item.item_type, name: item.name, url: item.url ?? "", registeredDate: item.registered_date });
     setEditingId(item.id);
     setShowForm(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.brandId || !form.itemType.trim() || !form.name.trim()) return;
+    if (!form.brandId || !form.itemType.trim() || !form.name.trim() || !form.url.trim()) return;
     setSaving(true);
     setToast(null);
     const url = editingId ? `/api/bundle-insert-items/${editingId}` : "/api/bundle-insert-items";
@@ -79,6 +108,7 @@ export function BundleInsertItemsList({
         ...(!editingId && { brandId: form.brandId }),
         itemType: form.itemType.trim(),
         name: form.name.trim(),
+        url: form.url.trim(),
         registeredDate: form.registeredDate,
       }),
     });
@@ -90,6 +120,21 @@ export function BundleInsertItemsList({
     } else {
       const body = await res.json().catch(() => ({}));
       setToast({ message: `保存に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
+    }
+  }
+
+  async function handleToggleStatus(item: BundleInsertItemRow) {
+    const nextStatus = item.status === "active" ? "inactive" : "active";
+    const res = await fetch(`/api/bundle-insert-items/${item.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    });
+    if (res.ok) {
+      router.refresh();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setToast({ message: `変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`, type: "error" });
     }
   }
 
@@ -108,10 +153,40 @@ export function BundleInsertItemsList({
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <p className="text-sm text-neutral-500">
-        ブランドごとに、個々の同梱物(レシピ・挨拶文・継続応援施策の同梱物など)を登録します。②同梱物設定でこれらを選んでセット化します。
+        ブランドごとに、個々の同梱物(レシピ・挨拶文・継続応援施策の同梱物など)を登録します。URLはGoogle Driveなどの共有リンクを想定しており、プレビューから別タブで開けます。②同梱物設定でこれらを選んでセット化します。
       </p>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="flex items-center gap-1">
+            <span className="text-xs text-neutral-500">ブランド</span>
+            <select className="input" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+              <option value="">全ブランド</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {b.code ? `(${b.code})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex gap-1">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setStatusFilter(f.key)}
+                className={`rounded-md border px-2.5 py-1 text-xs ${
+                  statusFilter === f.key
+                    ? "border-blue-600 bg-blue-50 text-blue-700"
+                    : "border-neutral-300 text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {!showForm && (
           <button
             type="button"
@@ -178,6 +253,17 @@ export function BundleInsertItemsList({
               required
             />
           </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-xs text-neutral-500">プレビューURL(Google Driveなどの共有リンク)</span>
+            <input
+              type="url"
+              className="input"
+              value={form.url}
+              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              placeholder="https://drive.google.com/file/d/..."
+              required
+            />
+          </label>
           <div className="flex gap-2 sm:col-span-2">
             <button type="submit" disabled={saving} className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">
               保存する
@@ -196,46 +282,70 @@ export function BundleInsertItemsList({
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="bg-sky-100 text-xs text-neutral-600">
-            <tr>
-              <th className="px-4 py-2">ブランド</th>
-              <th className="px-4 py-2">同梱物種類</th>
-              <th className="px-4 py-2">同梱物名</th>
-              <th className="px-4 py-2">登録日</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100">
-            {initialItems.map((item) => (
-              <tr key={item.id} className="hover:bg-neutral-50">
-                <td className="px-4 py-2">
-                  {item.brands?.name ?? "-"}
-                  {item.brands?.code ? `(${item.brands.code})` : ""}
-                </td>
-                <td className="px-4 py-2">{item.item_type}</td>
-                <td className="px-4 py-2 font-medium">{item.name}</td>
-                <td className="px-4 py-2 whitespace-nowrap">{formatDate(item.registered_date)}</td>
-                <td className="px-4 py-2">
-                  <div className="flex justify-end gap-3 text-xs">
-                    <button type="button" onClick={() => startEdit(item)} className="text-blue-600 hover:underline">
-                      編集
-                    </button>
-                    <ConfirmButton label="削除" confirmLabel="この同梱物を削除します。よろしいですか?" onConfirm={() => handleDelete(item.id)} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {initialItems.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">
-                  同梱物が登録されていません
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {filteredItems.map((item) => {
+          const thumbnail = item.url ? driveThumbnailUrl(item.url) : null;
+          return (
+            <div key={item.id} className="flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white">
+              {item.url ? (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex aspect-square items-center justify-center overflow-hidden bg-neutral-50 text-neutral-400 hover:opacity-80"
+                >
+                  {thumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumbnail} alt={item.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xs">🔗 プレビューを開く</span>
+                  )}
+                </a>
+              ) : (
+                <div className="flex aspect-square items-center justify-center bg-neutral-50 text-xs text-neutral-300">URL未登録</div>
+              )}
+              <div className="flex flex-1 flex-col gap-1 p-3 text-xs">
+                <div className="flex flex-wrap items-center gap-1">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      item.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    {item.status === "active" ? "アクティブ" : "無効"}
+                  </span>
+                  <span className="text-neutral-400">
+                    {item.brands?.name ?? "-"}
+                    {item.brands?.code ? `(${item.brands.code})` : ""}
+                  </span>
+                </div>
+                <div className="text-neutral-400">{item.item_type}</div>
+                <div className="font-medium text-neutral-900">{item.name}</div>
+                <div className="text-neutral-400">登録日: {formatDate(item.registered_date)}</div>
+                <div className="font-medium text-neutral-700">配布数: {item.distributedCount.toLocaleString()}件</div>
+                <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => handleToggleStatus(item)} className="text-neutral-500 hover:underline">
+                    {item.status === "active" ? "無効にする" : "有効にする"}
+                  </button>
+                  <button type="button" onClick={() => startEdit(item)} className="text-blue-600 hover:underline">
+                    編集
+                  </button>
+                  <ConfirmButton
+                    label="削除"
+                    confirmLabel="この同梱物を削除します。よろしいですか?"
+                    disabled={item.distributedCount > 0}
+                    title={item.distributedCount > 0 ? "配布実績があるため削除できません" : undefined}
+                    onConfirm={() => handleDelete(item.id)}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {filteredItems.length === 0 && (
+          <p className="col-span-full rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
+            条件に合致する同梱物がありません
+          </p>
+        )}
       </div>
     </div>
   );

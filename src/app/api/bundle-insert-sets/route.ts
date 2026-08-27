@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 import { findConflictingSets, type BundleInsertSetCandidate } from "@/lib/bundle-insert-conflict";
-import { countDistributedOrders } from "@/lib/bundle-insert-distribution";
+import { listBundleInsertSetsWithDetails } from "@/lib/bundle-insert-sets-query";
 
 const createSchema = z.object({
   brandId: z.string().uuid(),
@@ -30,38 +30,10 @@ export async function GET() {
   if (!roleCheck.ok) return roleCheck.response;
 
   const supabase = createSupabaseAdminClient();
-  const [setsRes, brandsRes, itemsRes] = await Promise.all([
-    supabase.from("bundle_insert_sets").select("*").order("period_start", { ascending: false }),
-    supabase.from("brands").select("id, name, code"),
-    supabase.from("bundle_insert_items").select("id, name, item_type"),
-  ]);
-  if (setsRes.error) return NextResponse.json({ error: setsRes.error.message }, { status: 500 });
-  if (brandsRes.error) return NextResponse.json({ error: brandsRes.error.message }, { status: 500 });
-  if (itemsRes.error) return NextResponse.json({ error: itemsRes.error.message }, { status: 500 });
+  const { sets, error } = await listBundleInsertSetsWithDetails(supabase);
+  if (error) return NextResponse.json({ error }, { status: 500 });
 
-  const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
-  const itemById = new Map((itemsRes.data ?? []).map((i) => [i.id as string, i]));
-
-  const bundleInsertSets = await Promise.all(
-    (setsRes.data ?? []).map(async (set) => {
-      const distributedCount = await countDistributedOrders(supabase, {
-        brandId: set.brand_id as string,
-        periodStart: set.period_start as string,
-        periodEnd: set.period_end as string | null,
-        targetOrderType: set.target_order_type as "subscription" | "one_time" | "both",
-        targetCycleNumbers: set.target_cycle_numbers as number[] | null,
-        targetProductIds: set.target_product_ids as string[] | null,
-      });
-      return {
-        ...set,
-        brands: brandById.get(set.brand_id as string) ?? null,
-        items: ((set.item_ids as string[] | null) ?? []).map((id) => itemById.get(id)).filter(Boolean),
-        distributedCount,
-      };
-    }),
-  );
-
-  return NextResponse.json({ bundleInsertSets });
+  return NextResponse.json({ bundleInsertSets: sets });
 }
 
 async function fetchActiveSetsForConflictCheck(
