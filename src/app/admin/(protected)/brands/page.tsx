@@ -14,6 +14,7 @@ export default async function AdminBrandsPage() {
   const rows = (brands ?? []).map((brand) => ({
     id: brand.id as string,
     name: brand.name as string,
+    code: (brand.code as string | null) ?? null,
     groups: (groups ?? [])
       .filter((g) => g.brand_id === brand.id)
       .map((g) => ({ id: g.id as string, name: g.name as string })),
@@ -27,6 +28,7 @@ export default async function AdminBrandsPage() {
       </div>
       <p className="mb-4 text-sm text-neutral-500">
         アイテム(親品番)の一段上の階層です。例:「プロテインモンスター」ブランドの下に、通常品とソバ味などのアイテムをまとめられます。各アイテムの詳細画面でブランドを割り当ててください。
+        ブランドコード(英字2文字)は、シナリオコード(シナリオ編集画面の「シナリオコード」欄)の先頭2文字と突き合わせて、実績ダッシュボードのブランド別集計に使われます。
       </p>
 
       <BrandsList initialBrands={rows} />

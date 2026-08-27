@@ -9,6 +9,7 @@ import { Toast } from "@/components/admin/Toast";
 export interface BrandRow {
   id: string;
   name: string;
+  code: string | null;
   groups: { id: string; name: string }[];
 }
 
@@ -17,16 +18,19 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
   const [pending, setPending] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editCode, setEditCode] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   function startEdit(brand: BrandRow) {
     setEditingId(brand.id);
     setEditValue(brand.name);
+    setEditCode(brand.code ?? "");
   }
 
   async function handleRename(brand: BrandRow) {
     const name = editValue.trim();
-    if (!name || name === brand.name) {
+    const code = editCode.trim();
+    if ((!name || name === brand.name) && code === (brand.code ?? "")) {
       setEditingId(null);
       return;
     }
@@ -35,20 +39,23 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
     const res = await fetch(`/api/brands/${brand.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({
+        ...(name && name !== brand.name && { name }),
+        code: code || null,
+      }),
     });
     setPending(null);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setToast({
-        message: `名称の変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
+        message: `変更に失敗しました: ${JSON.stringify(body.error ?? res.status)}`,
         type: "error",
       });
       return;
     }
     setEditingId(null);
-    setToast({ message: "ブランド名を変更しました", type: "success" });
+    setToast({ message: "ブランドを変更しました", type: "success" });
     router.refresh();
   }
 
@@ -77,7 +84,15 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
                   autoFocus
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
+                  placeholder="ブランド名"
                   className="input flex-1"
+                />
+                <input
+                  value={editCode}
+                  onChange={(e) => setEditCode(e.target.value)}
+                  placeholder="コード(英字2文字)"
+                  maxLength={2}
+                  className="input w-32 font-mono uppercase"
                 />
                 <button
                   type="button"
@@ -96,7 +111,12 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
                 </button>
               </div>
             ) : (
-              <p className="font-medium">{brand.name}</p>
+              <p className="font-medium">
+                {brand.name}{" "}
+                <span className="font-mono text-xs text-neutral-400">
+                  ({brand.code ?? "コード未設定"})
+                </span>
+              </p>
             )}
             {editingId !== brand.id && (
               <div className="flex shrink-0 gap-3 text-sm">
@@ -106,7 +126,7 @@ export function BrandsList({ initialBrands }: { initialBrands: BrandRow[] }) {
                   onClick={() => startEdit(brand)}
                   className="text-blue-600 hover:underline disabled:opacity-30"
                 >
-                  名前を編集
+                  編集
                 </button>
                 <ConfirmButton
                   label="削除"

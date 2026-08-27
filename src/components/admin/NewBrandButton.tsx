@@ -8,6 +8,7 @@ export function NewBrandButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -20,7 +21,7 @@ export function NewBrandButton() {
     const res = await fetch("/api/brands", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: name.trim() }),
+      body: JSON.stringify({ name: name.trim(), code: code.trim() || undefined }),
     });
     setCreating(false);
 
@@ -34,6 +35,7 @@ export function NewBrandButton() {
     }
     setOpen(false);
     setName("");
+    setCode("");
     router.refresh();
   }
 
@@ -59,6 +61,13 @@ export function NewBrandButton() {
         placeholder="例: プロテインモンスター"
         className="input"
       />
+      <input
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="コード(英字2文字、例: PM)"
+        maxLength={2}
+        className="input w-40 font-mono uppercase"
+      />
       <button
         type="submit"
         disabled={creating}
@@ -71,6 +80,7 @@ export function NewBrandButton() {
         onClick={() => {
           setOpen(false);
           setName("");
+          setCode("");
           setToast(null);
         }}
         className="rounded-md border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"

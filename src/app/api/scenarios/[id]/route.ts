@@ -15,9 +15,12 @@ const updateSchema = z.object({
     .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "半角英小文字・数字・ハイフンのみ使用できます")
     .nullable()
     .optional(),
+  // シナリオコード(旧: 識別コード)。英字2文字(ブランドコード)+数字4桁(シナリオNo)。
+  // 受注番号のプレフィックスとしても使われる。
   orderCode: z
     .string()
-    .regex(/^[A-Za-z0-9]+$/, "半角英数字のみ使用できます")
+    .regex(/^[A-Za-z]{2}[0-9]{4}$/, "英字2文字+数字4桁で入力してください(例: PM0001)")
+    .transform((v) => v.toUpperCase())
     .nullable()
     .optional(),
   chatBackgroundColor: z
@@ -102,6 +105,22 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const input = parsed.data;
 
   const supabase = createSupabaseAdminClient();
+
+  if (input.orderCode) {
+    const { data: duplicate } = await supabase
+      .from("scenarios")
+      .select("id")
+      .ilike("order_code", input.orderCode)
+      .neq("id", id)
+      .maybeSingle();
+    if (duplicate) {
+      return NextResponse.json(
+        { error: "このシナリオコードは既に別のシナリオで使用されています" },
+        { status: 400 },
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from("scenarios")
     .update({
