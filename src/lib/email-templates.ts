@@ -25,7 +25,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 ■ご注文番号: {{order_number}}
 ■商品: {{product_name}}
 ■数量: {{quantity}}
-■お支払い金額: {{total_amount}}円
+■お支払い金額: {{total_amount}}円{{addon_line}}{{subscription_info_block}}
 
 発送準備が整いましたら、改めてご連絡いたします。
 今後ともよろしくお願いいたします。`,
@@ -36,7 +36,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
 
 ■商品: {{product_name}}
 ■数量: {{quantity}}
-■お支払い金額: {{total_amount}}円
+■お支払い金額: {{total_amount}}円{{addon_line}}
 
 今後ともよろしくお願いいたします。`,
   abandonedLeadSubject: "{{customer_name}}様、ご注文の途中ではありませんか?",

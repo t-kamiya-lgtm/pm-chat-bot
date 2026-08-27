@@ -21,6 +21,13 @@ export const SUBSCRIPTION_INTERVAL_DAYS: Record<SubscriptionInterval, number> = 
   bimonthly: 60,
 };
 
+/** 表示用の日本語ラベル(メール本文・管理画面等で使用)。 */
+export const SUBSCRIPTION_INTERVAL_LABELS: Record<SubscriptionInterval, string> = {
+  biweekly: "2週間ごと",
+  monthly: "1ヶ月ごと",
+  bimonthly: "2ヶ月ごと",
+};
+
 const VALID_SUBSCRIPTION_INTERVALS: readonly string[] = Object.keys(SUBSCRIPTION_INTERVAL_DAYS);
 
 /**

@@ -143,7 +143,10 @@ export function EmailTemplatesForm({
             <>
               決済確定時に購入者へ送信されます。差し込み項目:
               {" "}
-              {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}}"}
+              {"{{customer_name}} {{product_name}} {{order_number}} {{quantity}} {{total_amount}} {{addon_line}} {{subscription_info_block}}"}
+              <br />
+              {"{{addon_line}}"}はアドオン(クロスセル)商品がある場合のみ「■アドオン商品: ...」の行、
+              {"{{subscription_info_block}}"}は定期便の初回注文の場合のみ「■初回お届け日: ...」「■お届け頻度: ...」の行です(それ以外は空欄)。
             </>
           }
         />
@@ -177,7 +180,9 @@ export function EmailTemplatesForm({
             <>
               定期購入の2回目以降の周期課金が完了するたびに送信されます。差し込み項目:
               {" "}
-              {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}}"}
+              {"{{customer_name}} {{product_name}} {{quantity}} {{total_amount}} {{cycle_number}} {{addon_line}}"}
+              <br />
+              {"{{addon_line}}"}はアドオン(クロスセル)商品がある場合のみ「■アドオン商品: ...」の行です(それ以外は空欄)。
             </>
           }
         />
