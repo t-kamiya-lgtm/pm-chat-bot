@@ -26,6 +26,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/dashboard", label: "実績ダッシュボード" },
       { href: "/admin/subscription-analysis", label: "定期分析" },
+      { href: "/admin/subscription-analysis-v2", label: "定期分析(新)" },
       { href: "/admin/leads", label: "アクセスログ" },
     ],
   },

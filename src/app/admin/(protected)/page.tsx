@@ -22,6 +22,11 @@ const SECTIONS: { title: string; cards: DashboardCard[] }[] = [
         title: "定期分析",
         description: "セグメント別の定期LTVランキング・単品→定期引き上げ率",
       },
+      {
+        href: "/admin/subscription-analysis-v2",
+        title: "定期分析(新)",
+        description: "施策の経過期間を揃えた公平な比較・残存率予測・顧客明細ドリルダウン",
+      },
       { href: "/admin/leads", title: "アクセスログ", description: "チャット開始・離脱状況の確認と連絡管理" },
     ],
   },
