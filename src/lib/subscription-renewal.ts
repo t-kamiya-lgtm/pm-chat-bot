@@ -4,6 +4,7 @@ import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
+import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
 import type { Address, SubscriptionInterval } from "@/lib/types";
 
 /**
@@ -59,6 +60,13 @@ export async function createSubscriptionRenewalOrder(params: {
         quantity: original.quantity,
         shipping_fee: original.shipping_fee,
         payment_fee: original.payment_fee,
+        // 原価・費用・税率は初回注文時点のスナップショットを引き継ぐ(この経路はStripeの
+        // 周期課金をそのまま反映するだけで、商品・価格の個別上書きに対応していないため)。
+        cost_amount: original.cost_amount,
+        bundle_insert_cost: original.bundle_insert_cost,
+        shipping_cost: original.shipping_cost,
+        sales_commission_amount: original.sales_commission_amount,
+        tax_rate: original.tax_rate,
         status: "paid",
         // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、未取込みのまま生成する
         stripe_subscription_id: params.stripeSubscriptionId,
@@ -152,6 +160,10 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
     const deliveryDate = subscriptionRow.next_billing_date as string;
 
     const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
+    // 商品自体が上書きされている可能性があるため、原価・費用・税率は初回注文の値を
+    // そのまま引き継がず、実際に出荷する商品(productId)の現在の設定から都度解決する
+    // (amount/shippingFee/paymentFeeと同じくoverride列を優先するのと同じ考え方)。
+    const costSnapshot = await resolveOrderCostSnapshot(supabase, productId, deliveryDate);
     const { data: newOrder, error } = await supabase
       .from("orders")
       .insert({
@@ -166,6 +178,7 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
         quantity,
         shipping_fee: shippingFee,
         payment_fee: paymentFee,
+        ...costSnapshot,
         status: "pending",
         delivery_date: deliveryDate,
         delivery_time_slot: original.delivery_time_slot,
@@ -244,6 +257,7 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
 
     for (const item of bundledItems ?? []) {
       const itemOrderNumber = await generateOrderNumber(supabase, original.scenario_id);
+      const itemCostSnapshot = await resolveOrderCostSnapshot(supabase, item.product_id, deliveryDate);
       await supabase.from("orders").insert({
         customer_id: original.customer_id,
         product_id: item.product_id,
@@ -255,6 +269,7 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
         quantity: item.quantity,
         shipping_fee: 0,
         payment_fee: 0,
+        ...itemCostSnapshot,
         status: newStatus,
         delivery_date: deliveryDate,
         delivery_time_slot: original.delivery_time_slot,

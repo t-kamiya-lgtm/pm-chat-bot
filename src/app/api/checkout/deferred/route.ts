@@ -10,6 +10,7 @@ import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 import { generateOrderNumber } from "@/lib/order-number";
 import { resolveApplicableCoupon, recordCouponUsage } from "@/lib/coupons";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
+import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
 
 /**
  * 後払い(スコアあと払い)・代金引換の注文受付。
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
 
   const customer = await upsertCustomer(customerInput);
   const orderNumber = await generateOrderNumber(supabase, scenarioId);
+  const costSnapshot = await resolveOrderCostSnapshot(supabase, productId, new Date().toISOString());
   const { data: order, error } = await supabase
     .from("orders")
     .insert({
@@ -120,6 +122,7 @@ export async function POST(request: Request) {
       shipping_fee: product.shipping_fee,
       payment_fee: paymentFee,
       status: "pending",
+      ...costSnapshot,
       // import_statusはデフォルト(not_imported)のまま作成する。Stripe注文と同様、
       // スタッフが通販ゲートCSV書き出し・出荷報告CSV取込を行うことで進めていく。
       delivery_date: deliveryDate || null,

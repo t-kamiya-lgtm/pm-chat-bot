@@ -11,6 +11,7 @@ import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 import { generateOrderNumber } from "@/lib/order-number";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import { diffFields, recordChangeLog } from "@/lib/customer-change-log";
+import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
 import type { Address } from "@/lib/types";
 
 const newOrderSchema = z
@@ -93,6 +94,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   const paymentFee = await getPaymentFee(input.paymentMethod, input.orderKind);
   const orderNumber = await generateOrderNumber(supabase, null);
+  const costSnapshot = await resolveOrderCostSnapshot(supabase, input.productId, new Date().toISOString());
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -107,6 +109,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       shipping_fee: product.shipping_fee,
       payment_fee: paymentFee,
       status: "pending",
+      ...costSnapshot,
       delivery_date: deliveryDate,
       invoice_note: input.invoiceNote || null,
       agreed_terms_at: new Date().toISOString(),

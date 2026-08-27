@@ -14,6 +14,7 @@ import { calculateTotal } from "@/lib/fees";
 import { generateOrderNumber } from "@/lib/order-number";
 import { resolveApplicableCoupon } from "@/lib/coupons";
 import { SUBSCRIPTION_INTERVAL_STRIPE_MAP } from "@/lib/subscription-intervals";
+import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
 
 const requestSchema = z.object({
   productId: z.string().uuid(),
@@ -226,6 +227,7 @@ export async function POST(request: Request) {
   }
 
   const orderNumber = await generateOrderNumber(supabase, scenarioId);
+  const costSnapshot = await resolveOrderCostSnapshot(supabase, productId, new Date().toISOString());
   const { data: order, error } = await supabase
     .from("orders")
     .insert({
@@ -240,6 +242,7 @@ export async function POST(request: Request) {
       quantity,
       shipping_fee: product.shipping_fee,
       payment_fee: 0,
+      ...costSnapshot,
       status: "pending",
       stripe_subscription_id: subscription.id,
       delivery_date: deliveryDate || null,
