@@ -18,6 +18,7 @@ import {
   type StatsWithConversion,
   type SplitStatsWithDerived,
 } from "@/lib/dashboard-aggregate";
+import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/customer-lifetime-ltv";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +105,20 @@ export default async function AdminDashboardPage({
     ? { data: [], error: null }
     : await orderQuery;
 
+  // 生涯LTV・12ヶ月LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
+  // 画面の期間フィルタ(dateFrom/dateTo)の影響を受けず常に全期間で計算する(ブランド絞り込みのみ適用)。
+  let lifetimeOrderQuery = supabase
+    .from("orders")
+    .select(
+      "customer_id, created_at, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount, scenario_id",
+    )
+    .in("status", CONFIRMED_ORDER_STATUSES);
+  if (scenarioIdsForBrand) lifetimeOrderQuery = lifetimeOrderQuery.in("scenario_id", scenarioIdsForBrand);
+  const { data: lifetimeOrders } = brandFilterYieldsNoResults
+    ? { data: [] }
+    : await lifetimeOrderQuery;
+  const lifetimeAndAnnualLtv = buildLifetimeAndAnnualLtv((lifetimeOrders ?? []) as LifetimeLtvOrderRow[], new Date().toISOString());
+
   const accessLogRows: AccessLogRow[] = accessLogs ?? [];
   const orderRows: OrderRow[] = orders ?? [];
 
@@ -154,6 +169,21 @@ export default async function AdminDashboardPage({
           データの取得に失敗しました({accessError?.message ?? ordersError?.message})
         </p>
       )}
+
+      <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-700">蓄積実績LTV(確定値・全期間{brandId ? "・このブランドのみ" : "・全ブランド"})</h2>
+          <p className="text-xs text-neutral-400">
+            画面下部の日付絞り込みの影響を受けません。12ヶ月LTVは獲得日から365日時点の実績で固定し、13ヶ月目以降は更新しません(翌月以降、新たに365日に到達した顧客から順次加算)。
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SummaryCard label="生涯LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.lifetimeRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
+          <SummaryCard label="生涯LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.lifetimeIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
+          <SummaryCard label="12ヶ月LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.annualRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+          <SummaryCard label="12ヶ月LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.annualIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+        </div>
+      </div>
 
       <form
         method="get"
@@ -312,11 +342,12 @@ function splitStatsCsvRow(row: { label: string; stats: SplitStatsWithDerived }):
   ];
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
       <div className="text-xs text-neutral-500">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-neutral-400">{sub}</div>}
     </div>
   );
 }
