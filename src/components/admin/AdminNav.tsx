@@ -93,10 +93,17 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(
     () => visibleGroups.find(groupActive)?.key ?? null,
   );
+  const [hoverGroupKey, setHoverGroupKey] = useState<string | null>(null);
+  // 実際に表示する中メニューは常に1つだけ。クリックで選んだグループを優先し、
+  // 未選択時は現在地(URL)が属するグループにフォールバックする。
+  const shownGroupKey = openGroupKey ?? visibleGroups.find(groupActive)?.key ?? null;
+  // クリック前のホバーは、現在の中メニューの上に重ねて見せるプレビューとして扱う。
+  const previewGroupKey = hoverGroupKey && hoverGroupKey !== shownGroupKey ? hoverGroupKey : null;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileOpenGroupKey, setMobileOpenGroupKey] = useState<string | null>(
     () => visibleGroups.find(groupActive)?.key ?? null,
   );
+  const shownMobileGroupKey = mobileOpenGroupKey ?? visibleGroups.find(groupActive)?.key ?? null;
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -135,40 +142,64 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
         <SaveConfirmDialog saving={saving} onCancel={() => setPendingHref(null)} onSave={handleConfirmSave} />
       )}
 
-      {/* デスクトップ表示: 大メニュー(▼)ごとに中メニューを展開する */}
-      <nav className="hidden flex-wrap items-center gap-4 sm:flex">
+      {/* デスクトップ表示: 大メニュー(▼)ごとに中メニューを展開する。
+          常に表示される中メニューは選択中の1つだけ(2段表示を防ぐ)。
+          クリック前に他の大メニューへカーソルを乗せた場合は、その中メニューを
+          現在の中メニューに重ねてプレビュー表示する(クリックで確定/固定される)。 */}
+      <nav className="relative hidden flex-wrap items-center gap-4 sm:flex">
         {visibleGroups.map((group) => {
           const active = groupActive(group);
-          const open = openGroupKey === group.key;
+          const open = shownGroupKey === group.key;
           return (
-            <button
+            <div
               key={group.key}
-              type="button"
-              onClick={() => setOpenGroupKey((prev) => (prev === group.key ? null : group.key))}
-              className={`flex items-center gap-1 ${active ? activeLinkClass : linkClass}`}
+              className="relative"
+              onMouseEnter={() => setHoverGroupKey(group.key)}
+              onMouseLeave={() => setHoverGroupKey((prev) => (prev === group.key ? null : prev))}
             >
-              {group.label}
-              <span className={`text-xs transition-transform ${open || active ? "rotate-180" : ""}`}>▼</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setOpenGroupKey((prev) => (prev === group.key ? null : group.key))}
+                className={`flex items-center gap-1 ${active ? activeLinkClass : linkClass}`}
+              >
+                {group.label}
+                <span className={`text-xs transition-transform ${open || active ? "rotate-180" : ""}`}>▼</span>
+              </button>
+              {previewGroupKey === group.key && (
+                <div className="absolute top-full left-0 z-20 mt-2 flex flex-wrap gap-4 rounded-md border border-neutral-200 bg-white p-3 whitespace-nowrap shadow-lg">
+                  {group.items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => {
+                        setHoverGroupKey(null);
+                        setOpenGroupKey(group.key);
+                      }}
+                      className={isActive(item.href) ? activeLinkClass : linkClass}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>
-      {visibleGroups.map((group) => {
-        const open = openGroupKey === group.key || groupActive(group);
-        if (!open) return null;
-        return (
-          <div
-            key={group.key}
-            className="mt-2 hidden flex-wrap gap-4 border-t border-neutral-100 pt-2 pl-4 text-sm sm:flex"
-          >
-            {group.items.map((item) => (
-              <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        );
-      })}
+      {shownGroupKey &&
+        (() => {
+          const group = visibleGroups.find((g) => g.key === shownGroupKey);
+          if (!group) return null;
+          return (
+            <div className="mt-2 hidden flex-wrap gap-4 border-t border-neutral-100 pt-2 pl-4 text-sm sm:flex">
+              {group.items.map((item) => (
+                <Link key={item.href} href={item.href} className={isActive(item.href) ? activeLinkClass : linkClass}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
 
       {/* スマホ表示: 現在地のみ表示し、「⋯」でメニュー全体を展開する
           (フルのナビを常時表示すると複数行に折り返してヘッダーが長くなり、スクロールで隠れやすいため) */}
@@ -195,7 +226,7 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
         <div className="mt-2 space-y-1 rounded-md border border-neutral-200 bg-white p-3 text-sm sm:hidden">
           {visibleGroups.map((group) => {
             const active = groupActive(group);
-            const open = mobileOpenGroupKey === group.key || active;
+            const open = shownMobileGroupKey === group.key;
             return (
               <div key={group.key}>
                 <button
