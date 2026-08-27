@@ -10,10 +10,10 @@ export function LtvSegmentTable({ rows, segmentHeader = "セグメント" }: { r
               <th className="px-4 py-2">順位</th>
               <th className="px-4 py-2">{segmentHeader}</th>
               <th className="px-4 py-2">契約者数</th>
-              <th className="px-4 py-2">定期LTV</th>
-              <th className="px-4 py-2">売上LTV</th>
+              <th className="px-4 py-2">定期LTV(税込)</th>
+              <th className="px-4 py-2">売上LTV(税込)</th>
               <th className="px-4 py-2">平均継続回数</th>
-              <th className="px-4 py-2">平均単価</th>
+              <th className="px-4 py-2">平均単価(税込)</th>
               <th className="px-4 py-2">平均購入点数</th>
               <th className="px-4 py-2">増分利益</th>
               <th className="px-4 py-2">増分利益LTV</th>
@@ -107,10 +107,10 @@ export const LTV_SEGMENT_CSV_HEADERS = [
   "順位",
   "セグメント",
   "契約者数",
-  "定期LTV",
-  "売上LTV",
+  "定期LTV(税込)",
+  "売上LTV(税込)",
   "平均継続回数",
-  "平均単価",
+  "平均単価(税込)",
   "平均購入点数",
   "増分利益",
   "増分利益LTV",
