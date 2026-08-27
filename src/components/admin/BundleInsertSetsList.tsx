@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Toast } from "@/components/admin/Toast";
@@ -47,6 +47,12 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   one_time: "単品のみ",
   both: "定期・単品どちらも",
 };
+
+const STATUS_FILTERS = [
+  { key: "active", label: "アクティブ" },
+  { key: "draft", label: "下書き" },
+  { key: "all", label: "すべて" },
+] as const;
 
 interface FormState {
   brandId: string;
@@ -127,8 +133,20 @@ export function BundleInsertSetsList({
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
+  const [brandFilter, setBrandFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]["key"]>("active");
 
   const itemsForBrand = items.filter((i) => i.brand_id === form.brandId);
+
+  const filteredSets = useMemo(
+    () =>
+      initialSets.filter(
+        (set) =>
+          (brandFilter === "" || set.brand_id === brandFilter) &&
+          (statusFilter === "all" || set.status === statusFilter),
+      ),
+    [initialSets, brandFilter, statusFilter],
+  );
 
   function startCreate() {
     setForm(emptyForm(brands[0]?.id ?? ""));
@@ -270,7 +288,37 @@ export function BundleInsertSetsList({
         ①同梱物登録で登録した同梱物を選んで、セットとして条件(期間・対象商品・対象回数)を設定します。既存のアクティブな設定と条件が重複する場合は、確認の上で下書き保存できます。
       </p>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="flex items-center gap-1">
+            <span className="text-xs text-neutral-500">ブランド</span>
+            <select className="input" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+              <option value="">全ブランド</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {b.code ? `(${b.code})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex gap-1">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setStatusFilter(f.key)}
+                className={`rounded-md border px-2.5 py-1 text-xs ${
+                  statusFilter === f.key
+                    ? "border-blue-600 bg-blue-50 text-blue-700"
+                    : "border-neutral-300 text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {!showForm && (
           <button
             type="button"
@@ -397,7 +445,7 @@ export function BundleInsertSetsList({
       )}
 
       <div className="space-y-3">
-        {initialSets.map((set) => (
+        {filteredSets.map((set) => (
           <div key={set.id} className="rounded-lg border border-neutral-200 bg-white p-4 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
@@ -438,13 +486,21 @@ export function BundleInsertSetsList({
                 <button type="button" onClick={() => startEdit(set)} className="text-blue-600 hover:underline">
                   編集
                 </button>
-                <ConfirmButton label="削除" confirmLabel="この同梱物セットを削除します。よろしいですか?" onConfirm={() => handleDelete(set.id)} />
+                <ConfirmButton
+                  label="削除"
+                  confirmLabel="この同梱物セットを削除します。よろしいですか?"
+                  disabled={set.distributedCount > 0}
+                  title={set.distributedCount > 0 ? "配布実績があるため削除できません" : undefined}
+                  onConfirm={() => handleDelete(set.id)}
+                />
               </div>
             </div>
           </div>
         ))}
-        {initialSets.length === 0 && (
-          <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">同梱物セットが登録されていません</p>
+        {filteredSets.length === 0 && (
+          <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
+            条件に合致する同梱物セットがありません
+          </p>
         )}
       </div>
     </div>

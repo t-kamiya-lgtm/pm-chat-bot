@@ -7,7 +7,7 @@ import { listBundleInsertSetsWithDetails, sumItemDistribution } from "@/lib/bund
 const updateSchema = z.object({
   itemType: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
-  url: z.string().url().optional(),
+  url: z.string().url().nullable().optional(),
   registeredDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });

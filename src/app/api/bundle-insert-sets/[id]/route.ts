@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 import { findConflictingSets, type BundleInsertSetCandidate } from "@/lib/bundle-insert-conflict";
+import { countDistributedOrders } from "@/lib/bundle-insert-distribution";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -105,12 +106,36 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   return NextResponse.json({ bundleInsertSet: data });
 }
 
+/** 配布実績(対象条件に合致する注文数)が1件以上ある場合は削除できないようにする(①同梱物登録と同様の制御)。 */
 export async function DELETE(_request: Request, { params }: RouteParams) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
   const supabase = createSupabaseAdminClient();
+
+  const { data: current, error: fetchError } = await supabase
+    .from("bundle_insert_sets")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (fetchError || !current) return NextResponse.json({ error: "対象の同梱物設定が見つかりません" }, { status: 404 });
+
+  const distributedCount = await countDistributedOrders(supabase, {
+    brandId: current.brand_id as string,
+    periodStart: current.period_start as string,
+    periodEnd: current.period_end as string | null,
+    targetOrderType: current.target_order_type as "subscription" | "one_time" | "both",
+    targetCycleNumbers: current.target_cycle_numbers as number[] | null,
+    targetProductIds: current.target_product_ids as string[] | null,
+  });
+  if (distributedCount > 0) {
+    return NextResponse.json(
+      { error: `この同梱物設定は配布実績(累計${distributedCount}件)があるため削除できません` },
+      { status: 400 },
+    );
+  }
+
   const { error } = await supabase.from("bundle_insert_sets").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
