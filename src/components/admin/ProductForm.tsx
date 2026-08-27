@@ -34,6 +34,10 @@ export interface ProductFormValues {
   priceLabel: string;
   taxRate: 8 | 10;
   shippingFee: number;
+  costAmount: number;
+  bundleInsertCost: number;
+  shippingCost: number;
+  salesCommissionAmount: number;
   isMailDeliverable: boolean;
   imageUrls: string[];
   smaregiProductId: string;
@@ -60,6 +64,10 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     priceLabel: "",
     taxRate: 8,
     shippingFee: 0,
+    costAmount: 0,
+    bundleInsertCost: 0,
+    shippingCost: 0,
+    salesCommissionAmount: 0,
     isMailDeliverable: false,
     imageUrls: [],
     smaregiProductId: "",
@@ -175,6 +183,10 @@ export function ProductForm({
       priceLabel: values.priceLabel || null,
       taxRate: values.taxRate,
       shippingFee: Number(values.shippingFee),
+      costAmount: Number(values.costAmount),
+      bundleInsertCost: Number(values.bundleInsertCost),
+      shippingCost: Number(values.shippingCost),
+      salesCommissionAmount: Number(values.salesCommissionAmount),
       isMailDeliverable: values.isMailDeliverable,
       imageUrls: values.imageUrls.map((u) => u.trim()).filter(Boolean),
       smaregiProductId: values.smaregiProductId || undefined,
@@ -287,6 +299,50 @@ export function ProductForm({
           <option value={10}>標準税率(10%)</option>
         </select>
       </Field>
+
+      <div className="rounded-md border border-neutral-200 p-3">
+        <p className="mb-3 text-sm font-medium text-neutral-700">
+          原価・費用設定(増分利益の算出に使用、いずれも税別・1点あたり)
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="原価(円、税別)">
+            <input
+              type="number"
+              min={0}
+              value={values.costAmount}
+              onChange={(e) => setValues((p) => ({ ...p, costAmount: Number(e.target.value) }))}
+              className="input"
+            />
+          </Field>
+          <Field label="同梱物費用(円、税別)">
+            <input
+              type="number"
+              min={0}
+              value={values.bundleInsertCost}
+              onChange={(e) => setValues((p) => ({ ...p, bundleInsertCost: Number(e.target.value) }))}
+              className="input"
+            />
+          </Field>
+          <Field label="送料原価(円、税別)">
+            <input
+              type="number"
+              min={0}
+              value={values.shippingCost}
+              onChange={(e) => setValues((p) => ({ ...p, shippingCost: Number(e.target.value) }))}
+              className="input"
+            />
+          </Field>
+          <Field label="販売手数料(円、税別)">
+            <input
+              type="number"
+              min={0}
+              value={values.salesCommissionAmount}
+              onChange={(e) => setValues((p) => ({ ...p, salesCommissionAmount: Number(e.target.value) }))}
+              className="input"
+            />
+          </Field>
+        </div>
+      </div>
 
       <label className="flex items-center gap-2 text-sm">
         <input

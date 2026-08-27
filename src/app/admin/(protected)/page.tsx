@@ -33,6 +33,7 @@ const SECTIONS: { title: string; cards: DashboardCard[] }[] = [
       { href: "/admin/products", title: "商品(品番)管理", description: "単品/定期を分けて品番登録・送料設定" },
       { href: "/admin/faqs", title: "商品QAレビュー", description: "生成されたQ&A候補の承認・却下" },
       { href: "/admin/bundle-insert-sets", title: "同梱物設定", description: "同梱物セットの期間・対象条件を登録" },
+      { href: "/admin/tax-rates", title: "税率設定", description: "税率メニューとアイテム別の適用期間を設定" },
     ],
   },
   {
