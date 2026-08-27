@@ -4,8 +4,10 @@ import {
   aggregateByAd,
   aggregateByDateSplit,
   aggregateByProductSplit,
+  aggregateByReferrerSplit,
   aggregateByScenarioSplit,
   buildPivotTable,
+  normalizeReferrer,
   totalStats,
   type AccessLogRow,
   type OrderRow,
@@ -82,7 +84,7 @@ export default async function AdminDashboardPage({
 
   let accessQuery = supabase
     .from("scenario_access_logs")
-    .select("scenario_id, utm_source, utm_medium, utm_campaign, created_at")
+    .select("scenario_id, session_id, utm_source, utm_medium, utm_campaign, referrer, created_at")
     .gte("created_at", `${dateFrom}T00:00:00+09:00`)
     .lte("created_at", `${dateTo}T23:59:59+09:00`);
   if (scenarioId) accessQuery = accessQuery.eq("scenario_id", scenarioId);
@@ -94,7 +96,7 @@ export default async function AdminDashboardPage({
   let orderQuery = supabase
     .from("orders")
     .select(
-      "scenario_id, product_id, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number",
+      "scenario_id, product_id, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number, session_id",
     )
     .in("status", CONFIRMED_ORDER_STATUSES)
     .gte("created_at", `${dateFrom}T00:00:00+09:00`)
@@ -108,11 +110,20 @@ export default async function AdminDashboardPage({
   const accessLogRows: AccessLogRow[] = accessLogs ?? [];
   const orderRows: OrderRow[] = orders ?? [];
 
+  // 注文自体にはreferrerを保存していないため、同一ウィジェットセッション(session_id)の
+  // アクセスログから流入元を引き当てる。
+  const referrerBySessionId = new Map(accessLogRows.map((log) => [log.session_id, log.referrer]));
+  const orderRowsWithReferrer = orderRows.map((o) => ({
+    ...o,
+    referrerLabel: normalizeReferrer(o.session_id ? (referrerBySessionId.get(o.session_id) ?? null) : null),
+  }));
+
   const summary = totalStats(accessLogRows, orderRows);
   const byAd = aggregateByAd(accessLogRows, orderRows);
   const byScenario = aggregateByScenarioSplit(accessLogRows, orderRows, scenarioNames);
   const byProduct = aggregateByProductSplit(orderRows, productNames);
   const byDate = aggregateByDateSplit(accessLogRows, orderRows);
+  const byReferrer = aggregateByReferrerSplit(accessLogRows, orderRowsWithReferrer);
 
   const scenarioPivot = buildPivotTable(
     orderRows,
@@ -133,7 +144,7 @@ export default async function AdminDashboardPage({
     <div>
       <h1 className="mb-1 text-2xl font-semibold">実績ダッシュボード</h1>
       <p className="mb-4 text-sm text-neutral-500">
-        チャットボットへのアクセス数・購入数・売上を、シナリオ・商品・日付・広告(UTMパラメータ)・ブランド別に確認できます。
+        チャットボットへのアクセス数・購入数・売上を、シナリオ・商品・日付・広告(UTMパラメータ)・流入元(設置LP)・ブランド別に確認できます。
         アクセス数はウィジェットが開かれた時点でこのアプリが記録したものです。購入数・売上は入金/受注が確定した注文(与信待ち・失敗・キャンセルを除く)のみを集計しています。
         「新規」は単品購入・定期初回、「継続」は定期の2回目以降を指します。
       </p>
@@ -193,6 +204,13 @@ export default async function AdminDashboardPage({
 
       <Section title="広告別内訳">
         <StatsTable rows={byAd} labelHeader="広告(utm_source / utm_medium / utm_campaign)" />
+      </Section>
+
+      <Section title="流入元別(設置LP別)">
+        <p className="mb-2 text-xs text-neutral-400">
+          チャットウィジェットが開かれた直前のページ(referrer)をホスト名+パス単位で集計しています。LP側のReferrer-Policy設定によっては取得できない場合があります。
+        </p>
+        <SplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />
       </Section>
 
       <Section title="シナリオ別">
