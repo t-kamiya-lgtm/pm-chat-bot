@@ -198,7 +198,7 @@ export default async function AdminDashboardPage({
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <SummaryCard label="アクセス数" value={summary.accessCount.toLocaleString()} />
         <SummaryCard label="購入数" value={summary.purchaseCount.toLocaleString()} />
-        <SummaryCard label="売上" value={formatYen(summary.revenue)} />
+        <SummaryCard label="売上(税込)" value={formatYen(summary.revenue)} />
         <SummaryCard label="コンバージョン率" value={formatRate(summary.conversionRate)} />
         <SummaryCard label="増分利益" value={formatYen(summary.incrementalProfit)} />
       </div>
@@ -262,7 +262,7 @@ export default async function AdminDashboardPage({
   );
 }
 
-const STATS_CSV_HEADERS = ["項目", "アクセス数", "購入数", "売上", "CVR", "増分利益"];
+const STATS_CSV_HEADERS = ["項目", "アクセス数", "購入数", "売上(税込)", "CVR", "増分利益"];
 
 function statsCsvRow(row: { label: string; stats: StatsWithConversion }): (string | number)[] {
   return [
@@ -279,16 +279,16 @@ const SPLIT_STATS_CSV_HEADERS = [
   "項目",
   "アクセス数",
   "新規購入数(合計)",
-  "新規売上(合計)",
+  "新規売上(合計・税込)",
   "新規購入数(定期)",
-  "新規売上(定期)",
+  "新規売上(定期・税込)",
   "新規購入数(単品)",
-  "新規売上(単品)",
+  "新規売上(単品・税込)",
   "CVR",
-  "平均単価",
+  "平均単価(税込)",
   "継続購入数",
-  "継続売上",
-  "売上合計",
+  "継続売上(税込)",
+  "売上合計(税込)",
   "増分利益",
 ];
 
@@ -361,7 +361,7 @@ function StatsTable({
             <th className="px-3 py-2">{labelHeader}</th>
             {!hideAccess && <th className="px-3 py-2 text-right">アクセス数</th>}
             <th className="px-3 py-2 text-right">購入数</th>
-            <th className="px-3 py-2 text-right">売上</th>
+            <th className="px-3 py-2 text-right">売上(税込)</th>
             {!hideAccess && <th className="px-3 py-2 text-right">CVR</th>}
             <th className="px-3 py-2 text-right">増分利益</th>
           </tr>
@@ -404,12 +404,12 @@ function SplitStatsTable({
             <th className="px-3 py-2">{labelHeader}</th>
             {!hideAccess && <th className="px-3 py-2 text-right">アクセス</th>}
             <th className="px-3 py-2 text-right">購入数</th>
-            <th className="px-3 py-2 text-right">新規売上</th>
+            <th className="px-3 py-2 text-right">新規売上(税込)</th>
             {!hideAccess && <th className="px-3 py-2 text-right">CVR</th>}
-            <th className="px-3 py-2 text-right">平均単価</th>
+            <th className="px-3 py-2 text-right">平均単価(税込)</th>
             <th className="px-3 py-2 text-right">継続購入数</th>
-            <th className="px-3 py-2 text-right">継続売上</th>
-            <th className="px-3 py-2 text-right">売上合計</th>
+            <th className="px-3 py-2 text-right">継続売上(税込)</th>
+            <th className="px-3 py-2 text-right">売上合計(税込)</th>
             <th className="px-3 py-2 text-right">増分利益</th>
           </tr>
         </thead>
