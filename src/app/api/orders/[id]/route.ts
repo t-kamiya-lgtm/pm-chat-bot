@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 import { sendCancellationEmail } from "@/lib/order-status-emails";
+import { applyImportStatusChange } from "@/lib/order-import-status";
 
 const updateSchema = z.object({
   importStatus: z.enum([
@@ -30,16 +31,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("orders")
-    .update({
-      import_status: parsed.data.importStatus,
-      import_status_updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
+  const result = await applyImportStatusChange(supabase, id, parsed.data.importStatus);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
+  const { data, error } = await supabase.from("orders").select("*").eq("id", id).single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (parsed.data.importStatus === "canceled") {

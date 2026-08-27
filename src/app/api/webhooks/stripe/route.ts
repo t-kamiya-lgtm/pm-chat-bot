@@ -103,6 +103,25 @@ export async function POST(request: Request) {
       break;
     }
 
+    case "payment_intent.payment_failed": {
+      // 単品購入(PaymentIntent)のカード失敗。受注ステータスを「保留」にして
+      // フルフィル担当が気づけるようにする(従来はここが未実装で、失敗した単品注文が
+      // 「処理中」のまま放置されていた)。
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      const { data: order } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("stripe_payment_intent_id", paymentIntent.id)
+        .maybeSingle();
+      if (order) {
+        await supabase
+          .from("orders")
+          .update({ status: "failed", import_status: "on_hold", import_status_updated_at: new Date().toISOString() })
+          .eq("id", order.id);
+      }
+      break;
+    }
+
     case "invoice.payment_failed": {
       const invoice = event.data.object as Stripe.Invoice;
       const subscriptionId = getSubscriptionIdFromInvoice(invoice);
@@ -114,8 +133,23 @@ export async function POST(request: Request) {
         .eq("stripe_subscription_id", subscriptionId)
         .is("parent_order_id", null)
         .maybeSingle();
-      if (order) {
-        await supabase.from("orders").update({ status: "failed" }).eq("id", order.id);
+      if (!order) break;
+
+      if (invoice.billing_reason === "subscription_cycle") {
+        // 2回目以降の周期課金の失敗。この時点では失敗した回の注文データは存在しない
+        // (invoice.paidで初めて生成するため)。決済済みの初回注文のstatusを誤って
+        // 書き換えないよう、初回注文はimport_statusを「保留」にするだけに留め、
+        // フルフィル担当が気づいて個別対応(顧客連絡・カード変更/代引き後払いへの切替等)できるようにする。
+        await supabase
+          .from("orders")
+          .update({ import_status: "on_hold", import_status_updated_at: new Date().toISOString() })
+          .eq("id", order.id);
+      } else {
+        // 定期初回の決済失敗。
+        await supabase
+          .from("orders")
+          .update({ status: "failed", import_status: "on_hold", import_status_updated_at: new Date().toISOString() })
+          .eq("id", order.id);
       }
       break;
     }

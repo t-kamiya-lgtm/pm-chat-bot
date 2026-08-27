@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
 import { sendCancellationEmail } from "@/lib/order-status-emails";
+import { applyImportStatusChange } from "@/lib/order-import-status";
 
 const bulkUpdateSchema = z.object({
   orderIds: z.array(z.string().uuid()).min(1),
@@ -17,7 +18,7 @@ const bulkUpdateSchema = z.object({
   ]),
 });
 
-/** 選択した複数注文の取り込みステータスを一括で変更する。 */
+/** 選択した複数注文の取り込みステータスを一括で変更する。遷移が許可されない注文はスキップしエラーとして報告する。 */
 export async function POST(request: Request) {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
@@ -29,19 +30,21 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      import_status: parsed.data.importStatus,
-      import_status_updated_at: new Date().toISOString(),
-    })
-    .in("id", parsed.data.orderIds);
+  const results = await Promise.all(
+    parsed.data.orderIds.map(async (orderId) => ({
+      orderId,
+      result: await applyImportStatusChange(supabase, orderId, parsed.data.importStatus),
+    })),
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const succeeded = results.filter((r) => r.result.ok).map((r) => r.orderId);
+  const failed = results
+    .filter((r): r is { orderId: string; result: { ok: false; error: string } } => !r.result.ok)
+    .map((r) => ({ orderId: r.orderId, error: r.result.error }));
 
-  if (parsed.data.importStatus === "canceled") {
-    await Promise.all(parsed.data.orderIds.map((orderId) => sendCancellationEmail(orderId)));
+  if (parsed.data.importStatus === "canceled" && succeeded.length > 0) {
+    await Promise.all(succeeded.map((orderId) => sendCancellationEmail(orderId)));
   }
 
-  return NextResponse.json({ ok: true, updated: parsed.data.orderIds.length });
+  return NextResponse.json({ ok: failed.length === 0, updated: succeeded.length, failed });
 }
