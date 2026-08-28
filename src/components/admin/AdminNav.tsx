@@ -134,7 +134,7 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <div className="relative mx-auto max-w-5xl px-6 pb-3 text-sm">
+    <div className="relative mx-auto max-w-screen-2xl px-6 pb-3 text-sm">
       {pendingHref && (
         <SaveConfirmDialog saving={saving} onCancel={() => setPendingHref(null)} onSave={handleConfirmSave} />
       )}
