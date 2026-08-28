@@ -139,10 +139,7 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
         <SaveConfirmDialog saving={saving} onCancel={() => setPendingHref(null)} onSave={handleConfirmSave} />
       )}
 
-      <div className="flex items-center justify-between">
-        <span className={`truncate ${activeLinkClass}`}>
-          {allItems.find((item) => isActive(item.href))?.label ?? "メニュー"}
-        </span>
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => setMenuOpen((prev) => !prev)}
@@ -157,6 +154,9 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
             />
           )}
         </button>
+        <span className={`truncate ${activeLinkClass}`}>
+          {allItems.find((item) => isActive(item.href))?.label ?? "メニュー"}
+        </span>
       </div>
 
       {menuOpen && (
