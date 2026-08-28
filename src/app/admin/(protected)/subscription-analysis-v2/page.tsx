@@ -314,7 +314,6 @@ export default async function AdminSubscriptionAnalysisV2Page({
                     <summary className="cursor-pointer">{row.segment}</summary>
                     <SegmentDetail
                       row={row}
-                      curve={curve}
                       axis={axis}
                       profiles={profiles}
                       customersById={customersById}
@@ -347,11 +346,70 @@ export default async function AdminSubscriptionAnalysisV2Page({
         </table>
       </div>
 
-      <ul className="mt-3 space-y-0.5 text-xs text-neutral-400">
+      <ul className="mt-3 mb-8 space-y-0.5 text-xs text-neutral-400">
         <li>固有到達回数: セグメントの起点(最古の初回定期注文日)からの経過期間 ÷ 代表的なお届け頻度で決まる、確定値として語れる最大到達回数</li>
         <li>共通比較回数: 表示中のセグメントのうち最も浅い固有到達回数に揃えた基準。この列だけが公平な比較に使える確定値</li>
-        <li>予測LTV: 確定済みの残存率カーブを{HORIZON}回目まで自動延長(確定済み全回次間の移行率の幾何平均、無ければ全体平均で代用)して算出。セグメント行の▸をクリックすると、回次ごとの確定値/予測値の内訳と顧客明細が見られます</li>
+        <li>予測LTV: 確定済みの残存率カーブを{HORIZON}回目まで自動延長(確定済み全回次間の移行率の幾何平均、無ければ全体平均で代用)して算出</li>
+        <li>セグメント行の▸をクリックすると、そのセグメントに含まれる顧客明細(生データ)が見られます</li>
       </ul>
+
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-neutral-700">残存率コホート表(実績+予測)</h2>
+        <CsvExportButton
+          filename={`残存率コホート表_${axis}.csv`}
+          headers={["セグメント", ...Array.from({ length: HORIZON }, (_, i) => `${i + 1}回目`)]}
+          rows={rowsWithDerived.map(({ row, curve }) => [row.segment, ...curve.map((p) => `${p.forecast.toFixed(1)}%`)])}
+        />
+      </div>
+      <p className="mb-2 text-xs text-neutral-400">
+        行=セグメント、列=到達回数ごとの残存率。白背景は確定値(実測)、グレー背景は予測値(自動更新モデル)です。
+      </p>
+      <RetentionCohortTable rowsWithDerived={rowsWithDerived} horizon={HORIZON} />
+    </div>
+  );
+}
+
+/** 行=セグメント、列=到達回数の残存率マトリクス。確定値/予測値をセルの背景で区別する。 */
+function RetentionCohortTable({
+  rowsWithDerived,
+  horizon,
+}: {
+  rowsWithDerived: { row: SegmentReliabilityRow; curve: ReturnType<typeof buildRetentionCurve> }[];
+  horizon: number;
+}) {
+  if (rowsWithDerived.length === 0) {
+    return <p className="text-sm text-neutral-400">対象の定期契約者がいません</p>;
+  }
+  const cycles = Array.from({ length: horizon }, (_, i) => i + 1);
+  return (
+    <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+      <table className="w-full min-w-[900px] text-left text-sm">
+        <thead className="bg-sky-100 text-xs text-neutral-600">
+          <tr>
+            <th className="px-4 py-2">セグメント</th>
+            {cycles.map((n) => (
+              <th key={n} className="px-3 py-2 text-right">
+                {n}回目
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-neutral-100">
+          {rowsWithDerived.map(({ row, curve }) => (
+            <tr key={row.segment}>
+              <td className="px-4 py-2 font-medium">{row.segment}</td>
+              {curve.map((p) => (
+                <td
+                  key={p.n}
+                  className={`px-3 py-2 text-right ${p.confirmed === null ? "bg-neutral-50 text-neutral-400" : "text-neutral-900"}`}
+                >
+                  {formatPercent(p.forecast)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -368,7 +426,6 @@ function LtvSummaryCard({ label, value, sub }: { label: string; value: string; s
 
 function SegmentDetail({
   row,
-  curve,
   axis,
   profiles,
   customersById,
@@ -377,7 +434,6 @@ function SegmentDetail({
   survivalSum,
 }: {
   row: SegmentReliabilityRow;
-  curve: ReturnType<typeof buildRetentionCurve>;
   axis: SegmentAxis;
   profiles: ReturnType<typeof buildCustomerProfiles>;
   customersById: Map<string, CustomerRowWithName>;
@@ -416,29 +472,6 @@ function SegmentDetail({
 
   return (
     <div className="mt-3 space-y-4 border-t border-neutral-100 pt-3">
-      <div>
-        <p className="mb-1 text-xs font-semibold text-neutral-600">残存率カーブ(確定値 / 予測値・自動更新モデル)</p>
-        <div className="overflow-x-auto rounded-md border border-neutral-200">
-          <table className="w-full min-w-[420px] text-xs">
-            <thead className="bg-neutral-50 text-neutral-500">
-              <tr>
-                <th className="px-3 py-1.5 text-left">回数</th>
-                <th className="px-3 py-1.5 text-right">確定値</th>
-                <th className="px-3 py-1.5 text-right">予測値</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {curve.map((p) => (
-                <tr key={p.n}>
-                  <td className="px-3 py-1.5">{p.n}回目</td>
-                  <td className="px-3 py-1.5 text-right">{p.confirmed === null ? "—" : formatPercent(p.confirmed)}</td>
-                  <td className="px-3 py-1.5 text-right text-neutral-500">{formatPercent(p.forecast)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       <div>
         <div className="mb-1 flex items-center justify-between">
