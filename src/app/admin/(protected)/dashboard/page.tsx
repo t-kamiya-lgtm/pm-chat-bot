@@ -4,6 +4,8 @@ import { DashboardViewToggle } from "@/components/admin/DashboardViewToggle";
 import { SplitStatsViewToggle } from "@/components/admin/SplitStatsViewToggle";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { CsvExportButton } from "@/components/admin/CsvExportButton";
+import { StickyBelowHeader } from "@/components/admin/StickyBelowHeader";
+import { TabbedPanels } from "@/components/admin/TabbedPanels";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
   aggregateByAd,
@@ -219,45 +221,44 @@ export default async function AdminDashboardPage({
         </p>
       )}
 
-      <form
-        method="get"
-        className="print:hidden mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
-      >
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">日付(から)</span>
-          <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">日付(まで)</span>
-          <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
-          <select name="brandId" defaultValue={brandId} className="input">
-            <option value="">すべて</option>
-            {(brands ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-                {!b.code && "(コード未設定)"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">シナリオ</span>
-          <select name="scenarioId" defaultValue={scenarioId} className="input">
-            <option value="">すべて</option>
-            {(scenarios ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          絞り込む
-        </button>
-      </form>
+      <StickyBelowHeader className="print:hidden mb-6 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+        <form method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">日付(から)</span>
+            <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">日付(まで)</span>
+            <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
+            <select name="brandId" defaultValue={brandId} className="input">
+              <option value="">すべて</option>
+              {(brands ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {!b.code && "(コード未設定)"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">シナリオ</span>
+            <select name="scenarioId" defaultValue={scenarioId} className="input">
+              <option value="">すべて</option>
+              {(scenarios ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            絞り込む
+          </button>
+        </form>
+      </StickyBelowHeader>
 
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <SummaryCard label="アクセス数" value={summary.accessCount.toLocaleString()} />
@@ -267,79 +268,121 @@ export default async function AdminDashboardPage({
         <SummaryCard label="増分利益" value={formatYen(summary.incrementalProfit)} />
       </div>
 
-      <Section
-        title="広告別内訳"
-        exportButton={
-          <CsvExportButton filename="広告別内訳.csv" headers={STATS_CSV_HEADERS} rows={byAd.map(statsCsvRow)} />
-        }
-      >
-        <StatsTable rows={byAd} labelHeader="広告(utm_source / utm_medium / utm_campaign)" />
-      </Section>
-
-      <Section
-        title="流入元別(設置LP別)"
-        exportButton={
-          <CsvExportButton filename="流入元別内訳.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byReferrer.map(splitStatsCsvRow)} />
-        }
-      >
-        <p className="mb-2 text-xs text-neutral-400">
-          チャットウィジェットが開かれた直前のページ(referrer)をホスト名+パス単位で集計しています。LP側のReferrer-Policy設定によっては取得できない場合があります。
-        </p>
-        <SplitStatsViewToggle
-          totalView={<TotalSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" drilldownByKey={referrerDrilldown} />}
-          detailView={<DetailSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />}
-        />
-      </Section>
-
-      <Section
-        title="シナリオ別"
-        exportButton={
-          <CsvExportButton filename="シナリオ別内訳.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byScenario.map(splitStatsCsvRow)} />
-        }
-      >
-        <DashboardViewToggle
-          pivotLabel="シナリオ×日付"
-          listView={
-            <SplitStatsViewToggle
-              totalView={<TotalSplitStatsTable rows={byScenario} labelHeader="シナリオ" drilldownByKey={scenarioDrilldown} />}
-              detailView={<DetailSplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
-            />
-          }
-          pivotView={<PivotTableView pivot={scenarioPivot} rowHeader="シナリオ" />}
-        />
-      </Section>
-
-      <Section
-        title="商品別"
-        exportButton={
-          <CsvExportButton filename="商品別内訳.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byProduct.map(splitStatsCsvRow)} />
-        }
-      >
-        <DashboardViewToggle
-          pivotLabel="商品×日付"
-          listView={
-            <SplitStatsViewToggle
-              totalView={
-                <TotalSplitStatsTable rows={byProduct} labelHeader="商品" hideAccess drilldownByKey={productDrilldown} />
-              }
-              detailView={<DetailSplitStatsTable rows={byProduct} labelHeader="商品" />}
-            />
-          }
-          pivotView={<PivotTableView pivot={productPivot} rowHeader="商品" />}
-        />
-      </Section>
-
-      <Section
-        title="日別推移"
-        exportButton={
-          <CsvExportButton filename="日別推移.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byDate.map(splitStatsCsvRow)} />
-        }
-      >
-        <SplitStatsViewToggle
-          totalView={<TotalSplitStatsTable rows={byDate} labelHeader="日付" />}
-          detailView={<DetailSplitStatsTable rows={byDate} labelHeader="日付" />}
-        />
-      </Section>
+      <TabbedPanels
+        tabs={[
+          {
+            key: "ad",
+            label: "広告別内訳",
+            content: (
+              <Section
+                title="広告別内訳"
+                exportButton={
+                  <CsvExportButton filename="広告別内訳.csv" headers={STATS_CSV_HEADERS} rows={byAd.map(statsCsvRow)} />
+                }
+              >
+                <StatsTable rows={byAd} labelHeader="広告(utm_source / utm_medium / utm_campaign)" />
+              </Section>
+            ),
+          },
+          {
+            key: "referrer",
+            label: "流入元別(設置LP別)",
+            content: (
+              <Section
+                title="流入元別(設置LP別)"
+                exportButton={
+                  <CsvExportButton
+                    filename="流入元別内訳.csv"
+                    headers={SPLIT_STATS_CSV_HEADERS}
+                    rows={byReferrer.map(splitStatsCsvRow)}
+                  />
+                }
+              >
+                <p className="mb-2 text-xs text-neutral-400">
+                  チャットウィジェットが開かれた直前のページ(referrer)をホスト名+パス単位で集計しています。LP側のReferrer-Policy設定によっては取得できない場合があります。
+                </p>
+                <SplitStatsViewToggle
+                  totalView={<TotalSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" drilldownByKey={referrerDrilldown} />}
+                  detailView={<DetailSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />}
+                />
+              </Section>
+            ),
+          },
+          {
+            key: "scenario",
+            label: "シナリオ別",
+            content: (
+              <Section
+                title="シナリオ別"
+                exportButton={
+                  <CsvExportButton
+                    filename="シナリオ別内訳.csv"
+                    headers={SPLIT_STATS_CSV_HEADERS}
+                    rows={byScenario.map(splitStatsCsvRow)}
+                  />
+                }
+              >
+                <DashboardViewToggle
+                  pivotLabel="シナリオ×日付"
+                  listView={
+                    <SplitStatsViewToggle
+                      totalView={<TotalSplitStatsTable rows={byScenario} labelHeader="シナリオ" drilldownByKey={scenarioDrilldown} />}
+                      detailView={<DetailSplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
+                    />
+                  }
+                  pivotView={<PivotTableView pivot={scenarioPivot} rowHeader="シナリオ" />}
+                />
+              </Section>
+            ),
+          },
+          {
+            key: "product",
+            label: "商品別",
+            content: (
+              <Section
+                title="商品別"
+                exportButton={
+                  <CsvExportButton
+                    filename="商品別内訳.csv"
+                    headers={SPLIT_STATS_CSV_HEADERS}
+                    rows={byProduct.map(splitStatsCsvRow)}
+                  />
+                }
+              >
+                <DashboardViewToggle
+                  pivotLabel="商品×日付"
+                  listView={
+                    <SplitStatsViewToggle
+                      totalView={
+                        <TotalSplitStatsTable rows={byProduct} labelHeader="商品" hideAccess drilldownByKey={productDrilldown} />
+                      }
+                      detailView={<DetailSplitStatsTable rows={byProduct} labelHeader="商品" />}
+                    />
+                  }
+                  pivotView={<PivotTableView pivot={productPivot} rowHeader="商品" />}
+                />
+              </Section>
+            ),
+          },
+          {
+            key: "date",
+            label: "日別推移",
+            content: (
+              <Section
+                title="日別推移"
+                exportButton={
+                  <CsvExportButton filename="日別推移.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byDate.map(splitStatsCsvRow)} />
+                }
+              >
+                <SplitStatsViewToggle
+                  totalView={<TotalSplitStatsTable rows={byDate} labelHeader="日付" />}
+                  detailView={<DetailSplitStatsTable rows={byDate} labelHeader="日付" />}
+                />
+              </Section>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
