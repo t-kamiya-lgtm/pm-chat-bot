@@ -130,6 +130,7 @@ export interface Scenario {
   shipmentCompleteFrom: string | null;
   popupIconUrl: string | null;
   popupPosition: "bottom-right" | "bottom-left" | null;
+  popupButtonText: string | null;
   couponCodeFieldEnabled: boolean;
   menuLayoutKey: string;
   menuImageUrl: string | null;
