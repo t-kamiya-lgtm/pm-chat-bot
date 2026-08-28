@@ -827,6 +827,15 @@ function OptionalProductSelect({
   // 未設定のときは先頭のアイテムを勝手に選ばず「設定しない」を表示する
   const [selectedGroupId, setSelectedGroupId] = useState(() => groupIdForValue(value) ?? "");
   const radioName = useId();
+  // 品番一覧は既定では畳んでおき、選択中の1件(全文表示)だけを見せる。品番名は
+  // セット数などで長くなりドロップダウンでは末尾が省略されてしまうため、開いた
+  // ときだけ全文を折り返して表示できるラジオ形式の一覧を出す。
+  const [expanded, setExpanded] = useState(false);
+
+  function selectProduct(id: string) {
+    onChange(id);
+    setExpanded(false);
+  }
 
   // valueが外部から変わった(編集フォームを開き直した等)場合のみ、選択中のアイテムを追従させる。
   const [syncedValue, setSyncedValue] = useState(value);
@@ -849,51 +858,65 @@ function OptionalProductSelect({
 
   const productsInGroup = products.filter((p) => (p.productGroupId ?? UNGROUPED_KEY) === selectedGroupId);
   const emptyText = emptyLabel ?? "設定しない";
+  const selectedProduct = products.find((p) => p.id === value);
+  const summaryText = selectedProduct ? productLabel(selectedProduct) : emptyText;
 
   return (
     <div className={compact ? "text-xs" : "text-sm"}>
       <span className={labelClass}>{label}</span>
-      <div className="flex flex-col gap-1">
-        <select
-          className="input w-full"
-          value={selectedGroupId}
-          onChange={(e) => {
-            setSelectedGroupId(e.target.value);
-            onChange("");
-          }}
-        >
-          {/* アイテム側でも「設定しない」を選べるようにする(商品を選ぶ前から未設定であることが分かるように) */}
-          <option value="">{emptyText}</option>
-          {groups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
-          ))}
-        </select>
-        {selectedGroupId && (
-          <div className="space-y-0.5 rounded-md border border-neutral-300 bg-white p-1">
-            <ProductRadio
-              name={radioName}
-              checked={!value}
-              onSelect={() => onChange("")}
-              text={emptyText}
-              muted
-            />
-            {productsInGroup.map((product) => (
-              <ProductRadio
-                key={product.id}
-                name={radioName}
-                checked={product.id === value}
-                onSelect={() => onChange(product.id)}
-                text={productLabel(product)}
-              />
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className={`flex w-full items-start justify-between gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-left hover:bg-neutral-50 ${
+          !selectedProduct ? "text-neutral-400" : ""
+        }`}
+      >
+        <span className="leading-snug break-words whitespace-normal">{summaryText}</span>
+        <span className="mt-0.5 shrink-0 text-neutral-400">{expanded ? "変更をやめる ▴" : "変更する ▾"}</span>
+      </button>
+      {expanded && (
+        <div className="mt-1 flex flex-col gap-1">
+          <select
+            className="input w-full"
+            value={selectedGroupId}
+            onChange={(e) => {
+              setSelectedGroupId(e.target.value);
+              onChange("");
+            }}
+          >
+            {/* アイテム側でも「設定しない」を選べるようにする(商品を選ぶ前から未設定であることが分かるように) */}
+            <option value="">{emptyText}</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
             ))}
-            {productsInGroup.length === 0 && (
-              <p className="px-2 py-1 text-neutral-400">このアイテムに品番が登録されていません</p>
-            )}
-          </div>
-        )}
-      </div>
+          </select>
+          {selectedGroupId && (
+            <div className="space-y-0.5 rounded-md border border-neutral-300 bg-white p-1">
+              <ProductRadio
+                name={radioName}
+                checked={!value}
+                onSelect={() => selectProduct("")}
+                text={emptyText}
+                muted
+              />
+              {productsInGroup.map((product) => (
+                <ProductRadio
+                  key={product.id}
+                  name={radioName}
+                  checked={product.id === value}
+                  onSelect={() => selectProduct(product.id)}
+                  text={productLabel(product)}
+                />
+              ))}
+              {productsInGroup.length === 0 && (
+                <p className="px-2 py-1 text-neutral-400">このアイテムに品番が登録されていません</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
