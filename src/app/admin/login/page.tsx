@@ -19,7 +19,11 @@ export default function AdminLoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-sky-50">
       <div className="w-full max-w-sm rounded-lg border border-neutral-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-xl font-semibold">管理画面ログイン</h1>
+        <h1 className="mb-6 text-center text-xl font-semibold">
+          チャットボット決済システム
+          <br />
+          管理画面ログイン
+        </h1>
         <button
           type="button"
           onClick={handleGoogleLogin}
