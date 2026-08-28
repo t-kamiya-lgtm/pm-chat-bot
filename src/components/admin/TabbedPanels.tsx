@@ -17,8 +17,19 @@ export interface TabDef {
  * タブは折り返さず横一列に均等割りし、収まらない場合のみ横スクロールする。
  * 印刷時はタブ切り替えボタンを隠し、全パネルを表示する(PDF出力に全内容を含めるため)。
  */
-export function TabbedPanels({ tabs, className = "" }: { tabs: TabDef[]; className?: string }) {
-  const [active, setActive] = useState(tabs[0]?.key ?? "");
+export function TabbedPanels({
+  tabs,
+  className = "",
+  initialActiveKey,
+}: {
+  tabs: TabDef[];
+  className?: string;
+  /** 初期表示するタブのkey。未指定・該当なしの場合は先頭のタブを表示する。 */
+  initialActiveKey?: string;
+}) {
+  const [active, setActive] = useState(
+    initialActiveKey && tabs.some((t) => t.key === initialActiveKey) ? initialActiveKey : (tabs[0]?.key ?? ""),
+  );
   return (
     <div className={className}>
       <div className="print:hidden mb-4 flex flex-nowrap gap-1 overflow-x-auto border-b border-neutral-200">
