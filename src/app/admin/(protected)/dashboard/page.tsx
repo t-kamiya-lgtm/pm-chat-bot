@@ -13,6 +13,7 @@ import {
   aggregateByScenarioSplit,
   buildPivotTable,
   normalizeReferrer,
+  orderRevenue,
   totalStats,
   type AccessLogRow,
   type OrderRow,
@@ -42,6 +43,49 @@ function formatRate(rate: number | null): string {
   return rate === null ? "-" : `${(rate * 100).toFixed(1)}%`;
 }
 
+/** ドリルダウン用に、注文の生データから追加で必要な顧客・注文IDを含めた行の型。 */
+interface OrderRowWithCustomer extends OrderRow {
+  id: string;
+  customer_id: string;
+}
+
+interface DrilldownOrderRow {
+  customerName: string;
+  productLabel: string;
+  revenue: number;
+  dateLabel: string;
+  kindLabel: string;
+}
+
+function kindLabelOf(o: { type: "one_time" | "subscription"; billing_cycle_number: number }): string {
+  if (o.billing_cycle_number > 1) return "継続(定期)";
+  return o.type === "subscription" ? "新規(定期)" : "新規(単品)";
+}
+
+/** 内訳表の各セグメント(キー)ごとに、行クリックで展開する生データ(顧客・商品・金額・日付・区分)を組み立てる。 */
+function buildDrilldownByKey(
+  orders: (OrderRowWithCustomer & { referrerLabel: string })[],
+  keyOf: (o: OrderRowWithCustomer & { referrerLabel: string }) => string,
+  customerNamesById: Map<string, string>,
+  productNames: Record<string, string>,
+): Map<string, DrilldownOrderRow[]> {
+  const map = new Map<string, DrilldownOrderRow[]>();
+  for (const o of orders) {
+    const key = keyOf(o);
+    const list = map.get(key) ?? [];
+    list.push({
+      customerName: customerNamesById.get(o.customer_id) ?? "(顧客不明)",
+      productLabel: productNames[o.product_id] ?? "(削除済み商品)",
+      revenue: orderRevenue(o),
+      dateLabel: new Date(o.created_at).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }),
+      kindLabel: kindLabelOf(o),
+    });
+    map.set(key, list);
+  }
+  for (const list of map.values()) list.sort((a, b) => (a.dateLabel < b.dateLabel ? 1 : -1));
+  return map;
+}
+
 export default async function AdminDashboardPage({
   searchParams,
 }: {
@@ -60,13 +104,17 @@ export default async function AdminDashboardPage({
 
   const supabase = createSupabaseAdminClient();
 
-  const [{ data: scenarios }, { data: products }, { data: brands }] = await Promise.all([
+  const [{ data: scenarios }, { data: products }, { data: brands }, { data: customers }] = await Promise.all([
     supabase.from("scenarios").select("id, name, order_code").order("display_order"),
     supabase.from("products").select("id, name"),
     supabase.from("brands").select("id, name, code").order("name"),
+    supabase.from("customers").select("id, name"),
   ]);
   const scenarioNames = Object.fromEntries((scenarios ?? []).map((s) => [s.id, s.name]));
   const productNames = Object.fromEntries((products ?? []).map((p) => [p.id, p.name]));
+  const customerNamesById = new Map(
+    (customers ?? []).map((c) => [c.id as string, (c.name as string | null) || "(名称未設定)"]),
+  );
 
   const brandCodeToId = new Map(
     (brands ?? []).filter((b) => b.code).map((b) => [(b.code as string).toUpperCase(), b.id as string]),
@@ -94,7 +142,7 @@ export default async function AdminDashboardPage({
   let orderQuery = supabase
     .from("orders")
     .select(
-      "scenario_id, product_id, type, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number, session_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount",
+      "id, customer_id, scenario_id, product_id, type, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number, session_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount",
     )
     .in("status", CONFIRMED_ORDER_STATUSES)
     .gte("created_at", `${dateFrom}T00:00:00+09:00`)
@@ -106,7 +154,7 @@ export default async function AdminDashboardPage({
     : await orderQuery;
 
   const accessLogRows: AccessLogRow[] = accessLogs ?? [];
-  const orderRows: OrderRow[] = orders ?? [];
+  const orderRows: OrderRowWithCustomer[] = (orders ?? []) as unknown as OrderRowWithCustomer[];
 
   // 注文自体にはreferrerを保存していないため、同一ウィジェットセッション(session_id)の
   // アクセスログから流入元を引き当てる。
@@ -115,6 +163,20 @@ export default async function AdminDashboardPage({
     ...o,
     referrerLabel: normalizeReferrer(o.session_id ? (referrerBySessionId.get(o.session_id) ?? null) : null),
   }));
+
+  const scenarioDrilldown = buildDrilldownByKey(
+    orderRowsWithReferrer,
+    (o) => o.scenario_id ?? "",
+    customerNamesById,
+    productNames,
+  );
+  const productDrilldown = buildDrilldownByKey(orderRowsWithReferrer, (o) => o.product_id, customerNamesById, productNames);
+  const referrerDrilldown = buildDrilldownByKey(
+    orderRowsWithReferrer,
+    (o) => o.referrerLabel,
+    customerNamesById,
+    productNames,
+  );
 
   const summary = totalStats(accessLogRows, orderRows);
   const byAd = aggregateByAd(accessLogRows, orderRows);
@@ -148,6 +210,7 @@ export default async function AdminDashboardPage({
         チャットボットへのアクセス数・購入数・売上を、シナリオ・商品・日付・広告(UTMパラメータ)・流入元(設置LP)・ブランド別に確認できます。
         アクセス数はウィジェットが開かれた時点でこのアプリが記録したものです。購入数・売上は入金/受注が確定した注文(与信待ち・失敗・キャンセルを除く)のみを集計しています。
         「新規」は単品購入・定期初回、「継続」は定期の2回目以降を指します。増分利益は広告費を除く(売上-原価-同梱物費用-送料原価-販売手数料-支払手数料、コスト設定導入前の注文は0円扱い)。
+        シナリオ別・商品別・流入元別の「合計」表は、行の▸をクリックすると顧客単位の注文明細(生データ)が見られます。
       </p>
 
       {(accessError || ordersError) && (
@@ -223,7 +286,7 @@ export default async function AdminDashboardPage({
           チャットウィジェットが開かれた直前のページ(referrer)をホスト名+パス単位で集計しています。LP側のReferrer-Policy設定によっては取得できない場合があります。
         </p>
         <SplitStatsViewToggle
-          totalView={<TotalSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />}
+          totalView={<TotalSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" drilldownByKey={referrerDrilldown} />}
           detailView={<DetailSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />}
         />
       </Section>
@@ -238,7 +301,7 @@ export default async function AdminDashboardPage({
           pivotLabel="シナリオ×日付"
           listView={
             <SplitStatsViewToggle
-              totalView={<TotalSplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
+              totalView={<TotalSplitStatsTable rows={byScenario} labelHeader="シナリオ" drilldownByKey={scenarioDrilldown} />}
               detailView={<DetailSplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
             />
           }
@@ -256,7 +319,9 @@ export default async function AdminDashboardPage({
           pivotLabel="商品×日付"
           listView={
             <SplitStatsViewToggle
-              totalView={<TotalSplitStatsTable rows={byProduct} labelHeader="商品" hideAccess />}
+              totalView={
+                <TotalSplitStatsTable rows={byProduct} labelHeader="商品" hideAccess drilldownByKey={productDrilldown} />
+              }
               detailView={<DetailSplitStatsTable rows={byProduct} labelHeader="商品" />}
             />
           }
@@ -405,10 +470,12 @@ function TotalSplitStatsTable({
   rows,
   labelHeader,
   hideAccess,
+  drilldownByKey,
 }: {
   rows: { key: string; label: string; stats: SplitStatsWithDerived }[];
   labelHeader: string;
   hideAccess?: boolean;
+  drilldownByKey?: Map<string, DrilldownOrderRow[]>;
 }) {
   if (rows.length === 0) {
     return <p className="text-sm text-neutral-400">データがありません</p>;
@@ -431,24 +498,76 @@ function TotalSplitStatsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.key} className="border-t border-neutral-100">
-              <td className="px-3 py-2">{row.label}</td>
-              {!hideAccess && <td className="px-3 py-2 text-right">{row.stats.accessCount.toLocaleString()}</td>}
-              <td className="px-3 py-2 text-right">{row.stats.newPurchaseCount.toLocaleString()}</td>
-              <td className="px-3 py-2 text-right">{formatYen(row.stats.newRevenue)}</td>
-              {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
-              <td className="px-3 py-2 text-right">
-                {row.stats.avgUnitPrice === null ? "-" : formatYen(Math.round(row.stats.avgUnitPrice))}
-              </td>
-              <td className="px-3 py-2 text-right">{row.stats.continuingPurchaseCount.toLocaleString()}</td>
-              <td className="px-3 py-2 text-right">{formatYen(row.stats.continuingRevenue)}</td>
-              <td className="px-3 py-2 text-right font-semibold">{formatYen(row.stats.totalRevenue)}</td>
-              <td className="px-3 py-2 text-right">{formatYen(row.stats.incrementalProfit)}</td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const drilldownRows = drilldownByKey?.get(row.key);
+            return (
+              <tr key={row.key} className="border-t border-neutral-100 align-top">
+                <td className="px-3 py-2">
+                  {drilldownRows && drilldownRows.length > 0 ? (
+                    <details>
+                      <summary className="cursor-pointer">{row.label}</summary>
+                      <DrilldownRowsTable rows={drilldownRows} segmentLabel={row.label} />
+                    </details>
+                  ) : (
+                    row.label
+                  )}
+                </td>
+                {!hideAccess && <td className="px-3 py-2 text-right">{row.stats.accessCount.toLocaleString()}</td>}
+                <td className="px-3 py-2 text-right">{row.stats.newPurchaseCount.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right">{formatYen(row.stats.newRevenue)}</td>
+                {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
+                <td className="px-3 py-2 text-right">
+                  {row.stats.avgUnitPrice === null ? "-" : formatYen(Math.round(row.stats.avgUnitPrice))}
+                </td>
+                <td className="px-3 py-2 text-right">{row.stats.continuingPurchaseCount.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right">{formatYen(row.stats.continuingRevenue)}</td>
+                <td className="px-3 py-2 text-right font-semibold">{formatYen(row.stats.totalRevenue)}</td>
+                <td className="px-3 py-2 text-right">{formatYen(row.stats.incrementalProfit)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** 内訳表の行を展開したときに表示する、顧客単位の生データ(注文明細)テーブル。 */
+function DrilldownRowsTable({ rows, segmentLabel }: { rows: DrilldownOrderRow[]; segmentLabel: string }) {
+  return (
+    <div className="mt-2 border-t border-neutral-100 pt-2">
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-xs font-semibold text-neutral-600">注文明細(生データ、{rows.length}件)</p>
+        <CsvExportButton
+          filename={`内訳明細_${segmentLabel}.csv`}
+          headers={["顧客", "商品", "金額(税込)", "日付", "区分"]}
+          rows={rows.map((r) => [r.customerName, r.productLabel, Math.round(r.revenue), r.dateLabel, r.kindLabel])}
+        />
+      </div>
+      <div className="overflow-x-auto rounded-md border border-neutral-200">
+        <table className="w-full min-w-[560px] text-xs">
+          <thead className="bg-neutral-50 text-neutral-500">
+            <tr>
+              <th className="px-3 py-1.5 text-left">顧客</th>
+              <th className="px-3 py-1.5 text-left">商品</th>
+              <th className="px-3 py-1.5 text-right">金額(税込)</th>
+              <th className="px-3 py-1.5 text-left">日付</th>
+              <th className="px-3 py-1.5 text-left">区分</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td className="px-3 py-1.5">{r.customerName}</td>
+                <td className="px-3 py-1.5">{r.productLabel}</td>
+                <td className="px-3 py-1.5 text-right">{formatYen(r.revenue)}</td>
+                <td className="px-3 py-1.5">{r.dateLabel}</td>
+                <td className="px-3 py-1.5">{r.kindLabel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
