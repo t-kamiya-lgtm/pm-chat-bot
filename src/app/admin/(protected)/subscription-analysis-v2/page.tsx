@@ -20,6 +20,7 @@ import {
   projectLtv,
   survivalRateAtN,
   commonBaselineN,
+  decomposeIncrementalProfitLtv,
   type SegmentReliabilityRow,
 } from "@/lib/subscription-ltv-maturity";
 import { PrintButton } from "@/components/admin/PrintButton";
@@ -42,6 +43,12 @@ interface CustomerRowWithName extends LtvCustomerRow {
 
 function formatYen(n: number): string {
   return `${Math.round(n).toLocaleString()}円`;
+}
+
+function formatSignedYen(n: number): string {
+  const rounded = Math.round(n);
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toLocaleString()}円`;
 }
 
 function formatPercent(n: number): string {
@@ -367,6 +374,34 @@ function SegmentAnalysisResults({
   csvKey: string;
   sectionTitle: string;
 }) {
+  const withSurvivalSum = rowsWithDerived.map((entry) => ({
+    ...entry,
+    survivalSum: entry.curve.reduce((sum, p) => sum + p.forecast / 100, 0),
+  }));
+  const baselineEntry =
+    withSurvivalSum.length > 0
+      ? withSurvivalSum.reduce((best, cur) => (cur.row.customerCount > best.row.customerCount ? cur : best))
+      : null;
+  const decompositionRows = baselineEntry
+    ? withSurvivalSum
+        .filter((entry) => entry.row.segment !== baselineEntry.row.segment)
+        .map((entry) => ({
+          segment: entry.row.segment,
+          decomposition: decomposeIncrementalProfitLtv(
+            {
+              avgUnitPrice: baselineEntry.row.avgUnitPrice,
+              avgIncrementalProfitPerOrder: baselineEntry.row.avgIncrementalProfitPerOrder,
+              survivalSum: baselineEntry.survivalSum,
+            },
+            {
+              avgUnitPrice: entry.row.avgUnitPrice,
+              avgIncrementalProfitPerOrder: entry.row.avgIncrementalProfitPerOrder,
+              survivalSum: entry.survivalSum,
+            },
+          ),
+        }))
+    : [];
+
   return (
     <div>
       <h2 className="mb-3 text-sm font-semibold text-neutral-700">{sectionTitle}</h2>
@@ -476,6 +511,54 @@ function SegmentAnalysisResults({
         行=セグメント、列=到達回数ごとの残存率。白背景は確定値(実測)、グレー背景は予測値(自動更新モデル)です。
       </p>
       <RetentionCohortTable rowsWithDerived={rowsWithDerived} horizon={HORIZON} />
+
+      {baselineEntry && decompositionRows.length > 0 && (
+        <div className="mt-10">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-neutral-700">
+              予測増分利益LTVの要因分解(基準: {baselineEntry.row.segment})
+            </h3>
+            <CsvExportButton
+              filename={`要因分解_${csvKey}.csv`}
+              headers={["セグメント", "客単価要因", "コスト要因", "残存率要因", "差分合計"]}
+              rows={decompositionRows.map(({ segment, decomposition }) => [
+                segment,
+                Math.round(decomposition.priceFactor),
+                Math.round(decomposition.costFactor),
+                Math.round(decomposition.survivalFactor),
+                Math.round(decomposition.total),
+              ])}
+            />
+          </div>
+          <p className="mb-2 text-xs text-neutral-400">
+            契約者数が最も多いセグメント「{baselineEntry.row.segment}」を基準に、他セグメントとの予測増分利益LTVの差を「客単価要因」「コスト要因(原価・同梱物費用・送料原価・手数料の合算)」「残存率要因」に分解します。3つの要因の合計は必ず実際の差分と一致します(客単価→コスト→残存率の順で寄与を割り当てる方式のため、順序を変えると内訳の配分は変わりますが合計は変わりません)。
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-sky-100 text-xs text-neutral-600">
+                <tr>
+                  <th className="px-4 py-2">セグメント</th>
+                  <th className="px-4 py-2 text-right">客単価要因</th>
+                  <th className="px-4 py-2 text-right">コスト要因</th>
+                  <th className="px-4 py-2 text-right">残存率要因</th>
+                  <th className="px-4 py-2 text-right">差分合計</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {decompositionRows.map(({ segment, decomposition }) => (
+                  <tr key={segment}>
+                    <td className="px-4 py-2 font-medium">{segment}</td>
+                    <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.priceFactor)}</td>
+                    <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.costFactor)}</td>
+                    <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.survivalFactor)}</td>
+                    <td className="px-4 py-2 text-right font-semibold">{formatSignedYen(decomposition.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

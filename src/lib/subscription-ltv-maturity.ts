@@ -234,3 +234,54 @@ export function commonBaselineN(rows: SegmentReliabilityRow[]): number {
   if (rows.length === 0) return 1;
   return Math.min(...rows.map((r) => r.ownN));
 }
+
+/** 要因分解の対象になる、セグメント1件分の予測LTV算出用の入力値。 */
+export interface LtvFactorInput {
+  avgUnitPrice: number;
+  avgIncrementalProfitPerOrder: number;
+  survivalSum: number;
+}
+
+export interface LtvFactorDecomposition {
+  /** 客単価の差による寄与(円)。 */
+  priceFactor: number;
+  /** 残存率(予測カーブの合計)の差による寄与(円)。 */
+  survivalFactor: number;
+  /** 差分合計(円) = 対象セグメントのLTV - 基準セグメントのLTV。 */
+  total: number;
+}
+
+export interface IncrementalProfitFactorDecomposition extends LtvFactorDecomposition {
+  /** 原価・同梱物費用・送料原価・販売手数料・支払手数料(1回あたり合算)の差による寄与(円)。 */
+  costFactor: number;
+}
+
+/**
+ * 売上LTVの差分を「客単価要因」「残存率要因」に厳密に分解する(客単価→残存率の順で
+ * 寄与を割り当てる逐次分解のため、内訳の合計は必ず実際の差分と一致する)。
+ */
+export function decomposeRevenueLtv(baseline: LtvFactorInput, target: LtvFactorInput): LtvFactorDecomposition {
+  const priceFactor = (target.avgUnitPrice - baseline.avgUnitPrice) * baseline.survivalSum;
+  const survivalFactor = target.avgUnitPrice * (target.survivalSum - baseline.survivalSum);
+  return { priceFactor, survivalFactor, total: priceFactor + survivalFactor };
+}
+
+/**
+ * 増分利益LTVの差分を「客単価要因」「コスト要因」「残存率要因」に厳密に分解する。
+ * 1回あたりのコスト(原価・同梱物費用・送料原価・販売手数料・支払手数料の合算)は、
+ * avgUnitPrice - avgIncrementalProfitPerOrderで逆算する(増分利益の定義式そのものから
+ * 導けるため、追加のコストデータ取得は不要)。客単価→コスト→残存率の順で寄与を割り当てる
+ * 逐次分解のため、順序を変えると内訳の配分は変わるが、内訳の合計(total)は必ず実際の
+ * 差分と一致する。
+ */
+export function decomposeIncrementalProfitLtv(
+  baseline: LtvFactorInput,
+  target: LtvFactorInput,
+): IncrementalProfitFactorDecomposition {
+  const baselineCost = baseline.avgUnitPrice - baseline.avgIncrementalProfitPerOrder;
+  const targetCost = target.avgUnitPrice - target.avgIncrementalProfitPerOrder;
+  const priceFactor = (target.avgUnitPrice - baseline.avgUnitPrice) * baseline.survivalSum;
+  const costFactor = -(targetCost - baselineCost) * baseline.survivalSum;
+  const survivalFactor = (target.avgUnitPrice - targetCost) * (target.survivalSum - baseline.survivalSum);
+  return { priceFactor, costFactor, survivalFactor, total: priceFactor + costFactor + survivalFactor };
+}
