@@ -314,11 +314,11 @@ export function CouponsTable({
           className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm"
         >
           <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">コード(半角英数字)</span>
+            <span className="mb-1 block text-xs text-neutral-500">コード(半角英大文字・数字・記号、小文字不可)</span>
             <input
               className="input"
               value={form.code}
-              onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
+              onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
               placeholder="例: INFLUENCER_A"
             />
           </label>
@@ -521,11 +521,11 @@ export function CouponsTable({
                       <td colSpan={columnCount} className="px-4 py-3">
                         <div className="flex flex-wrap items-end gap-3 text-sm">
                           <label className="block">
-                            <span className="mb-1 block text-xs text-neutral-500">コード</span>
+                            <span className="mb-1 block text-xs text-neutral-500">コード(半角英大文字・数字・記号、小文字不可)</span>
                             <input
                               className="input"
                               value={editForm.code}
-                              onChange={(e) => setEditForm((p) => ({ ...p, code: e.target.value }))}
+                              onChange={(e) => setEditForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
                             />
                           </label>
                           <label className="block">
