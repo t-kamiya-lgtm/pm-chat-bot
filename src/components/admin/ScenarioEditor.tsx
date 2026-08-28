@@ -1656,6 +1656,8 @@ export function ScenarioEditor({
   const [popupIconUrlDraft, setPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [savedPopupIconUrlDraft, setSavedPopupIconUrlDraft] = useState(scenario.popupIconUrl ?? "");
   const [popupIconUrlSaving, setPopupIconUrlSaving] = useState(false);
+  const [popupButtonTextDraft, setPopupButtonTextDraft] = useState(scenario.popupButtonText ?? "");
+  const [savedPopupButtonTextDraft, setSavedPopupButtonTextDraft] = useState(scenario.popupButtonText ?? "");
   const [popupPosition, setPopupPositionState] = useState<"bottom-right" | "bottom-left">(
     scenario.popupPosition ?? "bottom-right",
   );
@@ -1968,13 +1970,17 @@ export function ScenarioEditor({
     setConversionTagDraft(savedConversionTagDraft);
   }
 
-  /** ポップアップ設定アコーディオンの「保存して閉じる」。アイコン画像URLと表示位置をまとめて保存する。 */
+  /** ポップアップ設定アコーディオンの「保存して閉じる」。アイコン画像URL・表示位置・ボタン文言をまとめて保存する。 */
   async function handleSavePopupSettings(): Promise<boolean> {
     setPopupIconUrlSaving(true);
     const res = await fetch(`/api/scenarios/${scenario.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ popupIconUrl: popupIconUrlDraft.trim() || null, popupPosition }),
+      body: JSON.stringify({
+        popupIconUrl: popupIconUrlDraft.trim() || null,
+        popupPosition,
+        popupButtonText: popupButtonTextDraft.trim() || null,
+      }),
     });
     setPopupIconUrlSaving(false);
     if (!res.ok) {
@@ -1987,6 +1993,7 @@ export function ScenarioEditor({
     }
     setSavedPopupIconUrlDraft(popupIconUrlDraft);
     setSavedPopupPosition(popupPosition);
+    setSavedPopupButtonTextDraft(popupButtonTextDraft);
     setToast({ message: "保存しました", type: "success" });
     router.refresh();
     return true;
@@ -1995,6 +2002,7 @@ export function ScenarioEditor({
   function handleCancelPopupSettings() {
     setPopupIconUrlDraft(savedPopupIconUrlDraft);
     setPopupPositionState(savedPopupPosition);
+    setPopupButtonTextDraft(savedPopupButtonTextDraft);
   }
 
   /** 表示位置はポップアップ設定アコーディオンの「保存して閉じる」でまとめて保存するため、ここでは下書きの更新のみ行う。 */
@@ -3183,6 +3191,20 @@ export function ScenarioEditor({
             </button>
           </div>
         </label>
+        {!popupIconUrlDraft.trim() && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">
+              テキストボタンの文言(未設定で「チャットで相談する」)
+            </span>
+            <input
+              type="text"
+              value={popupButtonTextDraft}
+              onChange={(e) => setPopupButtonTextDraft(e.target.value)}
+              placeholder="チャットで相談する"
+              className="input w-full"
+            />
+          </label>
+        )}
         <div>
           <span className="mb-2 block text-sm text-neutral-600">表示位置</span>
           <div className="flex gap-4 text-sm">

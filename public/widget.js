@@ -97,6 +97,7 @@
     config = config || {};
     var side = config.popup_position === "bottom-left" ? "left" : "right";
     var iconUrl = config.popup_icon_url;
+    var buttonText = config.popup_button_text || "チャットで相談する";
 
     var button = document.createElement("button");
     button.setAttribute("aria-label", "チャットボットを開く");
@@ -134,7 +135,7 @@
         fontSize: "14px",
       });
       Object.assign(button.style, buttonBaseStyle);
-      button.textContent = "チャットで相談する";
+      button.textContent = buttonText;
     }
 
     var container = document.createElement("div");
@@ -186,7 +187,7 @@
     function setOpen(next) {
       isOpen = next;
       container.style.display = isOpen ? "block" : "none";
-      if (!iconUrl) button.textContent = isOpen ? "閉じる" : "チャットで相談する";
+      if (!iconUrl) button.textContent = isOpen ? "閉じる" : buttonText;
       button.setAttribute("aria-label", isOpen ? "チャットボットを閉じる" : "チャットボットを開く");
     }
 

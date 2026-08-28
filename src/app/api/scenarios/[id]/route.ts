@@ -66,6 +66,7 @@ const updateSchema = z.object({
   shipmentCompleteFrom: z.string().nullable().optional(),
   popupIconUrl: z.string().nullable().optional(),
   popupPosition: z.enum(["bottom-right", "bottom-left"]).nullable().optional(),
+  popupButtonText: z.string().nullable().optional(),
   couponCodeFieldEnabled: z.boolean().optional(),
   menuLayoutKey: z.enum(MENU_LAYOUT_KEYS).optional(),
   menuImageUrl: z.string().nullable().optional(),
@@ -166,6 +167,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       }),
       ...(input.popupIconUrl !== undefined && { popup_icon_url: input.popupIconUrl }),
       ...(input.popupPosition !== undefined && { popup_position: input.popupPosition }),
+      ...(input.popupButtonText !== undefined && { popup_button_text: input.popupButtonText }),
       ...(input.couponCodeFieldEnabled !== undefined && {
         coupon_code_field_enabled: input.couponCodeFieldEnabled,
       }),
