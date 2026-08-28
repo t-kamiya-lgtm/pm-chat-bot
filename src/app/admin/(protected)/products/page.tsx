@@ -30,6 +30,7 @@ export default async function AdminProductsPage({
     id: product.id,
     name: product.name,
     price: product.price,
+    firstTimePrice: product.first_time_price,
     shippingFee: product.shipping_fee,
     orderType: product.order_type,
     subscriptionIntervals: sanitizeSubscriptionIntervals(product.subscription_intervals),

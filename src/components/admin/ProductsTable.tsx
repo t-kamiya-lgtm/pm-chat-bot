@@ -11,10 +11,25 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   subscription: "定期",
 };
 
+/** 注文タイプ列に表示する、定期お届け頻度の短縮ラベル(表示順もこの並びに揃える)。 */
+const SUBSCRIPTION_INTERVAL_SHORT_LABELS: Record<string, string> = {
+  biweekly: "2週",
+  monthly: "1か月",
+  bimonthly: "2か月",
+};
+const SUBSCRIPTION_INTERVAL_ORDER = ["biweekly", "monthly", "bimonthly"];
+
+function formatSubscriptionIntervals(intervals: string[]): string {
+  return SUBSCRIPTION_INTERVAL_ORDER.filter((key) => intervals.includes(key))
+    .map((key) => SUBSCRIPTION_INTERVAL_SHORT_LABELS[key])
+    .join("・");
+}
+
 export interface ProductRow {
   id: string;
   name: string;
   price: number;
+  firstTimePrice: number | null;
   shippingFee: number;
   orderType: string;
   subscriptionIntervals: string[];
@@ -88,6 +103,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
         id: string;
         name: string;
         price: number;
+        first_time_price: number | null;
         shipping_fee: number;
         order_type: string;
         subscription_intervals: string[];
@@ -102,6 +118,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
         id: created.id,
         name: created.name,
         price: created.price,
+        firstTimePrice: created.first_time_price,
         shippingFee: created.shipping_fee,
         orderType: created.order_type,
         subscriptionIntervals: created.subscription_intervals,
@@ -142,7 +159,8 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
               <th className="px-4 py-2">商品コード</th>
               <th className="px-4 py-2">商品名</th>
               <th className="px-4 py-2">アイテム</th>
-              <th className="px-4 py-2">価格</th>
+              <th className="px-4 py-2">価格(税込)</th>
+              <th className="px-4 py-2">初回特別価格(税込)</th>
               <th className="px-4 py-2">送料</th>
               <th className="px-4 py-2">注文タイプ</th>
               <th className="px-4 py-2">状態</th>
@@ -161,13 +179,16 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
                 <td className="px-4 py-2">{product.productGroupName ?? "-"}</td>
                 <td className="px-4 py-2">{product.price.toLocaleString()}円</td>
                 <td className="px-4 py-2">
+                  {product.firstTimePrice === null ? "-" : `${product.firstTimePrice.toLocaleString()}円`}
+                </td>
+                <td className="px-4 py-2">
                   {product.shippingFee === 0 ? "送料無料" : `${product.shippingFee.toLocaleString()}円`}
                 </td>
                 <td className="px-4 py-2">
                   {ORDER_TYPE_LABELS[product.orderType]}
                   {product.orderType === "subscription" &&
                     product.subscriptionIntervals?.length > 0 &&
-                    `(${product.subscriptionIntervals.join(" / ")})`}
+                    `(${formatSubscriptionIntervals(product.subscriptionIntervals)})`}
                 </td>
                 <td className="px-4 py-2">
                   <button
@@ -200,7 +221,7 @@ export function ProductsTable({ initialProducts }: { initialProducts: ProductRow
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-neutral-400">
+                <td colSpan={9} className="px-4 py-6 text-center text-neutral-400">
                   {products.length === 0 ? "商品が登録されていません" : "該当する商品がありません"}
                 </td>
               </tr>
