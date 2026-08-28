@@ -6,7 +6,7 @@ import { requireCatalogRole } from "@/lib/require-role";
 const couponUpdateSchema = z.object({
   code: z
     .string()
-    .regex(/^[A-Za-z0-9_-]+$/, "半角英数字・ハイフン・アンダースコアのみ使用できます")
+    .regex(/^[A-Z0-9_-]+$/, "半角英大文字・数字・記号(_-)のみ使用できます(小文字は使用できません)")
     .optional(),
   name: z.string().min(1).optional(),
   discountType: z.enum(["percent", "fixed"]).optional(),
