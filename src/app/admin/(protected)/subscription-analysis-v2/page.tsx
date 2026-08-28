@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
@@ -22,11 +21,14 @@ import {
   commonBaselineN,
   decomposeIncrementalProfitLtv,
   type SegmentReliabilityRow,
+  type IncrementalProfitFactorDecomposition,
 } from "@/lib/subscription-ltv-maturity";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { CsvExportButton } from "@/components/admin/CsvExportButton";
 import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/customer-lifetime-ltv";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
+import { StickyBelowHeader } from "@/components/admin/StickyBelowHeader";
+import { TabbedPanels } from "@/components/admin/TabbedPanels";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,55 @@ function formatElapsed(days: number): string {
   return `約${(days / 30).toFixed(1)}ヶ月`;
 }
 
+type RowWithDerived = {
+  row: SegmentReliabilityRow;
+  curve: ReturnType<typeof buildRetentionCurve>;
+  projected: ReturnType<typeof projectLtv>;
+  commonRate: number;
+};
+
+type RowWithSurvivalSum = RowWithDerived & { survivalSum: number };
+
+/**
+ * セグメント一覧から、①要因分解の基準行(契約者数が最多のセグメント)と、
+ * ②他セグメントとの予測増分利益LTVの要因分解を組み立てる。
+ * ①②(セグメント別レポート・要因分解タブ)の両方から参照する共通の前処理。
+ */
+function buildSegmentAnalysisData(rowsWithDerived: RowWithDerived[]): {
+  withSurvivalSum: RowWithSurvivalSum[];
+  baselineEntry: RowWithSurvivalSum | null;
+  decompositionRows: { segment: string; decomposition: IncrementalProfitFactorDecomposition }[];
+} {
+  const withSurvivalSum = rowsWithDerived.map((entry) => ({
+    ...entry,
+    survivalSum: entry.curve.reduce((sum, p) => sum + p.forecast / 100, 0),
+  }));
+  const baselineEntry =
+    withSurvivalSum.length > 0
+      ? withSurvivalSum.reduce((best, cur) => (cur.row.customerCount > best.row.customerCount ? cur : best))
+      : null;
+  const decompositionRows = baselineEntry
+    ? withSurvivalSum
+        .filter((entry) => entry.row.segment !== baselineEntry.row.segment)
+        .map((entry) => ({
+          segment: entry.row.segment,
+          decomposition: decomposeIncrementalProfitLtv(
+            {
+              avgUnitPrice: baselineEntry.row.avgUnitPrice,
+              avgIncrementalProfitPerOrder: baselineEntry.row.avgIncrementalProfitPerOrder,
+              survivalSum: baselineEntry.survivalSum,
+            },
+            {
+              avgUnitPrice: entry.row.avgUnitPrice,
+              avgIncrementalProfitPerOrder: entry.row.avgIncrementalProfitPerOrder,
+              survivalSum: entry.survivalSum,
+            },
+          ),
+        }))
+    : [];
+  return { withSurvivalSum, baselineEntry, decompositionRows };
+}
+
 export default async function AdminSubscriptionAnalysisV2Page({
   searchParams,
 }: {
@@ -73,13 +124,12 @@ export default async function AdminSubscriptionAnalysisV2Page({
   const dateFrom = getParam("dateFrom") || "";
   const dateTo = getParam("dateTo") || "";
   const brandId = getParam("brandId") || "";
-  const axisParam = getParam("axis") || "scenario";
-  const axis: SegmentAxis = (SEGMENT_AXES.find((a) => a.key === axisParam)?.key ?? "scenario") as SegmentAxis;
-  const combineParam = sp["combine"];
   const validAxisKeys = new Set(SEGMENT_AXES.map((a) => a.key));
-  const combineAxes = (Array.isArray(combineParam) ? combineParam : combineParam ? [combineParam] : []).filter(
+  const axisParam = sp["axis"];
+  const selectedAxesRaw = (Array.isArray(axisParam) ? axisParam : axisParam ? [axisParam] : []).filter(
     (v): v is SegmentAxis => validAxisKeys.has(v as SegmentAxis),
   );
+  const selectedAxes: SegmentAxis[] = selectedAxesRaw.length > 0 ? selectedAxesRaw : ["scenario"];
 
   const supabase = createSupabaseAdminClient();
 
@@ -163,12 +213,12 @@ export default async function AdminSubscriptionAnalysisV2Page({
   }
 
   const asOfIso = new Date().toISOString();
-  const reliabilityRows = buildSegmentReliability(profiles, customersById, axis, ctx, asOfIso);
+  const reliabilityRows = buildSegmentReliability(profiles, customersById, selectedAxes, ctx, asOfIso);
   const overallRow = buildOverallReliability(profiles, customersById, ctx, asOfIso);
   const fallbackRate = overallRow ? (geoMeanTransitionRate(overallRow) ?? undefined) : undefined;
   const commonN = commonBaselineN(reliabilityRows);
 
-  const rowsWithDerived = reliabilityRows.map((row) => {
+  const rowsWithDerived: RowWithDerived[] = reliabilityRows.map((row) => {
     const curve = buildRetentionCurve(row, { horizon: HORIZON, fallbackRate });
     const projected = projectLtv(row, curve);
     return {
@@ -181,22 +231,10 @@ export default async function AdminSubscriptionAnalysisV2Page({
 
   const totalSubscribers = profiles.filter((p) => p.isSubscriber).length;
 
-  const combinedReliabilityRows =
-    combineAxes.length >= 2 ? buildSegmentReliability(profiles, customersById, combineAxes, ctx, asOfIso) : [];
-  const combinedCommonN = combinedReliabilityRows.length > 0 ? commonBaselineN(combinedReliabilityRows) : 1;
-  const combinedRowsWithDerived = combinedReliabilityRows.map((row) => {
-    const curve = buildRetentionCurve(row, { horizon: HORIZON, fallbackRate });
-    const projected = projectLtv(row, curve);
-    return {
-      row,
-      curve,
-      projected,
-      commonRate: survivalRateAtN(row, combinedCommonN),
-    };
-  });
-  const combinedSegmentHeaderLabel = combineAxes
-    .map((key) => SEGMENT_AXES.find((a) => a.key === key)?.label ?? key)
-    .join(" × ");
+  const { withSurvivalSum, baselineEntry, decompositionRows } = buildSegmentAnalysisData(rowsWithDerived);
+
+  const segmentHeaderLabel = selectedAxes.map((key) => SEGMENT_AXES.find((a) => a.key === key)?.label ?? key).join(" × ");
+  const csvKey = selectedAxes.join("+");
 
   // 生涯LTV・年間LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
   // 下部の獲得日フィルタの影響を受けず常に全期間で計算する
@@ -233,122 +271,89 @@ export default async function AdminSubscriptionAnalysisV2Page({
         </div>
       </div>
 
-      <form
-        method="get"
-        className="print:hidden mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm"
-      >
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">獲得日(から、初回注文日基準)</span>
-          <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">獲得日(まで)</span>
-          <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
-          <select name="brandId" defaultValue={brandId} className="input">
-            <option value="">すべて</option>
-            {(brands ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-                {!b.code && "(コード未設定)"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <input type="hidden" name="axis" value={axis} />
-        <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          絞り込む
-        </button>
-      </form>
-
-      <div className="print:hidden mb-4">
-        <span className="mb-1 block text-xs text-neutral-500">セグメント軸</span>
-        <div className="flex flex-wrap gap-1">
-          {SEGMENT_AXES.map((a) => {
-            const params = new URLSearchParams();
-            if (dateFrom) params.set("dateFrom", dateFrom);
-            if (dateTo) params.set("dateTo", dateTo);
-            if (brandId) params.set("brandId", brandId);
-            params.set("axis", a.key);
-            const active = a.key === axis;
-            return (
-              <Link
-                key={a.key}
-                href={`?${params.toString()}`}
-                className={`rounded-md border px-2.5 py-1 text-xs ${
-                  active ? "border-blue-600 bg-blue-50 text-blue-700" : "border-neutral-300 text-neutral-500 hover:bg-neutral-50"
-                }`}
-              >
-                {a.label}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      <p className="mb-4 text-sm text-neutral-600">対象定期契約者数: <strong>{totalSubscribers.toLocaleString()}</strong>人</p>
-
-      <SegmentAnalysisResults
-        rowsWithDerived={rowsWithDerived}
-        commonN={commonN}
-        axis={axis}
-        profiles={profiles}
-        customersById={customersById}
-        ctx={ctx}
-        statusByOrderId={statusByOrderId}
-        csvKey={axis}
-        sectionTitle={`${SEGMENT_AXES.find((a) => a.key === axis)?.label ?? axis}別`}
-      />
-
-      <div className="mt-10 mb-3 rounded-lg border border-neutral-200 bg-white p-4">
-        <h2 className="mb-1 text-sm font-semibold text-neutral-700">複数条件の掛け合わせレポート</h2>
-        <p className="mb-2 text-xs text-neutral-500">
-          2つ以上の軸を選ぶと、その組み合わせ(例:シナリオ×流入元(LP)×初回商品)単位で固有到達回数・残存率コホート表・顧客明細を集計します。
-        </p>
-        <form method="get" className="print:hidden flex flex-wrap items-end gap-3 text-sm">
-          {dateFrom && <input type="hidden" name="dateFrom" value={dateFrom} />}
-          {dateTo && <input type="hidden" name="dateTo" value={dateTo} />}
-          {brandId && <input type="hidden" name="brandId" value={brandId} />}
-          <input type="hidden" name="axis" value={axis} />
-          <div className="flex flex-wrap gap-2">
-            {SEGMENT_AXES.map((a) => (
-              <label
-                key={a.key}
-                className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600"
-              >
-                <input type="checkbox" name="combine" value={a.key} defaultChecked={combineAxes.includes(a.key)} />
-                {a.label}
-              </label>
-            ))}
+      <StickyBelowHeader className="print:hidden mb-6 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+        <form method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">獲得日(から、初回注文日基準)</span>
+            <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">獲得日(まで)</span>
+            <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
+            <select name="brandId" defaultValue={brandId} className="input">
+              <option value="">すべて</option>
+              {(brands ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {!b.code && "(コード未設定)"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="block">
+            <span className="mb-1 block text-xs text-neutral-500">セグメント軸(複数選択で組み合わせ集計)</span>
+            <div className="flex flex-wrap gap-1.5">
+              {SEGMENT_AXES.map((a) => (
+                <label
+                  key={a.key}
+                  className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600"
+                >
+                  <input type="checkbox" name="axis" value={a.key} defaultChecked={selectedAxes.includes(a.key)} />
+                  {a.label}
+                </label>
+              ))}
+            </div>
           </div>
-          <button type="submit" className="rounded-md bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700">
-            集計する
+          <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            絞り込む
           </button>
         </form>
-      </div>
+        <p className="mt-2 text-xs text-neutral-500">
+          現在の軸: <strong>{segmentHeaderLabel}</strong> / 対象定期契約者数: <strong>{totalSubscribers.toLocaleString()}</strong>人
+        </p>
+      </StickyBelowHeader>
 
-      {combineAxes.length < 2 ? (
-        <p className="mb-8 text-sm text-neutral-400">軸を2つ以上選んで集計してください。</p>
-      ) : (
-        <SegmentAnalysisResults
-          rowsWithDerived={combinedRowsWithDerived}
-          commonN={combinedCommonN}
-          axis={combineAxes}
-          profiles={profiles}
-          customersById={customersById}
-          ctx={ctx}
-          statusByOrderId={statusByOrderId}
-          csvKey={`組み合わせ_${combineAxes.join("+")}`}
-          sectionTitle={`組み合わせ(${combinedSegmentHeaderLabel})`}
-        />
-      )}
+      <TabbedPanels
+        tabs={[
+          {
+            key: "segment",
+            label: "①セグメント別レポート",
+            content: (
+              <SegmentTablePanel
+                rowsWithDerived={withSurvivalSum}
+                commonN={commonN}
+                axis={selectedAxes}
+                profiles={profiles}
+                customersById={customersById}
+                ctx={ctx}
+                statusByOrderId={statusByOrderId}
+                csvKey={csvKey}
+                sectionTitle={`${segmentHeaderLabel}別`}
+              />
+            ),
+          },
+          {
+            key: "cohort",
+            label: "②残存率コホート表(実績+予測)",
+            content: <CohortPanel rowsWithDerived={rowsWithDerived} csvKey={csvKey} />,
+          },
+          {
+            key: "factor",
+            label: `③予測増分利益LTVの要因分解${baselineEntry ? `(基準: ${baselineEntry.row.segment})` : ""}`,
+            content: (
+              <FactorDecompositionPanel baselineEntry={baselineEntry} decompositionRows={decompositionRows} csvKey={csvKey} />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
 
-function SegmentAnalysisResults({
+function SegmentTablePanel({
   rowsWithDerived,
   commonN,
   axis,
@@ -359,12 +364,7 @@ function SegmentAnalysisResults({
   csvKey,
   sectionTitle,
 }: {
-  rowsWithDerived: {
-    row: SegmentReliabilityRow;
-    curve: ReturnType<typeof buildRetentionCurve>;
-    projected: ReturnType<typeof projectLtv>;
-    commonRate: number;
-  }[];
+  rowsWithDerived: RowWithSurvivalSum[];
   commonN: number;
   axis: SegmentAxis | SegmentAxis[];
   profiles: ReturnType<typeof buildCustomerProfiles>;
@@ -374,34 +374,6 @@ function SegmentAnalysisResults({
   csvKey: string;
   sectionTitle: string;
 }) {
-  const withSurvivalSum = rowsWithDerived.map((entry) => ({
-    ...entry,
-    survivalSum: entry.curve.reduce((sum, p) => sum + p.forecast / 100, 0),
-  }));
-  const baselineEntry =
-    withSurvivalSum.length > 0
-      ? withSurvivalSum.reduce((best, cur) => (cur.row.customerCount > best.row.customerCount ? cur : best))
-      : null;
-  const decompositionRows = baselineEntry
-    ? withSurvivalSum
-        .filter((entry) => entry.row.segment !== baselineEntry.row.segment)
-        .map((entry) => ({
-          segment: entry.row.segment,
-          decomposition: decomposeIncrementalProfitLtv(
-            {
-              avgUnitPrice: baselineEntry.row.avgUnitPrice,
-              avgIncrementalProfitPerOrder: baselineEntry.row.avgIncrementalProfitPerOrder,
-              survivalSum: baselineEntry.survivalSum,
-            },
-            {
-              avgUnitPrice: entry.row.avgUnitPrice,
-              avgIncrementalProfitPerOrder: entry.row.avgIncrementalProfitPerOrder,
-              survivalSum: entry.survivalSum,
-            },
-          ),
-        }))
-    : [];
-
   return (
     <div>
       <h2 className="mb-3 text-sm font-semibold text-neutral-700">{sectionTitle}</h2>
@@ -453,7 +425,7 @@ function SegmentAnalysisResults({
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {rowsWithDerived.map(({ row, curve, projected, commonRate }) => (
+            {rowsWithDerived.map(({ row, projected, commonRate, survivalSum }) => (
               <tr key={row.segment} className="align-top hover:bg-neutral-50">
                 <td className="px-4 py-2 font-medium">
                   <details>
@@ -465,7 +437,7 @@ function SegmentAnalysisResults({
                       customersById={customersById}
                       ctx={ctx}
                       statusByOrderId={statusByOrderId}
-                      survivalSum={curve.reduce((sum, p) => sum + p.forecast / 100, 0)}
+                      survivalSum={survivalSum}
                     />
                   </details>
                 </td>
@@ -498,9 +470,15 @@ function SegmentAnalysisResults({
         <li>予測LTV: 確定済みの残存率カーブを{HORIZON}回目まで自動延長(確定済み全回次間の移行率の幾何平均、無ければ全体平均で代用)して算出</li>
         <li>セグメント行の▸をクリックすると、そのセグメントに含まれる顧客明細(生データ)が見られます</li>
       </ul>
+    </div>
+  );
+}
 
+function CohortPanel({ rowsWithDerived, csvKey }: { rowsWithDerived: RowWithDerived[]; csvKey: string }) {
+  return (
+    <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-neutral-700">残存率コホート表(実績+予測)</h3>
+        <h2 className="text-sm font-semibold text-neutral-700">残存率コホート表(実績+予測)</h2>
         <CsvExportButton
           filename={`残存率コホート表_${csvKey}.csv`}
           headers={["セグメント", ...Array.from({ length: HORIZON }, (_, i) => `${i + 1}回目`)]}
@@ -511,54 +489,67 @@ function SegmentAnalysisResults({
         行=セグメント、列=到達回数ごとの残存率。白背景は確定値(実測)、グレー背景は予測値(自動更新モデル)です。
       </p>
       <RetentionCohortTable rowsWithDerived={rowsWithDerived} horizon={HORIZON} />
+    </div>
+  );
+}
 
-      {baselineEntry && decompositionRows.length > 0 && (
-        <div className="mt-10">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-sm font-semibold text-neutral-700">
-              予測増分利益LTVの要因分解(基準: {baselineEntry.row.segment})
-            </h3>
-            <CsvExportButton
-              filename={`要因分解_${csvKey}.csv`}
-              headers={["セグメント", "客単価要因", "コスト要因", "残存率要因", "差分合計"]}
-              rows={decompositionRows.map(({ segment, decomposition }) => [
-                segment,
-                Math.round(decomposition.priceFactor),
-                Math.round(decomposition.costFactor),
-                Math.round(decomposition.survivalFactor),
-                Math.round(decomposition.total),
-              ])}
-            />
-          </div>
-          <p className="mb-2 text-xs text-neutral-400">
-            契約者数が最も多いセグメント「{baselineEntry.row.segment}」を基準に、他セグメントとの予測増分利益LTVの差を「客単価要因」「コスト要因(原価・同梱物費用・送料原価・手数料の合算)」「残存率要因」に分解します。3つの要因の合計は必ず実際の差分と一致します(客単価→コスト→残存率の順で寄与を割り当てる方式のため、順序を変えると内訳の配分は変わりますが合計は変わりません)。
-          </p>
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="bg-sky-100 text-xs text-neutral-600">
-                <tr>
-                  <th className="px-4 py-2">セグメント</th>
-                  <th className="px-4 py-2 text-right">客単価要因</th>
-                  <th className="px-4 py-2 text-right">コスト要因</th>
-                  <th className="px-4 py-2 text-right">残存率要因</th>
-                  <th className="px-4 py-2 text-right">差分合計</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {decompositionRows.map(({ segment, decomposition }) => (
-                  <tr key={segment}>
-                    <td className="px-4 py-2 font-medium">{segment}</td>
-                    <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.priceFactor)}</td>
-                    <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.costFactor)}</td>
-                    <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.survivalFactor)}</td>
-                    <td className="px-4 py-2 text-right font-semibold">{formatSignedYen(decomposition.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+function FactorDecompositionPanel({
+  baselineEntry,
+  decompositionRows,
+  csvKey,
+}: {
+  baselineEntry: RowWithSurvivalSum | null;
+  decompositionRows: { segment: string; decomposition: IncrementalProfitFactorDecomposition }[];
+  csvKey: string;
+}) {
+  if (!baselineEntry || decompositionRows.length === 0) {
+    return <p className="text-sm text-neutral-400">比較できるセグメントが2件以上ありません。</p>;
+  }
+  return (
+    <div>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-neutral-700">
+          予測増分利益LTVの要因分解(基準: {baselineEntry.row.segment})
+        </h2>
+        <CsvExportButton
+          filename={`要因分解_${csvKey}.csv`}
+          headers={["セグメント", "客単価要因", "コスト要因", "残存率要因", "差分合計"]}
+          rows={decompositionRows.map(({ segment, decomposition }) => [
+            segment,
+            Math.round(decomposition.priceFactor),
+            Math.round(decomposition.costFactor),
+            Math.round(decomposition.survivalFactor),
+            Math.round(decomposition.total),
+          ])}
+        />
+      </div>
+      <p className="mb-2 text-xs text-neutral-400">
+        契約者数が最も多いセグメント「{baselineEntry.row.segment}」を基準に、他セグメントとの予測増分利益LTVの差を「客単価要因」「コスト要因(原価・同梱物費用・送料原価・手数料の合算)」「残存率要因」に分解します。3つの要因の合計は必ず実際の差分と一致します(客単価→コスト→残存率の順で寄与を割り当てる方式のため、順序を変えると内訳の配分は変わりますが合計は変わりません)。
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+        <table className="w-full min-w-[820px] text-left text-sm">
+          <thead className="bg-sky-100 text-xs text-neutral-600">
+            <tr>
+              <th className="px-4 py-2">セグメント</th>
+              <th className="px-4 py-2 text-right">客単価要因</th>
+              <th className="px-4 py-2 text-right">コスト要因</th>
+              <th className="px-4 py-2 text-right">残存率要因</th>
+              <th className="px-4 py-2 text-right">差分合計</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {decompositionRows.map(({ segment, decomposition }) => (
+              <tr key={segment}>
+                <td className="px-4 py-2 font-medium">{segment}</td>
+                <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.priceFactor)}</td>
+                <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.costFactor)}</td>
+                <td className="px-4 py-2 text-right">{formatSignedYen(decomposition.survivalFactor)}</td>
+                <td className="px-4 py-2 text-right font-semibold">{formatSignedYen(decomposition.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
