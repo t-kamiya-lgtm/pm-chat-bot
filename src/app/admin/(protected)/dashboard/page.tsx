@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { DashboardViewToggle } from "@/components/admin/DashboardViewToggle";
+import { SplitStatsViewToggle } from "@/components/admin/SplitStatsViewToggle";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { CsvExportButton } from "@/components/admin/CsvExportButton";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
@@ -18,8 +19,6 @@ import {
   type StatsWithConversion,
   type SplitStatsWithDerived,
 } from "@/lib/dashboard-aggregate";
-import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/customer-lifetime-ltv";
-import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 
 export const dynamic = "force-dynamic";
 
@@ -106,26 +105,6 @@ export default async function AdminDashboardPage({
     ? { data: [], error: null }
     : await orderQuery;
 
-  // 生涯LTV・年間LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
-  // 画面の期間フィルタ(dateFrom/dateTo)の影響を受けず常に全期間で計算する(ブランド絞り込みのみ適用)。
-  let lifetimeOrderQuery = supabase
-    .from("orders")
-    .select(
-      "id, customer_id, created_at, type, billing_cycle_number, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount, scenario_id",
-    )
-    .in("status", CONFIRMED_ORDER_STATUSES);
-  if (scenarioIdsForBrand) lifetimeOrderQuery = lifetimeOrderQuery.in("scenario_id", scenarioIdsForBrand);
-  const [{ data: lifetimeOrders }, { data: lifetimeSubscriptions }] = brandFilterYieldsNoResults
-    ? [{ data: [] }, { data: [] }]
-    : await Promise.all([lifetimeOrderQuery, supabase.from("subscriptions").select("order_id, interval")]);
-  const lifetimeIntervalByOrderId = new Map((lifetimeSubscriptions ?? []).map((s) => [s.order_id as string, s.interval as string]));
-  const lifetimeAndAnnualLtv = buildLifetimeAndAnnualLtv(
-    (lifetimeOrders ?? []) as LifetimeLtvOrderRow[],
-    new Date().toISOString(),
-    lifetimeIntervalByOrderId,
-    SUBSCRIPTION_INTERVAL_DAYS,
-  );
-
   const accessLogRows: AccessLogRow[] = accessLogs ?? [];
   const orderRows: OrderRow[] = orders ?? [];
 
@@ -176,21 +155,6 @@ export default async function AdminDashboardPage({
           データの取得に失敗しました({accessError?.message ?? ordersError?.message})
         </p>
       )}
-
-      <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-700">蓄積実績LTV(確定値・全期間{brandId ? "・このブランドのみ" : "・全ブランド"})</h2>
-          <p className="text-xs text-neutral-400">
-            画面下部の日付絞り込みの影響を受けません。年間LTVは、お届け頻度別の到達回数(1ヶ月ごと=12回・2ヶ月ごと=6回・2週間ごと=24回、単品のみの顧客は365日)に到達した時点の実績で固定し、それ以降の実績では更新しません(翌月以降、新たに到達した顧客から順次加算)。頻度を途中で変更した顧客は、獲得時点の頻度(実測できる場合は初回→2回目の実際の間隔から判定)を基準にします。
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <SummaryCard label="生涯LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.lifetimeRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
-          <SummaryCard label="生涯LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.lifetimeIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
-          <SummaryCard label="年間LTV(売上)" value={formatYen(lifetimeAndAnnualLtv.annualRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
-          <SummaryCard label="年間LTV(増分利益)" value={formatYen(lifetimeAndAnnualLtv.annualIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
-        </div>
-      </div>
 
       <form
         method="get"
@@ -258,7 +222,10 @@ export default async function AdminDashboardPage({
         <p className="mb-2 text-xs text-neutral-400">
           チャットウィジェットが開かれた直前のページ(referrer)をホスト名+パス単位で集計しています。LP側のReferrer-Policy設定によっては取得できない場合があります。
         </p>
-        <SplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />
+        <SplitStatsViewToggle
+          totalView={<TotalSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />}
+          detailView={<DetailSplitStatsTable rows={byReferrer} labelHeader="流入元(LP)" />}
+        />
       </Section>
 
       <Section
@@ -269,7 +236,12 @@ export default async function AdminDashboardPage({
       >
         <DashboardViewToggle
           pivotLabel="シナリオ×日付"
-          listView={<SplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
+          listView={
+            <SplitStatsViewToggle
+              totalView={<TotalSplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
+              detailView={<DetailSplitStatsTable rows={byScenario} labelHeader="シナリオ" />}
+            />
+          }
           pivotView={<PivotTableView pivot={scenarioPivot} rowHeader="シナリオ" />}
         />
       </Section>
@@ -282,7 +254,12 @@ export default async function AdminDashboardPage({
       >
         <DashboardViewToggle
           pivotLabel="商品×日付"
-          listView={<SplitStatsTable rows={byProduct} labelHeader="商品" hideAccess />}
+          listView={
+            <SplitStatsViewToggle
+              totalView={<TotalSplitStatsTable rows={byProduct} labelHeader="商品" hideAccess />}
+              detailView={<DetailSplitStatsTable rows={byProduct} labelHeader="商品" />}
+            />
+          }
           pivotView={<PivotTableView pivot={productPivot} rowHeader="商品" />}
         />
       </Section>
@@ -293,7 +270,10 @@ export default async function AdminDashboardPage({
           <CsvExportButton filename="日別推移.csv" headers={SPLIT_STATS_CSV_HEADERS} rows={byDate.map(splitStatsCsvRow)} />
         }
       >
-        <SplitStatsTable rows={byDate} labelHeader="日付" />
+        <SplitStatsViewToggle
+          totalView={<TotalSplitStatsTable rows={byDate} labelHeader="日付" />}
+          detailView={<DetailSplitStatsTable rows={byDate} labelHeader="日付" />}
+        />
       </Section>
     </div>
   );
@@ -421,7 +401,7 @@ function StatsTable({
   );
 }
 
-function SplitStatsTable({
+function TotalSplitStatsTable({
   rows,
   labelHeader,
   hideAccess,
@@ -433,7 +413,6 @@ function SplitStatsTable({
   if (rows.length === 0) {
     return <p className="text-sm text-neutral-400">データがありません</p>;
   }
-  const colCount = (hideAccess ? 7 : 9) + 1;
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
       <table className="w-full text-sm">
@@ -453,35 +432,62 @@ function SplitStatsTable({
         </thead>
         <tbody>
           {rows.map((row) => (
+            <tr key={row.key} className="border-t border-neutral-100">
+              <td className="px-3 py-2">{row.label}</td>
+              {!hideAccess && <td className="px-3 py-2 text-right">{row.stats.accessCount.toLocaleString()}</td>}
+              <td className="px-3 py-2 text-right">{row.stats.newPurchaseCount.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right">{formatYen(row.stats.newRevenue)}</td>
+              {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
+              <td className="px-3 py-2 text-right">
+                {row.stats.avgUnitPrice === null ? "-" : formatYen(Math.round(row.stats.avgUnitPrice))}
+              </td>
+              <td className="px-3 py-2 text-right">{row.stats.continuingPurchaseCount.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right">{formatYen(row.stats.continuingRevenue)}</td>
+              <td className="px-3 py-2 text-right font-semibold">{formatYen(row.stats.totalRevenue)}</td>
+              <td className="px-3 py-2 text-right">{formatYen(row.stats.incrementalProfit)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 新規注文を定期/単品の2行に分けた明細表(合計行は出さない)。 */
+function DetailSplitStatsTable({
+  rows,
+  labelHeader,
+}: {
+  rows: { key: string; label: string; stats: SplitStatsWithDerived }[];
+  labelHeader: string;
+}) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-neutral-400">データがありません</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+      <table className="w-full text-sm">
+        <thead className="bg-sky-100 text-left text-neutral-600">
+          <tr>
+            <th className="px-3 py-2">{labelHeader}</th>
+            <th className="px-3 py-2">区分</th>
+            <th className="px-3 py-2 text-right">購入数</th>
+            <th className="px-3 py-2 text-right">新規売上(税込)</th>
+            <th className="px-3 py-2 text-right">平均単価(税込)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
             <Fragment key={row.key}>
-              <tr className="border-t border-neutral-100">
-                <td className="px-3 py-2">{row.label}</td>
-                {!hideAccess && <td className="px-3 py-2 text-right">{row.stats.accessCount.toLocaleString()}</td>}
-                <td className="px-3 py-2 text-right">{row.stats.newPurchaseCount.toLocaleString()}</td>
-                <td className="px-3 py-2 text-right">{formatYen(row.stats.newRevenue)}</td>
-                {!hideAccess && <td className="px-3 py-2 text-right">{formatRate(row.stats.conversionRate)}</td>}
-                <td className="px-3 py-2 text-right">
-                  {row.stats.avgUnitPrice === null ? "-" : formatYen(Math.round(row.stats.avgUnitPrice))}
-                </td>
-                <td className="px-3 py-2 text-right">{row.stats.continuingPurchaseCount.toLocaleString()}</td>
-                <td className="px-3 py-2 text-right">{formatYen(row.stats.continuingRevenue)}</td>
-                <td className="px-3 py-2 text-right font-semibold">{formatYen(row.stats.totalRevenue)}</td>
-                <td className="px-3 py-2 text-right">{formatYen(row.stats.incrementalProfit)}</td>
-              </tr>
-              <NewOrderBreakdownRow
-                key={`${row.key}-sub`}
-                colCount={colCount}
-                labelColSpan={hideAccess ? 1 : 2}
-                bgClass="bg-blue-50"
-                label="└ 定期(新規)"
+              <DetailSplitStatsRow
+                label={row.label}
+                kind="定期"
                 count={row.stats.newSubscriptionCount}
                 revenue={row.stats.newSubscriptionRevenue}
               />
-              <NewOrderBreakdownRow
-                colCount={colCount}
-                labelColSpan={hideAccess ? 1 : 2}
-                bgClass="bg-amber-50"
-                label="└ 単品(新規)"
+              <DetailSplitStatsRow
+                label={row.label}
+                kind="単品"
                 count={row.stats.newOneTimeCount}
                 revenue={row.stats.newOneTimeRevenue}
               />
@@ -493,30 +499,24 @@ function SplitStatsTable({
   );
 }
 
-/** 新規注文の内訳(定期/単品)を表す詳細行。読みやすさのため背景色をつける。 */
-function NewOrderBreakdownRow({
-  colCount,
-  labelColSpan,
-  bgClass,
+function DetailSplitStatsRow({
   label,
+  kind,
   count,
   revenue,
 }: {
-  colCount: number;
-  labelColSpan: number;
-  bgClass: string;
   label: string;
+  kind: "定期" | "単品";
   count: number;
   revenue: number;
 }) {
   return (
-    <tr className={`${bgClass} text-xs text-neutral-500`}>
-      <td className="px-3 py-1 pl-6" colSpan={labelColSpan}>
-        {label}
-      </td>
-      <td className="px-3 py-1 text-right">{count.toLocaleString()}</td>
-      <td className="px-3 py-1 text-right">{formatYen(revenue)}</td>
-      <td className="px-3 py-1" colSpan={colCount - labelColSpan - 2} />
+    <tr className={`border-t border-neutral-100 ${kind === "定期" ? "bg-blue-50/60" : "bg-amber-50/60"}`}>
+      <td className="px-3 py-2">{label}</td>
+      <td className="px-3 py-2">{kind}</td>
+      <td className="px-3 py-2 text-right">{count.toLocaleString()}</td>
+      <td className="px-3 py-2 text-right">{formatYen(revenue)}</td>
+      <td className="px-3 py-2 text-right">{count > 0 ? formatYen(Math.round(revenue / count)) : "-"}</td>
     </tr>
   );
 }

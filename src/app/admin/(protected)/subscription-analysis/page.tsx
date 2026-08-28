@@ -16,6 +16,12 @@ import {
 import { SubscriptionLtvRanking } from "@/components/admin/SubscriptionLtvRanking";
 import { CombinedSegmentAnalysis } from "@/components/admin/CombinedSegmentAnalysis";
 import { PrintButton } from "@/components/admin/PrintButton";
+import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/customer-lifetime-ltv";
+import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
+
+function formatYenFloor(amount: number): string {
+  return `${Math.floor(amount).toLocaleString()}円`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +135,16 @@ export default async function AdminSubscriptionAnalysisPage({
 
   const totalSubscribers = profiles.filter((p) => p.isSubscriber).length;
 
+  // 生涯LTV・年間LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
+  // 画面下部の獲得日フィルタ(dateFrom/dateTo)の影響を受けず常に全期間で計算する
+  // (orderRowsはprofilesと違い獲得日フィルタ適用前のため、ブランド絞り込みのみが効く)。
+  const lifetimeAndAnnualLtv = buildLifetimeAndAnnualLtv(
+    orderRows as unknown as LifetimeLtvOrderRow[],
+    new Date().toISOString(),
+    intervalByOrderId,
+    SUBSCRIPTION_INTERVAL_DAYS,
+  );
+
   const combinedLtvRows = combineAxes.length >= 2 ? buildLtvRanking(profiles, customersById, combineAxes, ctx) : [];
   const combinedConversionRows =
     combineAxes.length >= 2 ? buildConversionRanking(profiles, customersById, combineAxes, ctx) : [];
@@ -143,6 +159,21 @@ export default async function AdminSubscriptionAnalysisPage({
         セグメント別に、定期契約者のLTV(定期LTV = 期間内に存在した定期契約者の定期関連売上合計 ÷
         人数)と、単品購入から定期への引き上げ率をランキング表示します。回数(1回目・2回目…)の系列は定期購入のみで数え、単品購入は「単品→定期引き上げ率」として別軸で扱います(単品は0回目として数えません)。
       </p>
+
+      <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-700">蓄積実績LTV(確定値・全期間{brandId ? "・このブランドのみ" : "・全ブランド"})</h2>
+          <p className="text-xs text-neutral-400">
+            下部の獲得日絞り込みの影響を受けません。年間LTVは、お届け頻度別の到達回数(1ヶ月ごと=12回・2ヶ月ごと=6回・2週間ごと=24回、単品のみの顧客は365日)に到達した時点の実績で固定し、それ以降の実績では更新しません(翌月以降、新たに到達した顧客から順次加算)。頻度を途中で変更した顧客は、獲得時点の頻度(実測できる場合は初回→2回目の実際の間隔から判定)を基準にします。
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <LtvSummaryCard label="生涯LTV(売上)" value={formatYenFloor(lifetimeAndAnnualLtv.lifetimeRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
+          <LtvSummaryCard label="生涯LTV(増分利益)" value={formatYenFloor(lifetimeAndAnnualLtv.lifetimeIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
+          <LtvSummaryCard label="年間LTV(売上)" value={formatYenFloor(lifetimeAndAnnualLtv.annualRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+          <LtvSummaryCard label="年間LTV(増分利益)" value={formatYenFloor(lifetimeAndAnnualLtv.annualIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+        </div>
+      </div>
 
       <form
         method="get"
@@ -192,6 +223,16 @@ export default async function AdminSubscriptionAnalysisPage({
           brandId={brandId}
         />
       </div>
+    </div>
+  );
+}
+
+function LtvSummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="mt-1 text-xl font-semibold">{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-neutral-400">{sub}</div>}
     </div>
   );
 }
