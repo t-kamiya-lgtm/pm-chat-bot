@@ -23,11 +23,17 @@ import {
 } from "@/lib/subscription-ltv-maturity";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { CsvExportButton } from "@/components/admin/CsvExportButton";
+import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/customer-lifetime-ltv";
+import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 
 export const dynamic = "force-dynamic";
 
 const CONFIRMED_ORDER_STATUSES = ["paid", "accepted"];
 const HORIZON = 12;
+
+function formatYenFloor(amount: number): string {
+  return `${Math.floor(amount).toLocaleString()}円`;
+}
 
 interface CustomerRowWithName extends LtvCustomerRow {
   name: string | null;
@@ -162,6 +168,16 @@ export default async function AdminSubscriptionAnalysisV2Page({
 
   const totalSubscribers = profiles.filter((p) => p.isSubscriber).length;
 
+  // 生涯LTV・年間LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
+  // 下部の獲得日フィルタの影響を受けず常に全期間で計算する
+  // (orderRowsはprofilesと違い獲得日フィルタ適用前のため、ブランド絞り込みのみが効く)。
+  const lifetimeAndAnnualLtv = buildLifetimeAndAnnualLtv(
+    orderRows as unknown as LifetimeLtvOrderRow[],
+    asOfIso,
+    intervalByOrderId,
+    SUBSCRIPTION_INTERVAL_DAYS,
+  );
+
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
@@ -171,6 +187,21 @@ export default async function AdminSubscriptionAnalysisV2Page({
       <p className="mb-4 text-sm text-neutral-500">
         施策(セグメント)ごとに開始時期が違うと、暦日の期間だけで比較するのはミスリードになります。各セグメントには「経過期間から確定できる固有到達回数」と、比較対象内で最も浅いセグメントに揃えた「共通比較回数」の両方を表示し、確定値と予測値(自動更新モデル)を区別します。既存の「定期分析」は比較用にそのまま残しています。
       </p>
+
+      <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-700">蓄積実績LTV(確定値・全期間{brandId ? "・このブランドのみ" : "・全ブランド"})</h2>
+          <p className="text-xs text-neutral-400">
+            下部の獲得日絞り込みの影響を受けません。年間LTVは、お届け頻度別の到達回数(1ヶ月ごと=12回・2ヶ月ごと=6回・2週間ごと=24回、単品のみの顧客は365日)に到達した時点の実績で固定し、それ以降の実績では更新しません。頻度を途中で変更した顧客は、獲得時点の頻度(実測できる場合は初回→2回目の実際の間隔から判定)を基準にします。
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <LtvSummaryCard label="生涯LTV(売上)" value={formatYenFloor(lifetimeAndAnnualLtv.lifetimeRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
+          <LtvSummaryCard label="生涯LTV(増分利益)" value={formatYenFloor(lifetimeAndAnnualLtv.lifetimeIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.lifetimeCustomerCount.toLocaleString()}人`} />
+          <LtvSummaryCard label="年間LTV(売上)" value={formatYenFloor(lifetimeAndAnnualLtv.annualRevenueLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+          <LtvSummaryCard label="年間LTV(増分利益)" value={formatYenFloor(lifetimeAndAnnualLtv.annualIncrementalProfitLtv)} sub={`対象 ${lifetimeAndAnnualLtv.annualCustomerCount.toLocaleString()}人`} />
+        </div>
+      </div>
 
       <form
         method="get"
@@ -321,6 +352,16 @@ export default async function AdminSubscriptionAnalysisV2Page({
         <li>共通比較回数: 表示中のセグメントのうち最も浅い固有到達回数に揃えた基準。この列だけが公平な比較に使える確定値</li>
         <li>予測LTV: 確定済みの残存率カーブを{HORIZON}回目まで自動延長(確定済み全回次間の移行率の幾何平均、無ければ全体平均で代用)して算出。セグメント行の▸をクリックすると、回次ごとの確定値/予測値の内訳と顧客明細が見られます</li>
       </ul>
+    </div>
+  );
+}
+
+function LtvSummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="mt-1 text-xl font-semibold">{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-neutral-400">{sub}</div>}
     </div>
   );
 }
