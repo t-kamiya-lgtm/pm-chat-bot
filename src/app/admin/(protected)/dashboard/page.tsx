@@ -6,6 +6,7 @@ import { PrintButton } from "@/components/admin/PrintButton";
 import { CsvExportButton } from "@/components/admin/CsvExportButton";
 import { StickyBelowHeader } from "@/components/admin/StickyBelowHeader";
 import { TabbedPanels } from "@/components/admin/TabbedPanels";
+import { CollapsibleFilterBar } from "@/components/admin/CollapsibleFilterBar";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
   aggregateByAd,
@@ -222,42 +223,44 @@ export default async function AdminDashboardPage({
       )}
 
       <StickyBelowHeader className="print:hidden mb-6 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <form method="get" className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">日付(から)</span>
-            <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">日付(まで)</span>
-            <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
-            <select name="brandId" defaultValue={brandId} className="input">
-              <option value="">すべて</option>
-              {(brands ?? []).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                  {!b.code && "(コード未設定)"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">シナリオ</span>
-            <select name="scenarioId" defaultValue={scenarioId} className="input">
-              <option value="">すべて</option>
-              {(scenarios ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-            絞り込む
-          </button>
-        </form>
+        <CollapsibleFilterBar>
+          <form method="get" className="flex flex-wrap items-end gap-3 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">日付(から)</span>
+              <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">日付(まで)</span>
+              <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
+              <select name="brandId" defaultValue={brandId} className="input">
+                <option value="">すべて</option>
+                {(brands ?? []).map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {!b.code && "(コード未設定)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">シナリオ</span>
+              <select name="scenarioId" defaultValue={scenarioId} className="input">
+                <option value="">すべて</option>
+                {(scenarios ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+              絞り込む
+            </button>
+          </form>
+        </CollapsibleFilterBar>
       </StickyBelowHeader>
 
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -273,6 +276,7 @@ export default async function AdminDashboardPage({
           {
             key: "ad",
             label: "広告別内訳",
+            shortLabel: "広告別",
             content: (
               <Section
                 title="広告別内訳"
@@ -287,6 +291,7 @@ export default async function AdminDashboardPage({
           {
             key: "referrer",
             label: "流入元別(設置LP別)",
+            shortLabel: "流入元別",
             content: (
               <Section
                 title="流入元別(設置LP別)"

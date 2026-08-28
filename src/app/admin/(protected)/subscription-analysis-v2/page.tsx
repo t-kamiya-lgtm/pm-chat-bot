@@ -29,6 +29,7 @@ import { buildLifetimeAndAnnualLtv, type LifetimeLtvOrderRow } from "@/lib/custo
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import { StickyBelowHeader } from "@/components/admin/StickyBelowHeader";
 import { TabbedPanels } from "@/components/admin/TabbedPanels";
+import { CollapsibleFilterBar } from "@/components/admin/CollapsibleFilterBar";
 
 export const dynamic = "force-dynamic";
 
@@ -253,7 +254,7 @@ export default async function AdminSubscriptionAnalysisV2Page({
         <PrintButton />
       </div>
       <p className="mb-4 text-sm text-neutral-500">
-        施策(セグメント)ごとに開始時期が違うと、暦日の期間だけで比較するのはミスリードになります。各セグメントには「経過期間から確定できる固有到達回数」と、比較対象内で最も浅いセグメントに揃えた「共通比較回数」の両方を表示し、確定値と予測値(自動更新モデル)を区別します。既存の「定期分析」は比較用にそのまま残しています。
+        施策(セグメント)ごとに開始時期が違うと、暦日の期間だけで比較するのはミスリードになります。各セグメントには「経過期間から確定できる固有到達回数」と、比較対象内で最も浅いセグメントに揃えた「共通比較回数」の両方を表示し、確定値と予測値(自動更新モデル)を区別します。
       </p>
 
       <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
@@ -272,45 +273,47 @@ export default async function AdminSubscriptionAnalysisV2Page({
       </div>
 
       <StickyBelowHeader className="print:hidden mb-6 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <form method="get" className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">獲得日(から、初回注文日基準)</span>
-            <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">獲得日(まで)</span>
-            <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
-            <select name="brandId" defaultValue={brandId} className="input">
-              <option value="">すべて</option>
-              {(brands ?? []).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                  {!b.code && "(コード未設定)"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="block">
-            <span className="mb-1 block text-xs text-neutral-500">セグメント軸(複数選択で組み合わせ集計)</span>
-            <div className="flex flex-wrap gap-1.5">
-              {SEGMENT_AXES.map((a) => (
-                <label
-                  key={a.key}
-                  className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600"
-                >
-                  <input type="checkbox" name="axis" value={a.key} defaultChecked={selectedAxes.includes(a.key)} />
-                  {a.label}
-                </label>
-              ))}
+        <CollapsibleFilterBar>
+          <form method="get" className="flex flex-wrap items-end gap-3 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">獲得日(から、初回注文日基準)</span>
+              <input type="date" name="dateFrom" defaultValue={dateFrom} className="input" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">獲得日(まで)</span>
+              <input type="date" name="dateTo" defaultValue={dateTo} className="input" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-neutral-500">ブランド</span>
+              <select name="brandId" defaultValue={brandId} className="input">
+                <option value="">すべて</option>
+                {(brands ?? []).map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {!b.code && "(コード未設定)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="block">
+              <span className="mb-1 block text-xs text-neutral-500">セグメント軸(複数選択で組み合わせ集計)</span>
+              <div className="flex flex-wrap gap-1.5">
+                {SEGMENT_AXES.map((a) => (
+                  <label
+                    key={a.key}
+                    className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600"
+                  >
+                    <input type="checkbox" name="axis" value={a.key} defaultChecked={selectedAxes.includes(a.key)} />
+                    {a.label}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
-          <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-            絞り込む
-          </button>
-        </form>
+            <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+              絞り込む
+            </button>
+          </form>
+        </CollapsibleFilterBar>
         <p className="mt-2 text-xs text-neutral-500">
           現在の軸: <strong>{segmentHeaderLabel}</strong> / 対象定期契約者数: <strong>{totalSubscribers.toLocaleString()}</strong>人
         </p>
@@ -321,6 +324,7 @@ export default async function AdminSubscriptionAnalysisV2Page({
           {
             key: "segment",
             label: "①セグメント別レポート",
+            shortLabel: "①セグメント別",
             content: (
               <SegmentTablePanel
                 rowsWithDerived={withSurvivalSum}
@@ -338,11 +342,13 @@ export default async function AdminSubscriptionAnalysisV2Page({
           {
             key: "cohort",
             label: "②残存率コホート表(実績+予測)",
+            shortLabel: "②コホート表",
             content: <CohortPanel rowsWithDerived={rowsWithDerived} csvKey={csvKey} />,
           },
           {
             key: "factor",
             label: `③予測増分利益LTVの要因分解${baselineEntry ? `(基準: ${baselineEntry.row.segment})` : ""}`,
+            shortLabel: "③要因分解",
             content: (
               <FactorDecompositionPanel baselineEntry={baselineEntry} decompositionRows={decompositionRows} csvKey={csvKey} />
             ),
