@@ -4,6 +4,7 @@ import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
   buildCustomerProfiles,
   resolveSegmentLabel,
+  resolveLabel,
   SEGMENT_AXES,
   type LtvOrderRow,
   type LtvCustomerRow,
@@ -67,6 +68,11 @@ export default async function AdminSubscriptionAnalysisV2Page({
   const brandId = getParam("brandId") || "";
   const axisParam = getParam("axis") || "scenario";
   const axis: SegmentAxis = (SEGMENT_AXES.find((a) => a.key === axisParam)?.key ?? "scenario") as SegmentAxis;
+  const combineParam = sp["combine"];
+  const validAxisKeys = new Set(SEGMENT_AXES.map((a) => a.key));
+  const combineAxes = (Array.isArray(combineParam) ? combineParam : combineParam ? [combineParam] : []).filter(
+    (v): v is SegmentAxis => validAxisKeys.has(v as SegmentAxis),
+  );
 
   const supabase = createSupabaseAdminClient();
 
@@ -168,6 +174,23 @@ export default async function AdminSubscriptionAnalysisV2Page({
 
   const totalSubscribers = profiles.filter((p) => p.isSubscriber).length;
 
+  const combinedReliabilityRows =
+    combineAxes.length >= 2 ? buildSegmentReliability(profiles, customersById, combineAxes, ctx, asOfIso) : [];
+  const combinedCommonN = combinedReliabilityRows.length > 0 ? commonBaselineN(combinedReliabilityRows) : 1;
+  const combinedRowsWithDerived = combinedReliabilityRows.map((row) => {
+    const curve = buildRetentionCurve(row, { horizon: HORIZON, fallbackRate });
+    const projected = projectLtv(row, curve);
+    return {
+      row,
+      curve,
+      projected,
+      commonRate: survivalRateAtN(row, combinedCommonN),
+    };
+  });
+  const combinedSegmentHeaderLabel = combineAxes
+    .map((key) => SEGMENT_AXES.find((a) => a.key === key)?.label ?? key)
+    .join(" × ");
+
   // 生涯LTV・年間LTVは「これまでの蓄積実績の全体像」を示すための指標なので、
   // 下部の獲得日フィルタの影響を受けず常に全期間で計算する
   // (orderRowsはprofilesと違い獲得日フィルタ適用前のため、ブランド絞り込みのみが効く)。
@@ -258,14 +281,102 @@ export default async function AdminSubscriptionAnalysisV2Page({
         </div>
       </div>
 
+      <p className="mb-4 text-sm text-neutral-600">対象定期契約者数: <strong>{totalSubscribers.toLocaleString()}</strong>人</p>
+
+      <SegmentAnalysisResults
+        rowsWithDerived={rowsWithDerived}
+        commonN={commonN}
+        axis={axis}
+        profiles={profiles}
+        customersById={customersById}
+        ctx={ctx}
+        statusByOrderId={statusByOrderId}
+        csvKey={axis}
+        sectionTitle={`${SEGMENT_AXES.find((a) => a.key === axis)?.label ?? axis}別`}
+      />
+
+      <div className="mt-10 mb-3 rounded-lg border border-neutral-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-neutral-700">複数条件の掛け合わせレポート</h2>
+        <p className="mb-2 text-xs text-neutral-500">
+          2つ以上の軸を選ぶと、その組み合わせ(例:シナリオ×流入元(LP)×初回商品)単位で固有到達回数・残存率コホート表・顧客明細を集計します。
+        </p>
+        <form method="get" className="print:hidden flex flex-wrap items-end gap-3 text-sm">
+          {dateFrom && <input type="hidden" name="dateFrom" value={dateFrom} />}
+          {dateTo && <input type="hidden" name="dateTo" value={dateTo} />}
+          {brandId && <input type="hidden" name="brandId" value={brandId} />}
+          <input type="hidden" name="axis" value={axis} />
+          <div className="flex flex-wrap gap-2">
+            {SEGMENT_AXES.map((a) => (
+              <label
+                key={a.key}
+                className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600"
+              >
+                <input type="checkbox" name="combine" value={a.key} defaultChecked={combineAxes.includes(a.key)} />
+                {a.label}
+              </label>
+            ))}
+          </div>
+          <button type="submit" className="rounded-md bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700">
+            集計する
+          </button>
+        </form>
+      </div>
+
+      {combineAxes.length < 2 ? (
+        <p className="mb-8 text-sm text-neutral-400">軸を2つ以上選んで集計してください。</p>
+      ) : (
+        <SegmentAnalysisResults
+          rowsWithDerived={combinedRowsWithDerived}
+          commonN={combinedCommonN}
+          axis={combineAxes}
+          profiles={profiles}
+          customersById={customersById}
+          ctx={ctx}
+          statusByOrderId={statusByOrderId}
+          csvKey={`組み合わせ_${combineAxes.join("+")}`}
+          sectionTitle={`組み合わせ(${combinedSegmentHeaderLabel})`}
+        />
+      )}
+    </div>
+  );
+}
+
+function SegmentAnalysisResults({
+  rowsWithDerived,
+  commonN,
+  axis,
+  profiles,
+  customersById,
+  ctx,
+  statusByOrderId,
+  csvKey,
+  sectionTitle,
+}: {
+  rowsWithDerived: {
+    row: SegmentReliabilityRow;
+    curve: ReturnType<typeof buildRetentionCurve>;
+    projected: ReturnType<typeof projectLtv>;
+    commonRate: number;
+  }[];
+  commonN: number;
+  axis: SegmentAxis | SegmentAxis[];
+  profiles: ReturnType<typeof buildCustomerProfiles>;
+  customersById: Map<string, CustomerRowWithName>;
+  ctx: SegmentContext;
+  statusByOrderId: Map<string, string>;
+  csvKey: string;
+  sectionTitle: string;
+}) {
+  return (
+    <div>
+      <h2 className="mb-3 text-sm font-semibold text-neutral-700">{sectionTitle}</h2>
       <p className="mb-4 text-sm text-neutral-600">
-        対象定期契約者数: <strong>{totalSubscribers.toLocaleString()}</strong>人 ／ 共通比較回数(このセグメント一覧内で最も浅いセグメントに揃えた基準):{" "}
-        <strong>{commonN}回目</strong>
+        共通比較回数(このセグメント一覧内で最も浅いセグメントに揃えた基準): <strong>{commonN}回目</strong>
       </p>
 
       <div className="mb-2 flex items-center justify-end">
         <CsvExportButton
-          filename={`定期分析新_${axis}.csv`}
+          filename={`定期分析新_${csvKey}.csv`}
           headers={[
             "セグメント",
             "契約者数",
@@ -347,16 +458,16 @@ export default async function AdminSubscriptionAnalysisV2Page({
       </div>
 
       <ul className="mt-3 mb-8 space-y-0.5 text-xs text-neutral-400">
-        <li>固有到達回数: セグメントの起点(最古の初回定期注文日)からの経過期間 ÷ 代表的なお届け頻度で決まる、確定値として語れる最大到達回数</li>
+        <li>固有到達回数: セグメントの契約者全員が、各自のお届け頻度で到達しうる時期に来ている最大回数(頻度が混在していても正しく判定します)</li>
         <li>共通比較回数: 表示中のセグメントのうち最も浅い固有到達回数に揃えた基準。この列だけが公平な比較に使える確定値</li>
         <li>予測LTV: 確定済みの残存率カーブを{HORIZON}回目まで自動延長(確定済み全回次間の移行率の幾何平均、無ければ全体平均で代用)して算出</li>
         <li>セグメント行の▸をクリックすると、そのセグメントに含まれる顧客明細(生データ)が見られます</li>
       </ul>
 
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-neutral-700">残存率コホート表(実績+予測)</h2>
+        <h3 className="text-sm font-semibold text-neutral-700">残存率コホート表(実績+予測)</h3>
         <CsvExportButton
-          filename={`残存率コホート表_${axis}.csv`}
+          filename={`残存率コホート表_${csvKey}.csv`}
           headers={["セグメント", ...Array.from({ length: HORIZON }, (_, i) => `${i + 1}回目`)]}
           rows={rowsWithDerived.map(({ row, curve }) => [row.segment, ...curve.map((p) => `${p.forecast.toFixed(1)}%`)])}
         />
@@ -434,7 +545,7 @@ function SegmentDetail({
   survivalSum,
 }: {
   row: SegmentReliabilityRow;
-  axis: SegmentAxis;
+  axis: SegmentAxis | SegmentAxis[];
   profiles: ReturnType<typeof buildCustomerProfiles>;
   customersById: Map<string, CustomerRowWithName>;
   ctx: SegmentContext;
@@ -445,7 +556,7 @@ function SegmentDetail({
     if (!p.isSubscriber || !p.firstSubOrder) return false;
     const customer = customersById.get(p.customerId);
     if (!customer) return false;
-    return resolveSegmentLabel(axis, p.firstSubOrder, customer, ctx) === row.segment;
+    return resolveLabel(axis, p.firstSubOrder, customer, ctx) === row.segment;
   });
 
   const drilldownRows = segmentCustomers.map((p) => {

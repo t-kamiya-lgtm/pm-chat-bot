@@ -1,6 +1,6 @@
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import {
-  resolveSegmentLabel,
+  resolveLabel,
   type CustomerLtvProfile,
   type LtvCustomerRow,
   type LtvOrderRow,
@@ -22,13 +22,16 @@ export interface SegmentReliabilityRow {
   segment: string;
   /** このセグメントの定期契約者数(全件)。 */
   customerCount: number;
-  /** このセグメントで最初に定期契約が始まった日時(セグメント自体の起点)。 */
+  /** このセグメントで最初に定期契約が始まった日時(セグメント自体の起点、表示用)。 */
   segmentStartIso: string;
-  /** セグメント内で最も多いお届け頻度(日数換算に使う代表値)。 */
-  dominantIntervalDays: number;
-  /** 起点からの経過日数。 */
+  /** 起点からの経過日数(表示用)。 */
   elapsedDays: number;
-  /** 経過期間から見て、このセグメントが確定値として比較に使える最大到達回数。 */
+  /**
+   * 経過期間から見て、このセグメントの契約者全員が到達しうる時期に来ている最大回数。
+   * 各契約者ごとに「自分自身のお届け頻度・自分自身の初回注文日」から到達しうる回数を求め、
+   * その最小値を採用する(1人でもまだその回に届く時期に来ていなければ確定と言えないため)。
+   * これにより、頻度(2週間/1ヶ月/2ヶ月ごと)が混在するセグメントでも正しく判定できる。
+   */
   ownN: number;
   /** 契約者ごとの到達回数(1以上)。共通比較回数での移行率を再計算するために保持する。 */
   cycleCounts: number[];
@@ -38,25 +41,15 @@ export interface SegmentReliabilityRow {
   avgIncrementalProfitPerOrder: number;
 }
 
-/** 到達回数nに達した契約者の割合(残存率)を返す。 */
+/**
+ * 到達回数nに達した契約者の割合(残存率)を返す。
+ * n <= row.ownNの範囲では、ownNの算出方法(各契約者が自分の頻度でnに到達しうる時期に
+ * 全員来ていることを保証する最大値)により、対象全員が判定可能な状態であることが
+ * 保証されているため、customerCountをそのまま分母に使ってよい。
+ */
 export function survivalRateAtN(row: SegmentReliabilityRow, n: number): number {
   if (row.customerCount === 0) return 0;
   return row.cycleCounts.filter((c) => c >= n).length / row.customerCount;
-}
-
-function modeIntervalDays(intervalDaysList: number[]): number {
-  if (intervalDaysList.length === 0) return DEFAULT_INTERVAL_DAYS;
-  const counts = new Map<number, number>();
-  for (const d of intervalDaysList) counts.set(d, (counts.get(d) ?? 0) + 1);
-  let best = intervalDaysList[0];
-  let bestCount = 0;
-  for (const [days, count] of counts) {
-    if (count > bestCount) {
-      best = days;
-      bestCount = count;
-    }
-  }
-  return best;
 }
 
 /**
@@ -73,9 +66,7 @@ function buildReliabilityByLabel(
   const table = new Map<
     string,
     {
-      cycleCounts: number[];
-      intervalDaysList: number[];
-      startMs: number;
+      customers: { cycleCount: number; intervalDays: number; firstOrderMs: number }[];
       orderRevenueTotal: number;
       orderIncrementalProfitTotal: number;
       orderCountTotal: number;
@@ -87,23 +78,19 @@ function buildReliabilityByLabel(
     const customer = customersById.get(p.customerId);
     if (!customer) continue;
     const label = labelOf(p.firstSubOrder, customer);
-    const startMs = new Date(p.firstSubOrder.created_at).getTime();
+    const firstOrderMs = new Date(p.firstSubOrder.created_at).getTime();
     const intervalLabel = ctx.intervalByOrderId.get(p.firstSubOrder.id);
     const intervalDays = intervalLabel
       ? (SUBSCRIPTION_INTERVAL_DAYS[intervalLabel as keyof typeof SUBSCRIPTION_INTERVAL_DAYS] ?? DEFAULT_INTERVAL_DAYS)
       : DEFAULT_INTERVAL_DAYS;
 
     const entry = table.get(label) ?? {
-      cycleCounts: [],
-      intervalDaysList: [],
-      startMs,
+      customers: [],
       orderRevenueTotal: 0,
       orderIncrementalProfitTotal: 0,
       orderCountTotal: 0,
     };
-    entry.cycleCounts.push(p.subscriptionCycleCount);
-    entry.intervalDaysList.push(intervalDays);
-    entry.startMs = Math.min(entry.startMs, startMs);
+    entry.customers.push({ cycleCount: p.subscriptionCycleCount, intervalDays, firstOrderMs });
     // 客単価・増分利益は「定期注文1回あたり」で見るため、契約者ごとの定期売上・増分利益合計を
     // 定期注文回数で割ったものを積み上げる(サブスク全体の平均単価に相当)。
     entry.orderRevenueTotal += p.subscriptionRevenue;
@@ -116,17 +103,25 @@ function buildReliabilityByLabel(
 
   return Array.from(table.entries())
     .map(([segment, entry]) => {
-      const dominantIntervalDays = modeIntervalDays(entry.intervalDaysList);
-      const elapsedDays = Math.max(0, (asOfMs - entry.startMs) / MS_PER_DAY);
-      const ownN = Math.max(1, Math.floor(elapsedDays / dominantIntervalDays) + 1);
+      const earliestStartMs = Math.min(...entry.customers.map((c) => c.firstOrderMs));
+      const elapsedDays = Math.max(0, (asOfMs - earliestStartMs) / MS_PER_DAY);
+      // 契約者ごとに「自分の頻度で今何回目まで到達しうるか」を求め、その最小値を採用する。
+      const ownN = Math.max(
+        1,
+        Math.min(
+          ...entry.customers.map((c) => {
+            const customerElapsedDays = Math.max(0, (asOfMs - c.firstOrderMs) / MS_PER_DAY);
+            return Math.floor(customerElapsedDays / c.intervalDays) + 1;
+          }),
+        ),
+      );
       return {
         segment,
-        customerCount: entry.cycleCounts.length,
-        segmentStartIso: new Date(entry.startMs).toISOString(),
-        dominantIntervalDays,
+        customerCount: entry.customers.length,
+        segmentStartIso: new Date(earliestStartMs).toISOString(),
         elapsedDays,
         ownN,
-        cycleCounts: entry.cycleCounts,
+        cycleCounts: entry.customers.map((c) => c.cycleCount),
         avgUnitPrice: entry.orderCountTotal > 0 ? entry.orderRevenueTotal / entry.orderCountTotal : 0,
         avgIncrementalProfitPerOrder: entry.orderCountTotal > 0 ? entry.orderIncrementalProfitTotal / entry.orderCountTotal : 0,
       };
@@ -142,12 +137,12 @@ function buildReliabilityByLabel(
 export function buildSegmentReliability(
   profiles: CustomerLtvProfile[],
   customersById: Map<string, LtvCustomerRow>,
-  axis: SegmentAxis,
+  axis: SegmentAxis | SegmentAxis[],
   ctx: SegmentContext,
   asOfIso: string,
 ): SegmentReliabilityRow[] {
   return buildReliabilityByLabel(profiles, customersById, ctx, asOfIso, (order, customer) =>
-    resolveSegmentLabel(axis, order, customer, ctx),
+    resolveLabel(axis, order, customer, ctx),
   );
 }
 

@@ -163,7 +163,7 @@ function resolveCombinedSegmentLabel(
   return axes.map((axis) => resolveSegmentLabel(axis, order, customer, ctx)).join(" × ");
 }
 
-function resolveLabel(
+export function resolveLabel(
   axis: SegmentAxis | SegmentAxis[],
   order: LtvOrderRow,
   customer: LtvCustomerRow,
