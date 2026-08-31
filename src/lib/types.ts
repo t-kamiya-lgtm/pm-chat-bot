@@ -36,6 +36,11 @@ export interface Product {
    * お試し品番→本品品番のように、品番自体が変わる自動切替プラン用。firstTimePriceとは併用しない。
    */
   nextCycleProductId: string | null;
+  /**
+   * nextCycleProductId設定時、2回目以降(本品)を配信する頻度。1回目はお客様が選んだ頻度のまま。
+   * nextCycleProductIdとセットで設定する。
+   */
+  nextCycleInterval: SubscriptionInterval | null;
   /** 二重価格表記(打消線)で使う比較価格のラベル種別。 */
   comparePriceType: ComparePriceType;
   /** compareType="unit_total"のときの、手入力の単品合計価格。 */

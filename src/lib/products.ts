@@ -10,6 +10,7 @@ export interface ProductRow {
   list_price: number | null;
   first_time_price: number | null;
   next_cycle_product_id: string | null;
+  next_cycle_interval: Product["subscriptionIntervals"][number] | null;
   compare_price_type: "none" | "list_price" | "unit_total" | "custom";
   unit_total_price: number | null;
   custom_compare_label: string | null;

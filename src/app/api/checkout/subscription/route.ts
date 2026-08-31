@@ -86,34 +86,32 @@ export async function POST(request: Request) {
   }
 
   // 「お試し→本品自動切替」プランの場合、本品(2回目以降の品番)を解決する。
-  // 定期のPrice自体は最初から本品価格で作成し、初回請求だけをお試し価格まで値引くことで、
-  // Stripe側は2回目以降を何もせず自動で本品価格を課金し続ける(初回特別価格と同じ考え方)。
-  const nextCycleProduct = product.next_cycle_product_id
-    ? await getProductById(product.next_cycle_product_id)
-    : null;
+  // 1回目はお客様が選んだ頻度・この品番の価格のまま、2回目以降だけ本品の通常価格・
+  // 指定した頻度に切り替える(Stripe Subscription Scheduleの2フェーズで実現する)。
+  const nextCycleProduct =
+    product.next_cycle_product_id && product.next_cycle_interval
+      ? await getProductById(product.next_cycle_product_id)
+      : null;
 
   const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
   const addonAmount = addonProduct?.price ?? 0;
   // アドオン商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
   // メインと同じ周期のもう1つの定期便として同時に申し込む(お届け周期を揃えることで、
   // Stripe側は1つのSubscriptionに2つの定期Priceを乗せるだけで済み、決済確認も1回で完結する)。
+  // ただし自動切替プランの場合は、2回目以降のフェーズにアドオンを引き継ぐ処理が未対応のため、
+  // 単発の追加購入(初回のみの一括請求)として扱う。
   const addonIsSubscription =
+    !nextCycleProduct &&
     addonProduct?.order_type === "subscription" &&
     addonProduct.subscription_intervals.includes(subscriptionInterval);
 
   const amount = product.price * quantity;
-  // 定期のPrice(2回目以降の請求額)の基準となる商品。自動切替プランの場合は本品を基準にする。
-  const recurringBaseProduct = nextCycleProduct ?? product;
-  const regularAmount = recurringBaseProduct.price * quantity;
-  // 初回価格(または自動切替プランの本品との差額)が設定されている場合、初回請求のみ値引く
-  // (定期のPrice自体は通常価格のまま据え置き、2回目以降はStripeが自動でamountをそのまま繰り返し請求する)。
-  const firstTimeDiscountAmount = nextCycleProduct
-    ? Math.max(0, regularAmount - amount)
-    : product.first_time_price !== null
-      ? Math.max(0, amount - product.first_time_price * quantity)
-      : 0;
+  // 初回価格が設定されている場合、初回請求のみ値引く(定期のPrice自体は通常価格のまま据え置き、
+  // 2回目以降はStripeが自動でamountをそのまま繰り返し請求する)。自動切替プランの本品には適用しない。
+  const firstTimeDiscountAmount =
+    product.first_time_price !== null ? Math.max(0, amount - product.first_time_price * quantity) : 0;
   // 定期のPrice(2回目以降の請求額)には値引きを含めない(アドオンは初回請求のみの一括請求項目として追加する)
-  const recurringBreakdown = calculateTotal(regularAmount, recurringBaseProduct.shipping_fee, 0);
+  const recurringBreakdown = calculateTotal(amount, product.shipping_fee, 0);
 
   const supabase = createSupabaseAdminClient();
   // クーポン割引も、定期の単価自体は変えず初回請求のみの一括値引き項目として適用する
@@ -160,7 +158,7 @@ export async function POST(request: Request) {
       currency: "jpy",
       unit_amount: recurringBreakdown.total,
       recurring: { interval, interval_count: intervalCount },
-      product_data: { name: recurringBaseProduct.name },
+      product_data: { name: product.name },
     });
 
     const subscriptionItems: { price: string; quantity: number }[] = [{ price: price.id, quantity }];
@@ -195,15 +193,18 @@ export async function POST(request: Request) {
     }
 
     if (firstTimeDiscountAmount > 0) {
-      // 初回特別価格(または自動切替プランの本品との差額)も同様に、初回請求のみの一括値引き項目として乗せる
+      // 初回特別価格も同様に、初回請求のみの一括値引き項目として乗せる
       await stripe.invoiceItems.create({
         customer: stripeCustomerId,
         amount: -firstTimeDiscountAmount,
         currency: "jpy",
-        description: nextCycleProduct ? "お試し価格(初回のみ)" : "初回特別価格(初回のみ)",
+        description: "初回特別価格(初回のみ)",
       });
     }
 
+    // まずは通常の定期購入と全く同じ手順でSubscriptionを作成する(決済確認の仕組みは
+    // 既存のものをそのまま使う)。自動切替プランの場合のみ、このあとSubscription Scheduleに
+    // 変換して2フェーズ目(本品・通常価格)を追加する。
     subscription = await stripe.subscriptions.create({
       customer: stripeCustomerId,
       items: subscriptionItems,
@@ -215,8 +216,37 @@ export async function POST(request: Request) {
         customerId: customer.id,
         subscriptionInterval,
         ...(addonProduct && { addonProductId: addonProduct.id }),
+        ...(nextCycleProduct && { nextCycleProductId: nextCycleProduct.id }),
       },
     });
+
+    if (nextCycleProduct && product.next_cycle_interval) {
+      const nextInterval = INTERVAL_MAP[product.next_cycle_interval];
+      const regularAmount = nextCycleProduct.price * quantity;
+      const regularBreakdown = calculateTotal(regularAmount, nextCycleProduct.shipping_fee, 0);
+      const regularPrice = await stripe.prices.create({
+        currency: "jpy",
+        unit_amount: regularBreakdown.total,
+        recurring: { interval: nextInterval.interval, interval_count: nextInterval.intervalCount },
+        product_data: { name: nextCycleProduct.name },
+      });
+
+      // 既存のSubscriptionをSubscription Scheduleに変換する(from_subscription指定時は
+      // 他のパラメータを同時に指定できないため、変換後に別リクエストでフェーズを設定する)。
+      const schedule = await stripe.subscriptionSchedules.create({ from_subscription: subscription.id });
+      await stripe.subscriptionSchedules.update(schedule.id, {
+        end_behavior: "release",
+        phases: [
+          {
+            items: subscriptionItems,
+            duration: { interval, interval_count: intervalCount },
+          },
+          {
+            items: [{ price: regularPrice.id, quantity }],
+          },
+        ],
+      });
+    }
   } catch (err) {
     console.error("[checkout/subscription] Stripe error", err);
     return NextResponse.json(
@@ -287,14 +317,6 @@ export async function POST(request: Request) {
     order_id: order.id,
     interval: subscriptionInterval,
     status: "active",
-    // 自動切替プランの場合、2回目以降は本品の品番・価格・送料で生成されるよう、この時点で
-    // 上書き設定しておく(Stripeの定期Price自体も既に本品価格で作成済みなので、
-    // 実際の課金額はStripeが自動で処理し、ここはチャット側の注文記録を合わせるためのもの)。
-    ...(nextCycleProduct && {
-      override_product_id: nextCycleProduct.id,
-      override_amount: regularAmount,
-      override_shipping_fee: nextCycleProduct.shipping_fee,
-    }),
   });
 
   // このセッションの離脱リードが実際には注文につながったことを記録する(以後、別注文で上書きしない)。
