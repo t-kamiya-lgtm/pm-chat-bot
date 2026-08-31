@@ -44,29 +44,52 @@ export async function createSubscriptionRenewalOrder(params: {
       .maybeSingle();
     const nextCycleNumber = (latestChild?.billing_cycle_number ?? original.billing_cycle_number ?? 1) + 1;
 
+    // お試し→本品自動切替プランの場合、この定期購読には申込み時点で本品への上書きが
+    // 設定されている(checkout/subscription側で設定)。Stripeの定期Price自体も既に
+    // 本品価格で作成済みなので、ここでの上書きはチャット側の注文記録を実際の課金内容に
+    // 合わせるためのもの(通常の定期は上書きが無いため、従来通りoriginalをそのまま使う)。
+    const { data: subscriptionRow } = await supabase
+      .from("subscriptions")
+      .select("override_product_id, override_amount, override_shipping_fee")
+      .eq("order_id", original.id)
+      .maybeSingle();
+    const productId = (subscriptionRow?.override_product_id as string | null) ?? original.product_id;
+    const isProductSwitched = productId !== original.product_id;
+    const amount = isProductSwitched
+      ? ((subscriptionRow?.override_amount as number | null) ?? original.amount)
+      : original.amount;
+    const shippingFee = isProductSwitched
+      ? ((subscriptionRow?.override_shipping_fee as number | null) ?? original.shipping_fee)
+      : original.shipping_fee;
+    // 原価・費用・税率は、商品が切り替わっていなければ初回注文時点のスナップショットを
+    // そのまま引き継ぎ、切り替わっている場合のみ本品の現在の設定から都度解決する。
+    const costSnapshot = isProductSwitched
+      ? await resolveOrderCostSnapshot(supabase, productId, new Date().toISOString())
+      : {
+          cost_amount: original.cost_amount,
+          bundle_insert_cost: original.bundle_insert_cost,
+          shipping_cost: original.shipping_cost,
+          sales_commission_amount: original.sales_commission_amount,
+          tax_rate: original.tax_rate,
+        };
+
     const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
 
     const { data: newOrder, error } = await supabase
       .from("orders")
       .insert({
         customer_id: original.customer_id,
-        product_id: original.product_id,
+        product_id: productId,
         scenario_id: original.scenario_id,
         order_number: orderNumber,
         session_id: original.session_id,
         type: "subscription",
         payment_method: "stripe",
-        amount: original.amount,
+        amount,
         quantity: original.quantity,
-        shipping_fee: original.shipping_fee,
+        shipping_fee: shippingFee,
         payment_fee: original.payment_fee,
-        // 原価・費用・税率は初回注文時点のスナップショットを引き継ぐ(この経路はStripeの
-        // 周期課金をそのまま反映するだけで、商品・価格の個別上書きに対応していないため)。
-        cost_amount: original.cost_amount,
-        bundle_insert_cost: original.bundle_insert_cost,
-        shipping_cost: original.shipping_cost,
-        sales_commission_amount: original.sales_commission_amount,
-        tax_rate: original.tax_rate,
+        ...costSnapshot,
         status: "paid",
         // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、未取込みのまま生成する
         stripe_subscription_id: params.stripeSubscriptionId,
