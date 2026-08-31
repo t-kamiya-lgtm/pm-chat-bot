@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { toAdminErrorMessage } from "@/lib/api-error";
 import { subscriptionIntervalSchema } from "@/lib/checkout-schema";
 
 const productInputSchema = z.object({
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
   if (productGroupId) query = query.eq("product_group_id", productGroupId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
   return NextResponse.json({ products: data });
 }
 
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
 
   if (input.isSet && input.setOptionProductIds.length > 0) {
     const { error: optionsError } = await supabase.from("product_set_options").insert(
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
         display_order: index,
       })),
     );
-    if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 });
+    if (optionsError) return NextResponse.json({ error: toAdminErrorMessage(optionsError.message) }, { status: 500 });
   }
 
   return NextResponse.json({ product: data }, { status: 201 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { toAdminErrorMessage } from "@/lib/api-error";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -20,7 +21,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (sourceError) return NextResponse.json({ error: sourceError.message }, { status: 500 });
+  if (sourceError) return NextResponse.json({ error: toAdminErrorMessage(sourceError.message) }, { status: 500 });
   if (!source) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const { data: lastProduct } = await supabase
@@ -42,6 +43,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       price: source.price,
       list_price: source.list_price,
       first_time_price: source.first_time_price,
+      next_cycle_product_id: source.next_cycle_product_id,
       compare_price_type: source.compare_price_type,
       unit_total_price: source.unit_total_price,
       custom_compare_label: source.custom_compare_label,
@@ -62,7 +64,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
 
   if (source.is_set) {
     const { data: sourceOptions } = await supabase
@@ -77,7 +79,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
           display_order: o.display_order,
         })),
       );
-      if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 });
+      if (optionsError) return NextResponse.json({ error: toAdminErrorMessage(optionsError.message) }, { status: 500 });
     }
   }
 

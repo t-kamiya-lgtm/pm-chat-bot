@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCatalogRole } from "@/lib/require-role";
+import { toAdminErrorMessage } from "@/lib/api-error";
 import { subscriptionIntervalSchema } from "@/lib/checkout-schema";
 
 const productUpdateSchema = z.object({
@@ -46,7 +47,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
   if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ product: data });
 }
@@ -116,11 +117,11 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
 
   if (input.setOptionProductIds !== undefined) {
     const { error: deleteError } = await supabase.from("product_set_options").delete().eq("product_id", id);
-    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    if (deleteError) return NextResponse.json({ error: toAdminErrorMessage(deleteError.message) }, { status: 500 });
     if (input.setOptionProductIds.length > 0) {
       const { error: insertError } = await supabase.from("product_set_options").insert(
         input.setOptionProductIds.map((optionProductId, index) => ({
@@ -129,7 +130,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
           display_order: index,
         })),
       );
-      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+      if (insertError) return NextResponse.json({ error: toAdminErrorMessage(insertError.message) }, { status: 500 });
     }
   }
 
@@ -170,6 +171,6 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   }
 
   const { error } = await supabase.from("products").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
