@@ -31,6 +31,11 @@ export interface Product {
   listPrice: number | null;
   /** 定期購入の初回のみ適用する特別価格(任意)。2回目以降はpriceを使う。 */
   firstTimePrice: number | null;
+  /**
+   * この品番で定期購入が開始された場合、2回目以降の注文・課金を自動的に切り替える先の品番(任意)。
+   * お試し品番→本品品番のように、品番自体が変わる自動切替プラン用。firstTimePriceとは併用しない。
+   */
+  nextCycleProductId: string | null;
   /** 二重価格表記(打消線)で使う比較価格のラベル種別。 */
   comparePriceType: ComparePriceType;
   /** compareType="unit_total"のときの、手入力の単品合計価格。 */

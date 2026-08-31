@@ -27,6 +27,7 @@ export interface ProductFormValues {
   price: number;
   listPrice: number | null;
   firstTimePrice: number | null;
+  nextCycleProductId: string | null;
   comparePriceType: ComparePriceType;
   unitTotalPrice: number | null;
   customCompareLabel: string;
@@ -57,6 +58,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     price: 0,
     listPrice: null,
     firstTimePrice: null,
+    nextCycleProductId: null,
     comparePriceType: "none",
     unitTotalPrice: null,
     customCompareLabel: "",
@@ -176,6 +178,7 @@ export function ProductForm({
         values.orderType === "subscription" && values.firstTimePrice !== null
           ? Number(values.firstTimePrice)
           : null,
+      nextCycleProductId: values.orderType === "subscription" ? values.nextCycleProductId || null : null,
       comparePriceType: values.comparePriceType,
       unitTotalPrice: values.unitTotalPrice === null ? null : Number(values.unitTotalPrice),
       customCompareLabel: values.customCompareLabel || null,
@@ -666,6 +669,30 @@ export function ProductForm({
                 初回 {values.firstTimePrice.toLocaleString()}円 → 2回目以降 {values.price.toLocaleString()}円
               </p>
             )}
+          </div>
+        )}
+        {values.orderType === "subscription" && (
+          <div className="mt-3 pl-6">
+            <Field label="2回目以降の商品(任意、お試し→本品の自動切替プラン用)">
+              <select
+                value={values.nextCycleProductId ?? ""}
+                onChange={(e) =>
+                  setValues((p) => ({ ...p, nextCycleProductId: e.target.value || null }))
+                }
+                className="input"
+              >
+                <option value="">設定しない(この品番のまま継続)</option>
+                {otherProducts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <p className="mt-1 text-xs text-neutral-400">
+              設定すると、この品番で定期購入が始まった場合、2回目以降の注文・課金(Stripe決済含む)が
+              自動的に指定した品番・価格に切り替わります。初回価格と併用しないでください。
+            </p>
           </div>
         )}
       </div>

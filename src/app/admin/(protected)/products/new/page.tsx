@@ -36,6 +36,7 @@ export default async function NewProductPage({
                 price: 0,
                 listPrice: null,
                 firstTimePrice: null,
+                nextCycleProductId: null,
                 comparePriceType: "none",
                 unitTotalPrice: null,
                 customCompareLabel: "",
