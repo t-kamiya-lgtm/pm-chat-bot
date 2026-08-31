@@ -10,6 +10,8 @@ interface NavItem {
   href: string;
   label: string;
   adminOnly?: boolean;
+  /** 管理画面外のリンク。新しいタブで開き、未保存確認やアクティブ判定の対象外にする。 */
+  external?: boolean;
 }
 
 interface NavGroup {
@@ -65,6 +67,11 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/email-settings", label: "メール設定" },
       { href: "/admin/business-days", label: "営業日設定" },
       { href: "/admin/users", label: "ユーザー権限", adminOnly: true },
+      {
+        href: "https://claude.ai/code/artifact/e56417a9-0b12-4502-aa73-3aa412a9af2f",
+        label: "操作マニュアル",
+        external: true,
+      },
     ],
   },
 ];
@@ -178,16 +185,29 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
                 </button>
                 {open && (
                   <div className="flex flex-col gap-0.5 py-1 pl-4">
-                    {group.items.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={(e) => handleLinkClick(e, item.href)}
-                        className={`rounded-md px-1.5 py-1.5 ${isActive(item.href) ? activeLinkClass : linkClass}`}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
+                    {group.items.map((item) =>
+                      item.external ? (
+                        <a
+                          key={item.href}
+                          href={item.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setMenuOpen(false)}
+                          className={`rounded-md px-1.5 py-1.5 ${linkClass}`}
+                        >
+                          {item.label} ↗
+                        </a>
+                      ) : (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={(e) => handleLinkClick(e, item.href)}
+                          className={`rounded-md px-1.5 py-1.5 ${isActive(item.href) ? activeLinkClass : linkClass}`}
+                        >
+                          {item.label}
+                        </Link>
+                      ),
+                    )}
                   </div>
                 )}
               </div>
