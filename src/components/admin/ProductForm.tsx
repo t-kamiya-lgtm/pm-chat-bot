@@ -28,6 +28,7 @@ export interface ProductFormValues {
   listPrice: number | null;
   firstTimePrice: number | null;
   nextCycleProductId: string | null;
+  nextCycleInterval: SubscriptionInterval | null;
   comparePriceType: ComparePriceType;
   unitTotalPrice: number | null;
   customCompareLabel: string;
@@ -59,6 +60,7 @@ function emptyValues(defaultProductGroupId?: string): ProductFormValues {
     listPrice: null,
     firstTimePrice: null,
     nextCycleProductId: null,
+    nextCycleInterval: null,
     comparePriceType: "none",
     unitTotalPrice: null,
     customCompareLabel: "",
@@ -154,6 +156,11 @@ export function ProductForm({
       setToast({ message: "定期購入の場合は周期を1つ以上選択してください", type: "error" });
       return;
     }
+    if (values.orderType === "subscription" && values.nextCycleProductId && !values.nextCycleInterval) {
+      setSubmitting(false);
+      setToast({ message: "2回目以降の商品を設定する場合は、切替後の頻度も選択してください", type: "error" });
+      return;
+    }
     if (values.isSet) {
       if (!values.setItemCount || values.setItemCount < 1) {
         setSubmitting(false);
@@ -179,6 +186,8 @@ export function ProductForm({
           ? Number(values.firstTimePrice)
           : null,
       nextCycleProductId: values.orderType === "subscription" ? values.nextCycleProductId || null : null,
+      nextCycleInterval:
+        values.orderType === "subscription" && values.nextCycleProductId ? values.nextCycleInterval : null,
       comparePriceType: values.comparePriceType,
       unitTotalPrice: values.unitTotalPrice === null ? null : Number(values.unitTotalPrice),
       customCompareLabel: values.customCompareLabel || null,
@@ -689,9 +698,32 @@ export function ProductForm({
                 ))}
               </select>
             </Field>
+            {values.nextCycleProductId && (
+              <div className="mt-2">
+                <Field label="切替後の頻度(2回目以降、本品の通常価格で配信する頻度)">
+                  <select
+                    value={values.nextCycleInterval ?? ""}
+                    onChange={(e) =>
+                      setValues((p) => ({
+                        ...p,
+                        nextCycleInterval: (e.target.value || null) as SubscriptionInterval | null,
+                      }))
+                    }
+                    className="input max-w-xs"
+                  >
+                    <option value="">選択してください</option>
+                    {(Object.keys(INTERVAL_LABELS) as SubscriptionInterval[]).map((interval) => (
+                      <option key={interval} value={interval}>
+                        {INTERVAL_LABELS[interval]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
             <p className="mt-1 text-xs text-neutral-400">
-              設定すると、この品番で定期購入が始まった場合、2回目以降の注文・課金(Stripe決済含む)が
-              自動的に指定した品番・価格に切り替わります。初回価格と併用しないでください。
+              設定すると、この品番で定期購入が始まった場合、1回目はお客様が選んだ頻度のままこの品番の価格で配信され、
+              2回目以降は上で選んだ頻度で、本品の通常価格(初回価格は使いません)に自動的に切り替わります(Stripe決済含む)。
             </p>
           </div>
         )}

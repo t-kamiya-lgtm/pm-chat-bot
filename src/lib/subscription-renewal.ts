@@ -5,6 +5,7 @@ import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
+import { getProductById } from "@/lib/products";
 import type { Address, SubscriptionInterval } from "@/lib/types";
 
 /**
@@ -44,23 +45,18 @@ export async function createSubscriptionRenewalOrder(params: {
       .maybeSingle();
     const nextCycleNumber = (latestChild?.billing_cycle_number ?? original.billing_cycle_number ?? 1) + 1;
 
-    // お試し→本品自動切替プランの場合、この定期購読には申込み時点で本品への上書きが
-    // 設定されている(checkout/subscription側で設定)。Stripeの定期Price自体も既に
-    // 本品価格で作成済みなので、ここでの上書きはチャット側の注文記録を実際の課金内容に
-    // 合わせるためのもの(通常の定期は上書きが無いため、従来通りoriginalをそのまま使う)。
-    const { data: subscriptionRow } = await supabase
-      .from("subscriptions")
-      .select("override_product_id, override_amount, override_shipping_fee")
-      .eq("order_id", original.id)
-      .maybeSingle();
-    const productId = (subscriptionRow?.override_product_id as string | null) ?? original.product_id;
+    // お試し→本品自動切替プランの場合、2回目以降はStripe側のSubscription Scheduleが
+    // 既に本品の価格を自動課金している。チャット側の注文記録もそれに合わせて、
+    // 元の品番(root)に設定された本品(next_cycle_product_id)を都度確認して反映する
+    // (通常の定期は設定が無いため、従来通りoriginalをそのまま使う)。
+    const rootProduct = await getProductById(original.product_id);
+    const nextCycleProductId = rootProduct?.next_cycle_product_id ?? null;
+    const productId = nextCycleProductId ?? original.product_id;
     const isProductSwitched = productId !== original.product_id;
-    const amount = isProductSwitched
-      ? ((subscriptionRow?.override_amount as number | null) ?? original.amount)
-      : original.amount;
-    const shippingFee = isProductSwitched
-      ? ((subscriptionRow?.override_shipping_fee as number | null) ?? original.shipping_fee)
-      : original.shipping_fee;
+    const nextCycleProduct = isProductSwitched ? await getProductById(productId) : null;
+    const amount = isProductSwitched && nextCycleProduct ? nextCycleProduct.price * original.quantity : original.amount;
+    const shippingFee =
+      isProductSwitched && nextCycleProduct ? nextCycleProduct.shipping_fee : original.shipping_fee;
     // 原価・費用・税率は、商品が切り替わっていなければ初回注文時点のスナップショットを
     // そのまま引き継ぎ、切り替わっている場合のみ本品の現在の設定から都度解決する。
     const costSnapshot = isProductSwitched
@@ -172,15 +168,29 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
     // 2回目以降は常に通常価格(初回特別価格・クーポンは初回のみ適用)。
     // 商品マスタの現在値ではなく、初回注文時点のスナップショット(original.amount等)を使う
     // (配信後にマスタ価格を変更しても、既存の定期購入者には反映されず、変更以後の新規受注にのみ
-    // 反映されるようにするため)。ただし顧客管理画面でスタッフが個別に上書き設定した場合は、
-    // そちらを優先する(subscriptionsのoverride列、初回注文自体の記録は書き換えない)。
-    const productId = (subscriptionRow.override_product_id as string | null) ?? original.product_id;
+    // 反映されるようにするため)。ただし優先順位は、①顧客管理画面でスタッフが個別に上書き設定した
+    // 場合(subscriptionsのoverride列)、②お試し→本品自動切替プランの設定(products.next_cycle_*)、
+    // ③初回注文のスナップショット、の順(初回注文自体の記録は書き換えない)。
+    const rootProduct = await getProductById(original.product_id);
+    const overrideProductId = subscriptionRow.override_product_id as string | null;
+    const autoSwitchProductId = !overrideProductId ? (rootProduct?.next_cycle_product_id ?? null) : null;
+    const productId = overrideProductId ?? autoSwitchProductId ?? original.product_id;
+    const autoSwitchProduct = autoSwitchProductId ? await getProductById(autoSwitchProductId) : null;
     const quantity = (subscriptionRow.override_quantity as number | null) ?? (original.quantity as number);
-    const amount = (subscriptionRow.override_amount as number | null) ?? (original.amount as number);
-    const shippingFee = (subscriptionRow.override_shipping_fee as number | null) ?? (original.shipping_fee as number);
+    const amount =
+      (subscriptionRow.override_amount as number | null) ??
+      (autoSwitchProduct ? autoSwitchProduct.price * quantity : (original.amount as number));
+    const shippingFee =
+      (subscriptionRow.override_shipping_fee as number | null) ??
+      (autoSwitchProduct ? autoSwitchProduct.shipping_fee : (original.shipping_fee as number));
     const paymentFee = (subscriptionRow.override_payment_fee as number | null) ?? (original.payment_fee as number);
     const paymentMethod = (subscriptionRow.override_payment_method as string | null) ?? original.payment_method;
     const deliveryDate = subscriptionRow.next_billing_date as string;
+    // 自動切替プランで頻度も指定されていれば、次回以降はその頻度に切り替える。
+    const effectiveInterval: SubscriptionInterval =
+      autoSwitchProduct && rootProduct?.next_cycle_interval
+        ? rootProduct.next_cycle_interval
+        : (subscriptionRow.interval as SubscriptionInterval);
 
     const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
     // 商品自体が上書きされている可能性があるため、原価・費用・税率は初回注文の値を
@@ -230,12 +240,12 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
 
     // 受注データの生成に成功した時点で、後続処理(与信・スマレジ連携)の成否に関わらず
     // 次回の予定日を進める(1周期分の失敗で以後のスケジュールが止まらないようにするため)。
-    const interval = subscriptionRow.interval as SubscriptionInterval;
+    // 自動切替で頻度が変わった場合は、以後この新しい頻度で定期購読を進める。
     const nextDate = new Date(deliveryDate);
-    nextDate.setDate(nextDate.getDate() + SUBSCRIPTION_INTERVAL_DAYS[interval]);
+    nextDate.setDate(nextDate.getDate() + SUBSCRIPTION_INTERVAL_DAYS[effectiveInterval]);
     await supabase
       .from("subscriptions")
-      .update({ next_billing_date: nextDate.toISOString().slice(0, 10) })
+      .update({ next_billing_date: nextDate.toISOString().slice(0, 10), interval: effectiveInterval })
       .eq("id", subscriptionRowId);
 
     const { data: customer } = await supabase

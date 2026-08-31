@@ -19,6 +19,39 @@ function getSubscriptionIdFromInvoice(invoice: Stripe.Invoice): string | undefin
 }
 
 /**
+ * 通常の定期購入はpayment_settings.save_default_payment_methodにより、初回決済で使った
+ * 支払い方法がSubscriptionの既定支払い方法として自動保存される。ただし「お試し→本品自動切替」
+ * プラン(Subscription Schedule)はこのパラメータに対応していないため、初回invoice決済後に
+ * 使われた支払い方法を、ここで明示的に顧客の既定支払い方法として保存する
+ * (Subscriptionに既定支払い方法が無い場合、Stripeは顧客の既定支払い方法にフォールバックするため)。
+ */
+async function saveDefaultPaymentMethodFromInvoice(stripe: Stripe, invoice: Stripe.Invoice): Promise<void> {
+  try {
+    const invoiceWithPayments = await stripe.invoices.retrieve(invoice.id!, {
+      expand: ["payments.data.payment.payment_intent"],
+    });
+    const payment = invoiceWithPayments.payments?.data[0]?.payment;
+    const paymentIntent = payment?.payment_intent;
+    const paymentIntentObject =
+      typeof paymentIntent === "string" ? await stripe.paymentIntents.retrieve(paymentIntent) : paymentIntent;
+    const paymentMethodId =
+      typeof paymentIntentObject?.payment_method === "string"
+        ? paymentIntentObject.payment_method
+        : paymentIntentObject?.payment_method?.id;
+    if (!paymentMethodId) return;
+
+    const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+    if (!customerId) return;
+
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+  } catch (err) {
+    console.error("[webhooks/stripe] failed to save default payment method", { invoiceId: invoice.id, err });
+  }
+}
+
+/**
  * Stripe Webhook受信。署名検証を行った上で、注文・サブスクリプション状態をDBに反映する。
  * Stripe決済の注文はスマレジには連携しないが、決済確定後にチャットシステムから基幹システムへ
  * 取り込む(受注確認はチャットシステム、入金突合せはStripe側で行う運用のため)。
@@ -99,6 +132,10 @@ export async function POST(request: Request) {
         await assignCustomerNumberIfNeeded(order.customer_id);
         // クーポンの使用回数は初回決済確定時点で加算する(以降の定期課金では加算しない)
         if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
+        // お試し→本品自動切替プラン(Subscription Schedule)は payment_settings.save_default_payment_method
+        // が使えないため、初回決済で使われた支払い方法を顧客の既定支払い方法として明示的に保存する
+        // (2回目以降、自動切替後のフェーズの請求もこの支払い方法で継続課金されるようにするため)。
+        await saveDefaultPaymentMethodFromInvoice(stripe, invoice);
       }
       break;
     }

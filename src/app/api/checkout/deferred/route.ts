@@ -70,12 +70,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // 「お試し→本品自動切替」プランの場合、本品(2回目以降の品番)を解決する。
-  const nextCycleProduct =
-    orderType === "subscription" && product.next_cycle_product_id
-      ? await getProductById(product.next_cycle_product_id)
-      : null;
-
   const addonProduct = addonProductId ? await getProductById(addonProductId) : null;
   const addonAmount = addonProduct?.price ?? 0;
   // アドオン商品自体も定期購入対応で、メインと同じ周期に対応している場合は、単発の追加購入ではなく
@@ -90,10 +84,8 @@ export async function POST(request: Request) {
   // 初回価格が設定されている場合は、その差額を「初回のみの一括値引き」として扱う
   // (スマレジへの連携も、明細は通常価格のまま、値引き額として送る)。
   const amount = product.price * quantity;
-  const regularAmount = nextCycleProduct ? nextCycleProduct.price * quantity : amount;
-  const firstTimeDiscountAmount = nextCycleProduct
-    ? Math.max(0, regularAmount - amount)
-    : orderType === "subscription" && product.first_time_price !== null
+  const firstTimeDiscountAmount =
+    orderType === "subscription" && product.first_time_price !== null
       ? Math.max(0, amount - product.first_time_price * quantity)
       : 0;
   const paymentFee = await getPaymentFee(paymentMethod, orderType);
@@ -166,13 +158,6 @@ export async function POST(request: Request) {
       interval: subscriptionInterval,
       status: "active",
       next_billing_date: nextBillingDate.toISOString().slice(0, 10),
-      // 自動切替プランの場合、2回目以降は本品の品番・価格・送料で生成されるよう、この時点で
-      // 上書き設定しておく(初回注文自体の記録は変更しない)。
-      ...(nextCycleProduct && {
-        override_product_id: nextCycleProduct.id,
-        override_amount: regularAmount,
-        override_shipping_fee: nextCycleProduct.shipping_fee,
-      }),
     });
   }
 

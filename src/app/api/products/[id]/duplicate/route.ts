@@ -44,6 +44,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       list_price: source.list_price,
       first_time_price: source.first_time_price,
       next_cycle_product_id: source.next_cycle_product_id,
+      next_cycle_interval: source.next_cycle_interval,
       compare_price_type: source.compare_price_type,
       unit_total_price: source.unit_total_price,
       custom_compare_label: source.custom_compare_label,

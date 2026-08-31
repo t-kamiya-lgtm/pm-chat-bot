@@ -56,6 +56,7 @@ export default async function EditProductPage({
           listPrice: product.list_price ?? null,
           firstTimePrice: product.first_time_price ?? null,
           nextCycleProductId: product.next_cycle_product_id ?? null,
+          nextCycleInterval: product.next_cycle_interval ?? null,
           comparePriceType: product.compare_price_type ?? "none",
           unitTotalPrice: product.unit_total_price ?? null,
           customCompareLabel: product.custom_compare_label ?? "",
