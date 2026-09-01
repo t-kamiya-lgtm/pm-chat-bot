@@ -21,10 +21,10 @@ function isAuthorized(request: Request): boolean {
 }
 
 /**
- * Vercel Cron(vercel.jsonのcrons設定、毎時0分に実行)から呼び出されるエンドポイント。
+ * Cloud Scheduler(毎時0分に実行、docs/deploy.md参照)から呼び出されるエンドポイント。
  * 入力途中で離脱し、1時間以上更新のないリードへリマインドメールを送る。
- * CRON_SECRET環境変数を設定しておくと、Vercelがcron実行時に自動で
- * "Authorization: Bearer <CRON_SECRET>" ヘッダーを付与するため、それで認証する
+ * CRON_SECRET環境変数を設定しておくと、Cloud Schedulerジョブに設定した
+ * "Authorization: Bearer <CRON_SECRET>" ヘッダーで認証する
  * (外部Cronサービスから直接叩く場合はクエリ "?secret=" でも可)。
  */
 export async function POST(request: Request) {
