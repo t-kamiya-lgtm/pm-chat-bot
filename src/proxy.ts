@@ -1,36 +1,23 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE_NAME } from "@/app/api/auth/session/route";
 
-/** Supabaseセッションのリフレッシュ(App Router推奨パターン)。 */
+/**
+ * Firebaseセッションcookieは(Supabaseの自動リフレッシュ付きJWTと違い)ここで
+ * リフレッシュする必要がないため、Cookieの有無だけを見た軽量なチェックに留める。
+ * 実際の検証(署名・有効期限・招待済みメールとの紐付け)はgetCurrentAppUser()
+ * (Server Component / API route側)で行う。
+ *
+ * /admin/login自体はこのmatcherに含まれるため、ログイン画面へのリダイレクトの
+ * 無限ループを避けるためログイン画面自体は対象外にする。
+ */
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      // 認証クッキーをセッションクッキーにし、ブラウザを完全に終了したら自動ログアウトされるようにする
-      cookieOptions: { maxAge: undefined },
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          for (const { name, value } of cookiesToSet) {
-            request.cookies.set(name, value);
-          }
-          response = NextResponse.next({ request });
-          for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
-          }
-        },
-      },
-    },
-  );
-
-  await supabase.auth.getUser();
-
-  return response;
+  if (request.nextUrl.pathname === "/admin/login") {
+    return NextResponse.next();
+  }
+  if (!request.cookies.has(SESSION_COOKIE_NAME)) {
+    return NextResponse.redirect(new URL("/admin/login", request.url));
+  }
+  return NextResponse.next();
 }
 
 export const config = {

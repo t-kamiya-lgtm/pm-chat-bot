@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getAuth, signOut } from "firebase/auth";
+import { firebaseApp } from "@/lib/firebase/client";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -10,8 +11,8 @@ export function LogoutButton() {
 
   async function handleLogout() {
     setLoading(true);
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signOut();
+    await signOut(getAuth(firebaseApp));
+    await fetch("/api/auth/session", { method: "DELETE" });
     router.push("/admin/login");
     router.refresh();
   }

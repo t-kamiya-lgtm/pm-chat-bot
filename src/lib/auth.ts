@@ -1,59 +1,55 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { cookies } from "next/headers";
+import { eq, and, isNull } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
+import { getAdminAuth } from "@/lib/firebase/admin";
+import { SESSION_COOKIE_NAME } from "@/app/api/auth/session/route";
 import type { AppUser } from "@/lib/types";
 
-function toAppUser(row: {
-  id: string;
-  auth_user_id: string | null;
-  email: string;
-  role: string;
-  created_at: string;
-}): AppUser {
+function toAppUser(row: typeof users.$inferSelect): AppUser {
   return {
     id: row.id,
-    authUserId: row.auth_user_id,
+    authUserId: row.authUserId,
     email: row.email,
     role: row.role as AppUser["role"],
-    createdAt: row.created_at,
+    createdAt: row.createdAt,
   };
 }
 
 /**
  * ログイン中のGoogleアカウントに対応する管理画面ユーザーを取得する。
  * 招待制: 管理者が事前に「ユーザー権限」画面でメールアドレス・権限を登録した場合のみ、
- * 初回ログイン時にそのレコードへauth_user_idを紐付ける。未登録のメールアドレスは
- * 許可ドメイン内であってもログインできない(自動での新規admin作成は行わない)。
+ * 初回ログイン時にそのレコードへauth_user_id(FirebaseのUID)を紐付ける。未登録のメール
+ * アドレスは許可ドメイン内であってもログインできない(自動での新規admin作成は行わない)。
  */
 export async function getCurrentAppUser(): Promise<AppUser | null> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!sessionCookie) return null;
 
-  if (!authUser?.email) return null;
+  let decoded;
+  try {
+    decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
+  } catch {
+    return null;
+  }
+  if (!decoded.email) return null;
 
   const allowedDomain = process.env.ADMIN_ALLOWED_GOOGLE_DOMAIN;
-  if (allowedDomain && !authUser.email.endsWith(`@${allowedDomain}`)) {
+  if (allowedDomain && !decoded.email.endsWith(`@${allowedDomain}`)) {
     return null;
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data: existing } = await admin
-    .from("users")
-    .select("*")
-    .eq("auth_user_id", authUser.id)
-    .maybeSingle();
-
+  const db = await getDb();
+  const [existing] = await db.select().from(users).where(eq(users.authUserId, decoded.uid)).limit(1);
   if (existing) return toAppUser(existing);
 
   // 招待済み(管理者が事前に登録したメールアドレス)であれば、この認証情報を紐付ける
-  const { data: invited } = await admin
-    .from("users")
-    .update({ auth_user_id: authUser.id })
-    .eq("email", authUser.email)
-    .is("auth_user_id", null)
-    .select("*")
-    .maybeSingle();
+  const [invited] = await db
+    .update(users)
+    .set({ authUserId: decoded.uid })
+    .where(and(eq(users.email, decoded.email), isNull(users.authUserId)))
+    .returning();
 
   return invited ? toAppUser(invited) : null;
 }

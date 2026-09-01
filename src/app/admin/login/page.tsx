@@ -1,19 +1,41 @@
 "use client";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { GoogleAuthProvider, getAuth, signInWithPopup } from "firebase/auth";
+import { firebaseApp } from "@/lib/firebase/client";
 
 export default function AdminLoginPage() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
   async function handleGoogleLogin() {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: {
-          hd: process.env.NEXT_PUBLIC_ADMIN_ALLOWED_GOOGLE_DOMAIN ?? "",
-        },
-      },
-    });
+    setLoading(true);
+    setError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ hd: process.env.NEXT_PUBLIC_ADMIN_ALLOWED_GOOGLE_DOMAIN ?? "" });
+      const credential = await signInWithPopup(getAuth(firebaseApp), provider);
+      const idToken = await credential.user.getIdToken();
+
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!res.ok) {
+        setError("ログインに失敗しました。招待されたメールアドレスかご確認ください。");
+        return;
+      }
+
+      router.push("/admin");
+      router.refresh();
+    } catch {
+      setError("ログインに失敗しました。もう一度お試しください。");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -27,10 +49,12 @@ export default function AdminLoginPage() {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          className="w-full rounded-md bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-700"
+          disabled={loading}
+          className="w-full rounded-md bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-700 disabled:opacity-50"
         >
           Googleでログイン
         </button>
+        {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
         <p className="mt-4 text-center text-xs text-neutral-500">
           自社ドメインのGoogleアカウントでのみログインできます。
         </p>
