@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroupTaxRates, taxRates } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -17,25 +19,33 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const [assignmentsRes, taxRatesRes] = await Promise.all([
-    supabase
-      .from("product_group_tax_rates")
-      .select("*")
-      .eq("product_group_id", id)
-      .order("period_start", { ascending: false }),
-    supabase.from("tax_rates").select("id, name, rate"),
-  ]);
-  if (assignmentsRes.error) return NextResponse.json({ error: assignmentsRes.error.message }, { status: 500 });
-  if (taxRatesRes.error) return NextResponse.json({ error: taxRatesRes.error.message }, { status: 500 });
+  try {
+    const db = await getDb();
+    const [assignmentRows, taxRateRows] = await Promise.all([
+      db
+        .select()
+        .from(productGroupTaxRates)
+        .where(eq(productGroupTaxRates.productGroupId, id))
+        .orderBy(desc(productGroupTaxRates.periodStart)),
+      db.select({ id: taxRates.id, name: taxRates.name, rate: taxRates.rate }).from(taxRates),
+    ]);
 
-  const taxRateById = new Map((taxRatesRes.data ?? []).map((t) => [t.id as string, t]));
-  const assignments = (assignmentsRes.data ?? []).map((a) => ({
-    ...a,
-    tax_rates: taxRateById.get(a.tax_rate_id as string) ?? null,
-  }));
+    const taxRateById = new Map(taxRateRows.map((t) => [t.id, t]));
+    const assignments = assignmentRows.map((a) => {
+      const taxRate = taxRateById.get(a.taxRateId) ?? null;
+      return {
+        id: a.id,
+        tax_rate_id: a.taxRateId,
+        period_start: a.periodStart,
+        period_end: a.periodEnd,
+        tax_rates: taxRate ? { id: taxRate.id, name: taxRate.name, rate: Number(taxRate.rate) } : null,
+      };
+    });
 
-  return NextResponse.json({ assignments });
+    return NextResponse.json({ assignments });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
@@ -52,17 +62,19 @@ export async function POST(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "開始日は終了日より前に指定してください" }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_group_tax_rates")
-    .insert({
-      product_group_id: id,
-      tax_rate_id: parsed.data.taxRateId,
-      period_start: parsed.data.periodStart,
-      period_end: periodEnd,
-    })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ assignment: data }, { status: 201 });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(productGroupTaxRates)
+      .values({
+        productGroupId: id,
+        taxRateId: parsed.data.taxRateId,
+        periodStart: parsed.data.periodStart,
+        periodEnd,
+      })
+      .returning();
+    return NextResponse.json({ assignment: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

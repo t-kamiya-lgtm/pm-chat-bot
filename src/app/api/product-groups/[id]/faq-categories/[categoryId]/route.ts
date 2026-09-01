@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productFaqCategories } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const updateSchema = z.object({
@@ -22,20 +24,21 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_faq_categories")
-    .update({
-      ...(input.title !== undefined && { title: input.title }),
-      ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
-    })
-    .eq("id", categoryId)
-    .eq("product_group_id", id)
-    .select("*")
-    .single();
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .update(productFaqCategories)
+      .set({
+        ...(input.title !== undefined && { title: input.title }),
+        ...(input.displayOrder !== undefined && { displayOrder: input.displayOrder }),
+      })
+      .where(and(eq(productFaqCategories.id, categoryId), eq(productFaqCategories.productGroupId, id)))
+      .returning();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ category: data });
+    return NextResponse.json({ category: row });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -43,12 +46,13 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id, categoryId } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("product_faq_categories")
-    .delete()
-    .eq("id", categoryId)
-    .eq("product_group_id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const db = await getDb();
+    await db
+      .delete(productFaqCategories)
+      .where(and(eq(productFaqCategories.id, categoryId), eq(productFaqCategories.productGroupId, id)));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

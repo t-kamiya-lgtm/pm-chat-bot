@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, isNull } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { paymentMethodFees } from "@/db/schema";
 import type { OrderType, PaymentMethod } from "@/lib/types";
 
 /**
@@ -11,26 +13,24 @@ export async function getPaymentFee(
 ): Promise<number> {
   if (paymentMethod === "stripe") return 0;
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
   // まず注文タイプ固有の設定を探し、なければ共通設定(order_type = null)を使う
-  const { data: specific } = await supabase
-    .from("payment_method_fees")
-    .select("fee")
-    .eq("payment_method", paymentMethod)
-    .eq("order_type", orderType)
-    .maybeSingle();
+  const [specific] = await db
+    .select({ fee: paymentMethodFees.fee })
+    .from(paymentMethodFees)
+    .where(and(eq(paymentMethodFees.paymentMethod, paymentMethod), eq(paymentMethodFees.orderType, orderType)))
+    .limit(1);
 
-  if (specific) return specific.fee as number;
+  if (specific) return specific.fee;
 
-  const { data: common } = await supabase
-    .from("payment_method_fees")
-    .select("fee")
-    .eq("payment_method", paymentMethod)
-    .is("order_type", null)
-    .maybeSingle();
+  const [common] = await db
+    .select({ fee: paymentMethodFees.fee })
+    .from(paymentMethodFees)
+    .where(and(eq(paymentMethodFees.paymentMethod, paymentMethod), isNull(paymentMethodFees.orderType)))
+    .limit(1);
 
-  return (common?.fee as number) ?? 0;
+  return common?.fee ?? 0;
 }
 
 export interface AmountBreakdown {

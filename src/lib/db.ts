@@ -38,6 +38,9 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/** getDb()の戻り値の型。各データアクセス関数の引数の型注釈に使う。 */
+export type Db = Awaited<ReturnType<typeof getDb>>;
+
 /** Drizzleクライアントを取得する(初回呼び出し時に接続を確立し、以後は使い回す)。 */
 export async function getDb() {
   if (!dbPromise) {

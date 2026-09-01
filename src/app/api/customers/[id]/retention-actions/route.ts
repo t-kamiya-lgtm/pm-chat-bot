@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { customerRetentionActions } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -22,19 +23,22 @@ export async function POST(request: Request, { params }: RouteParams) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("customer_retention_actions")
-    .insert({
-      customer_id: customerId,
-      campaign_type_id: parsed.data.campaignTypeId,
-      performed_month: `${parsed.data.performedMonth}-01`,
-      subscription_id: parsed.data.subscriptionId ?? null,
-      detail: parsed.data.detail || null,
-      created_by: roleCheck.user.id,
-    })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const db = await getDb();
+  let data;
+  try {
+    [data] = await db
+      .insert(customerRetentionActions)
+      .values({
+        customerId,
+        campaignTypeId: parsed.data.campaignTypeId,
+        performedMonth: `${parsed.data.performedMonth}-01`,
+        subscriptionId: parsed.data.subscriptionId ?? null,
+        detail: parsed.data.detail || null,
+        createdBy: roleCheck.user.id,
+      })
+      .returning();
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   return NextResponse.json({ retentionAction: data }, { status: 201 });
 }

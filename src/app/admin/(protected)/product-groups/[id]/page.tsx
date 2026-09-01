@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { brands, productFaqCategories, productFaqs, productGroups, productSpecs, products } from "@/db/schema";
 import { ProductSpecForm } from "@/components/admin/ProductSpecForm";
 import { FaqCategoryManager } from "@/components/admin/FaqCategoryManager";
 import { FaqReviewList } from "@/components/admin/FaqReviewList";
@@ -15,31 +17,43 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   subscription: "定期",
 };
 
-function mapCategoryRow(row: Record<string, unknown>): ProductFaqCategory {
+function mapCategoryRow(row: { id: string; productGroupId: string; title: string; displayOrder: number; createdAt: string }): ProductFaqCategory {
   return {
-    id: row.id as string,
-    productGroupId: row.product_group_id as string,
-    title: row.title as string,
-    displayOrder: row.display_order as number,
-    createdAt: row.created_at as string,
+    id: row.id,
+    productGroupId: row.productGroupId,
+    title: row.title,
+    displayOrder: row.displayOrder,
+    createdAt: row.createdAt,
   };
 }
 
-function mapFaqRow(row: Record<string, unknown>): ProductFaq & { categoryTitle: string | null } {
-  const category = row.product_faq_categories as { title: string } | null;
+function mapFaqRow(row: {
+  id: string;
+  productGroupId: string | null;
+  categoryId: string | null;
+  productFaqCategory: { title: string } | null;
+  question: string;
+  answer: string;
+  status: string;
+  source: string;
+  generatedFromSpecId: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}): ProductFaq & { categoryTitle: string | null } {
   return {
-    id: row.id as string,
-    productGroupId: row.product_group_id as string,
-    categoryId: row.category_id as string | null,
-    categoryTitle: category?.title ?? null,
-    question: row.question as string,
-    answer: row.answer as string,
+    id: row.id,
+    productGroupId: row.productGroupId as string,
+    categoryId: row.categoryId,
+    categoryTitle: row.productFaqCategory?.title ?? null,
+    question: row.question,
+    answer: row.answer,
     status: row.status as ProductFaq["status"],
     source: row.source as ProductFaq["source"],
-    generatedFromSpecId: row.generated_from_spec_id as string | null,
-    reviewedBy: row.reviewed_by as string | null,
-    reviewedAt: row.reviewed_at as string | null,
-    createdAt: row.created_at as string,
+    generatedFromSpecId: row.generatedFromSpecId,
+    reviewedBy: row.reviewedBy,
+    reviewedAt: row.reviewedAt,
+    createdAt: row.createdAt,
   };
 }
 
@@ -49,29 +63,28 @@ export default async function ProductGroupDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
-  const [{ data: productGroup }, { data: products }, { data: spec }, { data: categories }, { data: faqs }, { data: brands }] =
-    await Promise.all([
-      supabase.from("product_groups").select("*").eq("id", id).maybeSingle(),
-      supabase.from("products").select("*").eq("product_group_id", id).order("created_at"),
-      supabase.from("product_specs").select("*").eq("product_group_id", id).maybeSingle(),
-      supabase
-        .from("product_faq_categories")
-        .select("*")
-        .eq("product_group_id", id)
-        .order("display_order", { ascending: true }),
-      supabase
-        .from("product_faqs")
-        .select("*, product_faq_categories(title)")
-        .eq("product_group_id", id)
-        .order("created_at", { ascending: false }),
-      supabase.from("brands").select("id, name").order("name"),
-    ]);
+  const [[productGroup], productRows, [spec], categories, faqs, brandRows] = await Promise.all([
+    db.select().from(productGroups).where(eq(productGroups.id, id)).limit(1),
+    db.select().from(products).where(eq(products.productGroupId, id)).orderBy(asc(products.createdAt)),
+    db.select().from(productSpecs).where(eq(productSpecs.productGroupId, id)).limit(1),
+    db
+      .select()
+      .from(productFaqCategories)
+      .where(eq(productFaqCategories.productGroupId, id))
+      .orderBy(asc(productFaqCategories.displayOrder)),
+    db.query.productFaqs.findMany({
+      where: eq(productFaqs.productGroupId, id),
+      orderBy: desc(productFaqs.createdAt),
+      with: { productFaqCategory: { columns: { title: true } } },
+    }),
+    db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
+  ]);
 
   if (!productGroup) notFound();
 
-  const categoryOptions = (categories ?? []).map((c) => ({ id: c.id as string, title: c.title as string }));
+  const categoryOptions = categories.map((c) => ({ id: c.id, title: c.title }));
 
   return (
     <div>
@@ -85,8 +98,8 @@ export default async function ProductGroupDetailPage({
       <section className="mb-8">
         <ProductGroupBrandSelect
           productGroupId={id}
-          brands={brands ?? []}
-          initialBrandId={productGroup.brand_id}
+          brands={brandRows}
+          initialBrandId={productGroup.brandId}
         />
       </section>
 
@@ -109,7 +122,7 @@ export default async function ProductGroupDetailPage({
           </div>
         </div>
         <div className="space-y-2">
-          {products?.map((product) => (
+          {productRows.map((product) => (
             <Link
               key={product.id}
               href={`/admin/products/${product.id}`}
@@ -117,11 +130,11 @@ export default async function ProductGroupDetailPage({
             >
               <span>{product.name}</span>
               <span className="text-xs text-neutral-500">
-                {ORDER_TYPE_LABELS[product.order_type]} ・ {product.price.toLocaleString()}円
+                {ORDER_TYPE_LABELS[product.orderType]} ・ {product.price.toLocaleString()}円
               </span>
             </Link>
           ))}
-          {!products?.length && (
+          {!productRows.length && (
             <p className="rounded-lg border border-dashed border-neutral-300 p-4 text-center text-sm text-neutral-400">
               品番が登録されていません
             </p>
@@ -144,7 +157,7 @@ export default async function ProductGroupDetailPage({
 
       <section className="mb-8">
         <h2 className="mb-3 text-lg font-medium">QAカテゴリ</h2>
-        <FaqCategoryManager productGroupId={id} categories={(categories ?? []).map(mapCategoryRow)} />
+        <FaqCategoryManager productGroupId={id} categories={categories.map(mapCategoryRow)} />
       </section>
 
       <section>
@@ -152,7 +165,7 @@ export default async function ProductGroupDetailPage({
         <div className="mb-4">
           <NewFaqForm productGroupId={id} categories={categoryOptions} />
         </div>
-        <FaqReviewList faqs={(faqs ?? []).map(mapFaqRow)} categories={categoryOptions} />
+        <FaqReviewList faqs={faqs.map(mapFaqRow)} categories={categoryOptions} />
       </section>
     </div>
   );

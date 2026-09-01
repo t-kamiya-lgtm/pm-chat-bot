@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { sendInquiryNotification, sendResendEmail } from "@/lib/email";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { scenarios } from "@/db/schema";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
 import { resolveScenarioFrom, resolveInquiryReceiveEmail } from "@/lib/scenario-email";
 
@@ -26,14 +28,25 @@ export async function POST(request: Request) {
   }
   const { scenarioId, ...notificationInput } = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data: scenario } = scenarioId
-    ? await supabase
-        .from("scenarios")
-        .select("email_from_address, inquiry_receive_email, inquiry_auto_reply_from")
-        .eq("id", scenarioId)
-        .maybeSingle()
-    : { data: null };
+  const db = await getDb();
+  const [scenarioRow] = scenarioId
+    ? await db
+        .select({
+          emailFromAddress: scenarios.emailFromAddress,
+          inquiryReceiveEmail: scenarios.inquiryReceiveEmail,
+          inquiryAutoReplyFrom: scenarios.inquiryAutoReplyFrom,
+        })
+        .from(scenarios)
+        .where(eq(scenarios.id, scenarioId))
+        .limit(1)
+    : [null];
+  const scenario = scenarioRow
+    ? {
+        email_from_address: scenarioRow.emailFromAddress,
+        inquiry_receive_email: scenarioRow.inquiryReceiveEmail,
+        inquiry_auto_reply_from: scenarioRow.inquiryAutoReplyFrom,
+      }
+    : null;
 
   await sendInquiryNotification({
     ...notificationInput,
@@ -41,7 +54,7 @@ export async function POST(request: Request) {
   });
 
   try {
-    const templates = await getEmailTemplates(supabase);
+    const templates = await getEmailTemplates();
     const vars = {
       customer_name: parsed.data.name,
       message: parsed.data.message,

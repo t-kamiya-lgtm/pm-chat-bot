@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { bundleInsertSets } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { findConflictingSets, type BundleInsertSetCandidate } from "@/lib/bundle-insert-conflict";
 import { listBundleInsertSetsWithDetails } from "@/lib/bundle-insert-sets-query";
+import type { Db } from "@/lib/db";
 
 const createSchema = z.object({
   brandId: z.string().uuid(),
@@ -29,31 +32,41 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { sets, error } = await listBundleInsertSetsWithDetails(supabase);
-  if (error) return NextResponse.json({ error }, { status: 500 });
-
-  return NextResponse.json({ bundleInsertSets: sets });
+  const db = await getDb();
+  try {
+    const { sets } = await listBundleInsertSetsWithDetails(db);
+    return NextResponse.json({ bundleInsertSets: sets });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 async function fetchActiveSetsForConflictCheck(
-  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  db: Db,
   brandId: string,
 ): Promise<(BundleInsertSetCandidate & { name: string })[]> {
-  const { data } = await supabase
-    .from("bundle_insert_sets")
-    .select("id, name, brand_id, period_start, period_end, target_order_type, target_cycle_numbers, target_product_ids")
-    .eq("brand_id", brandId)
-    .eq("status", "active");
-  return (data ?? []).map((s) => ({
-    id: s.id as string,
-    name: s.name as string,
-    brandId: s.brand_id as string,
-    periodStart: s.period_start as string,
-    periodEnd: s.period_end as string | null,
-    targetOrderType: s.target_order_type as "subscription" | "one_time" | "both",
-    targetCycleNumbers: s.target_cycle_numbers as number[] | null,
-    targetProductIds: s.target_product_ids as string[] | null,
+  const data = await db
+    .select({
+      id: bundleInsertSets.id,
+      name: bundleInsertSets.name,
+      brandId: bundleInsertSets.brandId,
+      periodStart: bundleInsertSets.periodStart,
+      periodEnd: bundleInsertSets.periodEnd,
+      targetOrderType: bundleInsertSets.targetOrderType,
+      targetCycleNumbers: bundleInsertSets.targetCycleNumbers,
+      targetProductIds: bundleInsertSets.targetProductIds,
+    })
+    .from(bundleInsertSets)
+    .where(and(eq(bundleInsertSets.brandId, brandId), eq(bundleInsertSets.status, "active")));
+  return data.map((s) => ({
+    id: s.id,
+    name: s.name,
+    brandId: s.brandId,
+    periodStart: s.periodStart,
+    periodEnd: s.periodEnd,
+    targetOrderType: s.targetOrderType as "subscription" | "one_time" | "both",
+    targetCycleNumbers: s.targetCycleNumbers,
+    targetProductIds: s.targetProductIds,
   }));
 }
 
@@ -70,10 +83,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "開始日は終了日より前に指定してください" }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
   if (parsed.data.status === "active") {
-    const activeSets = await fetchActiveSetsForConflictCheck(supabase, parsed.data.brandId);
+    const activeSets = await fetchActiveSetsForConflictCheck(db, parsed.data.brandId);
     const conflicts = findConflictingSets(
       {
         brandId: parsed.data.brandId,
@@ -90,23 +103,25 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data, error } = await supabase
-    .from("bundle_insert_sets")
-    .insert({
-      brand_id: parsed.data.brandId,
-      name: parsed.data.name,
-      insert_label: parsed.data.insertLabel || null,
-      period_start: parsed.data.periodStart,
-      period_end: periodEnd,
-      target_order_type: parsed.data.targetOrderType,
-      target_cycle_numbers: parsed.data.targetCycleNumbers ?? null,
-      target_product_ids: parsed.data.targetProductIds ?? null,
-      item_ids: parsed.data.itemIds ?? null,
-      description: parsed.data.description || null,
-      status: parsed.data.status,
-    })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ bundleInsertSet: data }, { status: 201 });
+  try {
+    const [data] = await db
+      .insert(bundleInsertSets)
+      .values({
+        brandId: parsed.data.brandId,
+        name: parsed.data.name,
+        insertLabel: parsed.data.insertLabel || null,
+        periodStart: parsed.data.periodStart,
+        periodEnd: periodEnd,
+        targetOrderType: parsed.data.targetOrderType,
+        targetCycleNumbers: parsed.data.targetCycleNumbers ?? null,
+        targetProductIds: parsed.data.targetProductIds ?? null,
+        itemIds: parsed.data.itemIds ?? null,
+        description: parsed.data.description || null,
+        status: parsed.data.status,
+      })
+      .returning();
+    return NextResponse.json({ bundleInsertSet: data }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

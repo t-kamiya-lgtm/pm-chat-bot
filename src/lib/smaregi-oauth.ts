@@ -1,16 +1,12 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { smaregiOauthTokens } from "@/db/schema";
 
 /**
  * スマレジEC・リピートAPIのOAuth2連携(基本設定＞外部アプリ連携)。
  * 認可コードフローのため、管理者がブラウザで一度だけ許可ページを通す必要がある。
  * アクセストークンにはexpires_in/refresh_tokenが返らない場合もあるため両方null許容で扱う。
  */
-
-interface TokenRow {
-  access_token: string;
-  refresh_token: string | null;
-  expires_at: string | null;
-}
 
 interface TokenResponse {
   access_token: string;
@@ -61,16 +57,16 @@ async function requestToken(params: Record<string, string>): Promise<TokenRespon
 }
 
 async function storeTokens(token: TokenResponse): Promise<void> {
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   const expiresAt = token.expires_in ? new Date(Date.now() + token.expires_in * 1000).toISOString() : null;
-  const { error } = await supabase.from("smaregi_oauth_tokens").upsert({
+  const values = {
     id: 1,
-    access_token: token.access_token,
-    refresh_token: token.refresh_token ?? null,
-    expires_at: expiresAt,
-    updated_at: new Date().toISOString(),
-  });
-  if (error) throw error;
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token ?? null,
+    expiresAt,
+    updatedAt: new Date().toISOString(),
+  };
+  await db.insert(smaregiOauthTokens).values(values).onConflictDoUpdate({ target: smaregiOauthTokens.id, set: values });
 }
 
 /** 認可コードを初回のアクセストークンに交換して保存する(認可ページからのリダイレクト後に一度だけ呼ぶ)。 */
@@ -98,34 +94,33 @@ async function refreshSmaregiToken(refreshToken: string): Promise<string> {
 
 /** 診断用: トークンが化けていないか目視確認するためのマスク済み情報(先頭/末尾数文字と長さのみ)。 */
 export async function getSmaregiTokenDebugInfo(): Promise<{ length: number; preview: string } | null> {
-  const supabase = createSupabaseAdminClient();
-  const { data } = await supabase.from("smaregi_oauth_tokens").select("access_token").eq("id", 1).maybeSingle();
-  const token = (data?.access_token as string | undefined) ?? null;
+  const db = await getDb();
+  const [data] = await db.select({ accessToken: smaregiOauthTokens.accessToken }).from(smaregiOauthTokens).where(eq(smaregiOauthTokens.id, 1)).limit(1);
+  const token = data?.accessToken ?? null;
   if (!token) return null;
   return { length: token.length, preview: `${token.slice(0, 6)}...${token.slice(-4)}` };
 }
 
 /** 接続状態の確認用(管理画面表示)。 */
 export async function getSmaregiConnectionStatus(): Promise<{ connected: boolean; expiresAt: string | null }> {
-  const supabase = createSupabaseAdminClient();
-  const { data } = await supabase.from("smaregi_oauth_tokens").select("expires_at").eq("id", 1).maybeSingle();
-  return { connected: Boolean(data), expiresAt: (data?.expires_at as string | null) ?? null };
+  const db = await getDb();
+  const [data] = await db.select({ expiresAt: smaregiOauthTokens.expiresAt }).from(smaregiOauthTokens).where(eq(smaregiOauthTokens.id, 1)).limit(1);
+  return { connected: Boolean(data), expiresAt: data?.expiresAt ?? null };
 }
 
 /** APIコール用の有効なアクセストークンを返す。期限切れが近く、refresh_tokenがある場合は再取得する。 */
 export async function getValidSmaregiAccessToken(): Promise<string> {
-  const supabase = createSupabaseAdminClient();
-  const { data } = await supabase
-    .from("smaregi_oauth_tokens")
-    .select("access_token, refresh_token, expires_at")
-    .eq("id", 1)
-    .maybeSingle();
-  const row = data as TokenRow | null;
+  const db = await getDb();
+  const [row] = await db
+    .select({ accessToken: smaregiOauthTokens.accessToken, refreshToken: smaregiOauthTokens.refreshToken, expiresAt: smaregiOauthTokens.expiresAt })
+    .from(smaregiOauthTokens)
+    .where(eq(smaregiOauthTokens.id, 1))
+    .limit(1);
   if (!row) throw new Error("smaregi is not connected yet (run the OAuth connect flow first)");
 
-  const nearExpiry = row.expires_at && new Date(row.expires_at).getTime() - Date.now() < 24 * 60 * 60 * 1000;
-  if (nearExpiry && row.refresh_token) {
-    return refreshSmaregiToken(row.refresh_token);
+  const nearExpiry = row.expiresAt && new Date(row.expiresAt).getTime() - Date.now() < 24 * 60 * 60 * 1000;
+  if (nearExpiry && row.refreshToken) {
+    return refreshSmaregiToken(row.refreshToken);
   }
-  return row.access_token;
+  return row.accessToken;
 }

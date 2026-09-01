@@ -1,6 +1,6 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
+import { desc, eq } from "drizzle-orm";
+import { customerChangeLogs } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
 export type ChangeLogAction =
   | "customer_info_update"
@@ -55,7 +55,7 @@ export function diffFields(
  * changesが空(実質的な変更なし)の場合は何も記録しない。
  */
 export async function recordChangeLog(
-  supabase: SupabaseAdminClient,
+  db: Db,
   params: {
     customerId: string;
     subscriptionId?: string | null;
@@ -65,12 +65,12 @@ export async function recordChangeLog(
   },
 ): Promise<void> {
   if (params.changes.length === 0) return;
-  await supabase.from("customer_change_logs").insert({
-    customer_id: params.customerId,
-    subscription_id: params.subscriptionId ?? null,
+  await db.insert(customerChangeLogs).values({
+    customerId: params.customerId,
+    subscriptionId: params.subscriptionId ?? null,
     action: params.action,
     changes: params.changes,
-    changed_by_email: params.changedByEmail,
+    changedByEmail: params.changedByEmail,
   });
 }
 
@@ -87,18 +87,21 @@ export interface CustomerChangeLogRow {
  * 変更履歴一覧を取得する。admin以外(staff)には、個人情報を含むフィールドの
  * before/afterを伏字にして返す(何が変わったかという事実(フィールド名)は見せる)。
  */
-export async function getCustomerChangeLogs(
-  supabase: SupabaseAdminClient,
-  customerId: string,
-  isAdmin: boolean,
-): Promise<CustomerChangeLogRow[]> {
-  const { data } = await supabase
-    .from("customer_change_logs")
-    .select("*")
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false });
+export async function getCustomerChangeLogs(db: Db, customerId: string, isAdmin: boolean): Promise<CustomerChangeLogRow[]> {
+  const data = await db
+    .select()
+    .from(customerChangeLogs)
+    .where(eq(customerChangeLogs.customerId, customerId))
+    .orderBy(desc(customerChangeLogs.createdAt));
 
-  const rows = (data ?? []) as CustomerChangeLogRow[];
+  const rows: CustomerChangeLogRow[] = data.map((row) => ({
+    id: row.id,
+    subscription_id: row.subscriptionId,
+    action: row.action as ChangeLogAction,
+    changes: row.changes as FieldChange[],
+    changed_by_email: row.changedByEmail,
+    created_at: row.createdAt,
+  }));
   if (isAdmin) return rows;
 
   return rows.map((row) => ({

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { orders } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { sendCancellationEmail } from "@/lib/order-status-emails";
 import { applyImportStatusChange } from "@/lib/order-import-status";
@@ -30,12 +32,16 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const result = await applyImportStatusChange(supabase, id, parsed.data.importStatus);
+  const db = await getDb();
+  const result = await applyImportStatusChange(db, id, parsed.data.importStatus);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
-  const { data, error } = await supabase.from("orders").select("*").eq("id", id).single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let data;
+  try {
+    [data] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
   if (parsed.data.importStatus === "canceled") {
     await sendCancellationEmail(id);

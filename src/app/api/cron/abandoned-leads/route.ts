@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, gte, inArray, isNotNull, isNull, lte } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { leads, products, scenarios } from "@/db/schema";
 import { sendResendEmail } from "@/lib/email";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
 import { buildChatUrl } from "@/lib/chat-url";
@@ -30,62 +32,73 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   const now = Date.now();
-  const { data: leads, error } = await supabase
-    .from("leads")
-    .select("id, name, email, product_id, scenario_id")
-    .eq("order_status", "abandoned")
-    .is("unsubscribed_at", null)
-    .is("abandoned_email_sent_at", null)
-    .not("email", "is", null)
-    .lte("updated_at", new Date(now - ABANDONED_AFTER_MS).toISOString())
-    .gte("updated_at", new Date(now - ABANDONED_WITHIN_MS).toISOString());
+  let abandonedLeads;
+  try {
+    abandonedLeads = await db
+      .select({ id: leads.id, name: leads.name, email: leads.email, productId: leads.productId, scenarioId: leads.scenarioId })
+      .from(leads)
+      .where(
+        and(
+          eq(leads.orderStatus, "abandoned"),
+          isNull(leads.unsubscribedAt),
+          isNull(leads.abandonedEmailSentAt),
+          isNotNull(leads.email),
+          lte(leads.updatedAt, new Date(now - ABANDONED_AFTER_MS).toISOString()),
+          gte(leads.updatedAt, new Date(now - ABANDONED_WITHIN_MS).toISOString()),
+        ),
+      );
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!leads || leads.length === 0) {
+  if (abandonedLeads.length === 0) {
     return NextResponse.json({ processed: 0, sent: 0 });
   }
 
-  const templates = await getEmailTemplates(supabase);
+  const templates = await getEmailTemplates();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   let sent = 0;
 
   // シナリオ(ブランド)ごとに送信元アドレスが設定されていれば、共通アドレスより優先して使う
-  const scenarioIds = Array.from(new Set(leads.map((l) => l.scenario_id).filter((id): id is string => Boolean(id))));
+  const scenarioIds = Array.from(new Set(abandonedLeads.map((l) => l.scenarioId).filter((id): id is string => Boolean(id))));
   const scenarioFromById = new Map<string, ScenarioEmailFields | null>();
   if (scenarioIds.length > 0) {
-    const { data: scenarios } = await supabase
-      .from("scenarios")
-      .select("id, email_from_address, abandoned_reminder_from")
-      .in("id", scenarioIds);
-    for (const s of scenarios ?? []) {
-      scenarioFromById.set(s.id, s);
+    const scenarioRows = await db
+      .select({ id: scenarios.id, emailFromAddress: scenarios.emailFromAddress, abandonedReminderFrom: scenarios.abandonedReminderFrom })
+      .from(scenarios)
+      .where(inArray(scenarios.id, scenarioIds));
+    for (const s of scenarioRows) {
+      scenarioFromById.set(s.id, { email_from_address: s.emailFromAddress, abandoned_reminder_from: s.abandonedReminderFrom });
     }
   }
 
-  for (const lead of leads) {
+  for (const lead of abandonedLeads) {
     // 複数のCron実行が重なっても二重送信しないよう、送信前に自分だけが処理対象であることを確定させる
-    const { data: claimed } = await supabase
-      .from("leads")
-      .update({ abandoned_email_sent_at: new Date().toISOString() })
-      .eq("id", lead.id)
-      .is("abandoned_email_sent_at", null)
-      .select("id")
-      .maybeSingle();
+    let claimed;
+    try {
+      [claimed] = await db
+        .update(leads)
+        .set({ abandonedEmailSentAt: new Date().toISOString() })
+        .where(and(eq(leads.id, lead.id), isNull(leads.abandonedEmailSentAt)))
+        .returning({ id: leads.id });
+    } catch {
+      claimed = null;
+    }
     if (!claimed || !lead.email) continue;
 
     try {
       const [product, chatUrl] = await Promise.all([
-        lead.product_id
-          ? supabase
-              .from("products")
-              .select("name")
-              .eq("id", lead.product_id)
-              .maybeSingle()
-              .then((r) => r.data)
+        lead.productId
+          ? db
+              .select({ name: products.name })
+              .from(products)
+              .where(eq(products.id, lead.productId))
+              .limit(1)
+              .then((r) => r[0] ?? null)
           : Promise.resolve(null),
-        buildChatUrl(supabase, lead.scenario_id),
+        buildChatUrl(db, lead.scenarioId),
       ]);
 
       const vars = {
@@ -95,7 +108,7 @@ export async function POST(request: Request) {
         unsubscribe_url: `${siteUrl}/unsubscribe?leadId=${lead.id}`,
       };
 
-      const scenario = lead.scenario_id ? scenarioFromById.get(lead.scenario_id) : null;
+      const scenario = lead.scenarioId ? scenarioFromById.get(lead.scenarioId) : null;
       const from = resolveScenarioFrom(scenario, "abandoned_reminder_from");
       const wasSent = await sendResendEmail({
         to: lead.email,
@@ -106,14 +119,14 @@ export async function POST(request: Request) {
       if (wasSent) {
         sent++;
         // メールアドレスがあり実際に送信できた場合、アクセスログ上も「メール対応済み」にする
-        await supabase.from("leads").update({ contacted_email: true }).eq("id", lead.id);
+        await db.update(leads).set({ contactedEmail: true }).where(eq(leads.id, lead.id));
       }
     } catch (err) {
       console.error("[cron/abandoned-leads] failed to send", { leadId: lead.id, err });
     }
   }
 
-  return NextResponse.json({ processed: leads.length, sent });
+  return NextResponse.json({ processed: abandonedLeads.length, sent });
 }
 
 export { POST as GET };

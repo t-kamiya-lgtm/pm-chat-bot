@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers, orders, subscriptions } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 import { shippingAddressSchema, subscriptionIntervalSchema } from "@/lib/checkout-schema";
 import { getProductById } from "@/lib/products";
@@ -59,13 +61,17 @@ export async function POST(request: Request, { params }: RouteParams) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data: customer, error: customerError } = await supabase
-    .from("customers")
-    .select("id, name, email, phone, address")
-    .eq("id", customerId)
-    .maybeSingle();
-  if (customerError) return NextResponse.json({ error: customerError.message }, { status: 500 });
+  const db = await getDb();
+  let customer;
+  try {
+    [customer] = await db
+      .select({ id: customers.id, name: customers.name, email: customers.email, phone: customers.phone, address: customers.address })
+      .from(customers)
+      .where(eq(customers.id, customerId))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   if (!customer) return NextResponse.json({ error: "customer not found" }, { status: 404 });
 
   const product = await getProductById(input.productId);
@@ -73,12 +79,12 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   let alignedNextBillingDate: string | null = null;
   if (input.alignToSubscriptionId) {
-    const { data: alignTarget } = await supabase
-      .from("subscriptions")
-      .select("next_billing_date")
-      .eq("id", input.alignToSubscriptionId)
-      .maybeSingle();
-    alignedNextBillingDate = alignTarget?.next_billing_date ?? null;
+    const [alignTarget] = await db
+      .select({ nextBillingDate: subscriptions.nextBillingDate })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, input.alignToSubscriptionId))
+      .limit(1);
+    alignedNextBillingDate = alignTarget?.nextBillingDate ?? null;
   }
 
   let deliveryDate: string;
@@ -93,31 +99,38 @@ export async function POST(request: Request, { params }: RouteParams) {
   }
 
   const paymentFee = await getPaymentFee(input.paymentMethod, input.orderKind);
-  const orderNumber = await generateOrderNumber(supabase, null);
-  const costSnapshot = await resolveOrderCostSnapshot(supabase, input.productId, new Date().toISOString());
+  const orderNumber = await generateOrderNumber(db, null);
+  const costSnapshot = await resolveOrderCostSnapshot(db, input.productId, new Date().toISOString());
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      customer_id: customer.id,
-      product_id: input.productId,
-      order_number: orderNumber,
-      type: input.orderKind,
-      payment_method: input.paymentMethod,
-      amount: input.amount,
-      quantity: input.quantity,
-      shipping_fee: product.shipping_fee,
-      payment_fee: paymentFee,
-      status: "pending",
-      ...costSnapshot,
-      delivery_date: deliveryDate,
-      invoice_note: input.invoiceNote || null,
-      agreed_terms_at: new Date().toISOString(),
-      shipping_address: input.shippingAddress ?? null,
-    })
-    .select("id")
-    .single();
-  if (orderError) return NextResponse.json({ error: orderError.message }, { status: 500 });
+  let order;
+  try {
+    [order] = await db
+      .insert(orders)
+      .values({
+        customerId: customer.id,
+        productId: input.productId,
+        orderNumber: orderNumber,
+        type: input.orderKind,
+        paymentMethod: input.paymentMethod,
+        amount: input.amount,
+        quantity: input.quantity,
+        shippingFee: product.shipping_fee,
+        paymentFee: paymentFee,
+        status: "pending",
+        costAmount: costSnapshot.cost_amount,
+        bundleInsertCost: costSnapshot.bundle_insert_cost,
+        shippingCost: costSnapshot.shipping_cost,
+        salesCommissionAmount: costSnapshot.sales_commission_amount,
+        taxRate: costSnapshot.tax_rate !== null ? String(costSnapshot.tax_rate) : null,
+        deliveryDate: deliveryDate,
+        invoiceNote: input.invoiceNote || null,
+        agreedTermsAt: new Date().toISOString(),
+        shippingAddress: input.shippingAddress ?? null,
+      })
+      .returning({ id: orders.id });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
   let subscriptionId: string | null = null;
   if (input.orderKind === "subscription" && input.subscriptionInterval) {
@@ -128,17 +141,20 @@ export async function POST(request: Request, { params }: RouteParams) {
         d.setDate(d.getDate() + SUBSCRIPTION_INTERVAL_DAYS[input.subscriptionInterval!]);
         return d.toISOString().slice(0, 10);
       })();
-    const { data: subscription, error: subError } = await supabase
-      .from("subscriptions")
-      .insert({
-        order_id: order.id,
-        interval: input.subscriptionInterval,
-        status: "active",
-        next_billing_date: nextBillingDate,
-      })
-      .select("id")
-      .single();
-    if (subError) return NextResponse.json({ error: subError.message }, { status: 500 });
+    let subscription;
+    try {
+      [subscription] = await db
+        .insert(subscriptions)
+        .values({
+          orderId: order.id,
+          interval: input.subscriptionInterval,
+          status: "active",
+          nextBillingDate: nextBillingDate,
+        })
+        .returning({ id: subscriptions.id });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
     subscriptionId = subscription.id;
   }
 
@@ -161,14 +177,14 @@ export async function POST(request: Request, { params }: RouteParams) {
     shippingAddress: input.shippingAddress ?? undefined,
   });
 
-  await supabase.from("orders").update({ status: accepted ? "accepted" : "failed" }).eq("id", order.id);
+  await db.update(orders).set({ status: accepted ? "accepted" : "failed" }).where(eq(orders.id, order.id));
 
   if (accepted) {
     await sendOrderCompletionEmail(order.id);
     await assignCustomerNumberIfNeeded(customer.id);
   }
 
-  await recordChangeLog(supabase, {
+  await recordChangeLog(db, {
     customerId: customer.id,
     subscriptionId,
     action: "new_order_created",

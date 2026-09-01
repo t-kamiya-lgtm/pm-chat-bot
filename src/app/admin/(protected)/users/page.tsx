@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import { desc } from "drizzle-orm";
 import { getCurrentAppUser } from "@/lib/auth";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
 import { InviteUserForm } from "@/components/admin/InviteUserForm";
-import { UsersTable } from "@/components/admin/UsersTable";
+import { UsersTable, type UserRow } from "@/components/admin/UsersTable";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +13,19 @@ export default async function AdminUsersPage() {
   if (!currentUser) redirect("/admin/login");
   if (currentUser.role !== "admin") redirect("/admin");
 
-  const supabase = createSupabaseAdminClient();
-  const { data: users } = await supabase
-    .from("users")
-    .select("*")
-    .order("created_at", { ascending: false });
+  let userRows: UserRow[] = [];
+  try {
+    const db = await getDb();
+    const rows = await db.select().from(users).orderBy(desc(users.createdAt));
+    userRows = rows.map((u) => ({
+      id: u.id,
+      email: u.email,
+      role: u.role,
+      created_at: u.createdAt,
+    }));
+  } catch (err) {
+    console.error("[admin/users] failed to load users", err);
+  }
 
   return (
     <div>
@@ -27,7 +37,7 @@ export default async function AdminUsersPage() {
 
       <InviteUserForm />
 
-      <UsersTable users={users ?? []} />
+      <UsersTable users={userRows} />
     </div>
   );
 }

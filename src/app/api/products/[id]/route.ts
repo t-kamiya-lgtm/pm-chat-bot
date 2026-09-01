@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { count, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { leads, orders, productSetOptions, products } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { toAdminErrorMessage } from "@/lib/api-error";
 import { subscriptionIntervalSchema } from "@/lib/checkout-schema";
@@ -46,11 +48,14 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
-  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ product: data });
+  try {
+    const db = await getDb();
+    const [row] = await db.select().from(products).where(eq(products.id, id)).limit(1);
+    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ product: row });
+  } catch (err) {
+    return NextResponse.json({ error: toAdminErrorMessage(String(err)) }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
@@ -74,69 +79,68 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
   }
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  const { data, error } = await supabase
-    .from("products")
-    .update({
-      ...(input.productGroupId !== undefined && { product_group_id: input.productGroupId }),
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.description !== undefined && { description: input.description }),
-      ...(input.memo !== undefined && { memo: input.memo }),
-      ...(input.price !== undefined && { price: input.price }),
-      ...(input.listPrice !== undefined && { list_price: input.listPrice }),
-      ...(input.firstTimePrice !== undefined && { first_time_price: input.firstTimePrice }),
-      ...(input.nextCycleProductId !== undefined && { next_cycle_product_id: input.nextCycleProductId }),
-      ...(input.nextCycleInterval !== undefined && { next_cycle_interval: input.nextCycleInterval }),
-      ...(input.comparePriceType !== undefined && { compare_price_type: input.comparePriceType }),
-      ...(input.unitTotalPrice !== undefined && { unit_total_price: input.unitTotalPrice }),
-      ...(input.customCompareLabel !== undefined && { custom_compare_label: input.customCompareLabel }),
-      ...(input.customComparePrice !== undefined && { custom_compare_price: input.customComparePrice }),
-      ...(input.priceLabel !== undefined && { price_label: input.priceLabel }),
-      ...(input.taxRate !== undefined && { tax_rate: input.taxRate }),
-      ...(input.shippingFee !== undefined && { shipping_fee: input.shippingFee }),
-      ...(input.costAmount !== undefined && { cost_amount: input.costAmount }),
-      ...(input.bundleInsertCost !== undefined && { bundle_insert_cost: input.bundleInsertCost }),
-      ...(input.shippingCost !== undefined && { shipping_cost: input.shippingCost }),
-      ...(input.salesCommissionAmount !== undefined && { sales_commission_amount: input.salesCommissionAmount }),
-      ...(input.isMailDeliverable !== undefined && { is_mail_deliverable: input.isMailDeliverable }),
-      ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
-      ...(input.imageUrls !== undefined && {
-        image_urls: input.imageUrls,
-        image_url: input.imageUrls[0] ?? null,
-      }),
-      ...(input.smaregiProductId !== undefined && { smaregi_product_id: input.smaregiProductId }),
-      ...(input.orderType !== undefined && { order_type: input.orderType }),
-      ...(input.subscriptionIntervals !== undefined && {
-        subscription_intervals: input.subscriptionIntervals,
-      }),
-      ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
-      ...(input.isActive !== undefined && { is_active: input.isActive }),
-      ...(input.isSet !== undefined && { is_set: input.isSet }),
-      ...(input.setItemCount !== undefined && { set_item_count: input.isSet === false ? null : input.setItemCount }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
+    const [row] = await db
+      .update(products)
+      .set({
+        ...(input.productGroupId !== undefined && { productGroupId: input.productGroupId }),
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.description !== undefined && { description: input.description }),
+        ...(input.memo !== undefined && { memo: input.memo }),
+        ...(input.price !== undefined && { price: input.price }),
+        ...(input.listPrice !== undefined && { listPrice: input.listPrice }),
+        ...(input.firstTimePrice !== undefined && { firstTimePrice: input.firstTimePrice }),
+        ...(input.nextCycleProductId !== undefined && { nextCycleProductId: input.nextCycleProductId }),
+        ...(input.nextCycleInterval !== undefined && { nextCycleInterval: input.nextCycleInterval }),
+        ...(input.comparePriceType !== undefined && { comparePriceType: input.comparePriceType }),
+        ...(input.unitTotalPrice !== undefined && { unitTotalPrice: input.unitTotalPrice }),
+        ...(input.customCompareLabel !== undefined && { customCompareLabel: input.customCompareLabel }),
+        ...(input.customComparePrice !== undefined && { customComparePrice: input.customComparePrice }),
+        ...(input.priceLabel !== undefined && { priceLabel: input.priceLabel }),
+        ...(input.taxRate !== undefined && { taxRate: input.taxRate }),
+        ...(input.shippingFee !== undefined && { shippingFee: input.shippingFee }),
+        ...(input.costAmount !== undefined && { costAmount: input.costAmount }),
+        ...(input.bundleInsertCost !== undefined && { bundleInsertCost: input.bundleInsertCost }),
+        ...(input.shippingCost !== undefined && { shippingCost: input.shippingCost }),
+        ...(input.salesCommissionAmount !== undefined && { salesCommissionAmount: input.salesCommissionAmount }),
+        ...(input.isMailDeliverable !== undefined && { isMailDeliverable: input.isMailDeliverable }),
+        ...(input.imageUrl !== undefined && { imageUrl: input.imageUrl }),
+        ...(input.imageUrls !== undefined && {
+          imageUrls: input.imageUrls,
+          imageUrl: input.imageUrls[0] ?? null,
+        }),
+        ...(input.smaregiProductId !== undefined && { smaregiProductId: input.smaregiProductId }),
+        ...(input.orderType !== undefined && { orderType: input.orderType }),
+        ...(input.subscriptionIntervals !== undefined && {
+          subscriptionIntervals: input.subscriptionIntervals,
+        }),
+        ...(input.displayOrder !== undefined && { displayOrder: input.displayOrder }),
+        ...(input.isActive !== undefined && { isActive: input.isActive }),
+        ...(input.isSet !== undefined && { isSet: input.isSet }),
+        ...(input.setItemCount !== undefined && { setItemCount: input.isSet === false ? null : input.setItemCount }),
+      })
+      .where(eq(products.id, id))
+      .returning();
 
-  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
-
-  if (input.setOptionProductIds !== undefined) {
-    const { error: deleteError } = await supabase.from("product_set_options").delete().eq("product_id", id);
-    if (deleteError) return NextResponse.json({ error: toAdminErrorMessage(deleteError.message) }, { status: 500 });
-    if (input.setOptionProductIds.length > 0) {
-      const { error: insertError } = await supabase.from("product_set_options").insert(
-        input.setOptionProductIds.map((optionProductId, index) => ({
-          product_id: id,
-          option_product_id: optionProductId,
-          display_order: index,
-        })),
-      );
-      if (insertError) return NextResponse.json({ error: toAdminErrorMessage(insertError.message) }, { status: 500 });
+    if (input.setOptionProductIds !== undefined) {
+      await db.delete(productSetOptions).where(eq(productSetOptions.productId, id));
+      if (input.setOptionProductIds.length > 0) {
+        await db.insert(productSetOptions).values(
+          input.setOptionProductIds.map((optionProductId, index) => ({
+            productId: id,
+            optionProductId,
+            displayOrder: index,
+          })),
+        );
+      }
     }
-  }
 
-  return NextResponse.json({ product: data });
+    return NextResponse.json({ product: row });
+  } catch (err) {
+    return NextResponse.json({ error: toAdminErrorMessage(String(err)) }, { status: 500 });
+  }
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -144,35 +148,38 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  // 注文で使用済みの品番は外部キー制約で削除できない(注文履歴が壊れるため)。
-  // 削除前に判定し、アーカイブを促す分かりやすいエラーを返す(でないと削除に失敗しても
-  // 画面上は削除できたように見えてしまい、再読み込みで復活したように見える)。
-  const [{ count: orderCount }, { count: addonCount }, { count: leadCount }] = await Promise.all([
-    supabase.from("orders").select("id", { count: "exact", head: true }).eq("product_id", id),
-    supabase.from("orders").select("id", { count: "exact", head: true }).eq("addon_product_id", id),
-    supabase.from("leads").select("id", { count: "exact", head: true }).eq("product_id", id),
-  ]);
-  if ((orderCount ?? 0) > 0 || (addonCount ?? 0) > 0) {
-    return NextResponse.json(
-      { error: "この品番は注文で使用されているため削除できません。代わりに「アーカイブ」で一覧から隠せます。" },
-      { status: 409 },
-    );
-  }
-  // アクセスログ(leads)が残っている品番も、閲覧履歴の分析データが壊れないよう削除をブロックする。
-  // 不要なテストデータの場合は、先にアクセスログ側を削除してから品番を削除する。
-  if ((leadCount ?? 0) > 0) {
-    return NextResponse.json(
-      {
-        error:
-          "この品番は閲覧履歴(アクセスログ)が残っているため削除できません。アクセスログを削除するか、代わりに「アーカイブ」で一覧から隠せます。",
-      },
-      { status: 409 },
-    );
-  }
+    // 注文で使用済みの品番は外部キー制約で削除できない(注文履歴が壊れるため)。
+    // 削除前に判定し、アーカイブを促す分かりやすいエラーを返す(でないと削除に失敗しても
+    // 画面上は削除できたように見えてしまい、再読み込みで復活したように見える)。
+    const [[{ value: orderCount }], [{ value: addonCount }], [{ value: leadCount }]] = await Promise.all([
+      db.select({ value: count() }).from(orders).where(eq(orders.productId, id)),
+      db.select({ value: count() }).from(orders).where(eq(orders.addonProductId, id)),
+      db.select({ value: count() }).from(leads).where(eq(leads.productId, id)),
+    ]);
+    if (orderCount > 0 || addonCount > 0) {
+      return NextResponse.json(
+        { error: "この品番は注文で使用されているため削除できません。代わりに「アーカイブ」で一覧から隠せます。" },
+        { status: 409 },
+      );
+    }
+    // アクセスログ(leads)が残っている品番も、閲覧履歴の分析データが壊れないよう削除をブロックする。
+    // 不要なテストデータの場合は、先にアクセスログ側を削除してから品番を削除する。
+    if (leadCount > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "この品番は閲覧履歴(アクセスログ)が残っているため削除できません。アクセスログを削除するか、代わりに「アーカイブ」で一覧から隠せます。",
+        },
+        { status: 409 },
+      );
+    }
 
-  const { error } = await supabase.from("products").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
-  return NextResponse.json({ ok: true });
+    await db.delete(products).where(eq(products.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: toAdminErrorMessage(String(err)) }, { status: 500 });
+  }
 }

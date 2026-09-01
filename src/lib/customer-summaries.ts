@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { customers, smaregiSyncLogs } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
 export type SubscriptionStatusFilter = "active" | "canceled" | "none";
 export type SmaregiFilter = "exclude" | "include" | "only";
@@ -21,76 +23,57 @@ export interface CustomerSummary {
   nextShippingDate: string | null;
 }
 
-interface OrderRow {
-  id: string;
-  type: string;
-  payment_method: string;
-  amount: number;
-  created_at: string;
-  parent_order_id: string | null;
-  products: { name: string; smaregi_product_id: string | null } | null;
-  subscriptions: { status: string; next_billing_date: string | null }[] | null;
-}
-
-interface CustomerRow {
-  id: string;
-  customer_number: number;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  orders: OrderRow[] | null;
-}
-
 /** 顧客管理一覧: 注文完了者(customer_number付与済み)を、定期状態・スマレジ連携状態・商品名で絞り込む。 */
-export async function getCustomerSummaries(filters: CustomerSummaryFilters): Promise<CustomerSummary[]> {
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("customers")
-    .select(
-      "id, customer_number, name, email, phone, orders(id, type, payment_method, amount, created_at, parent_order_id, products!orders_product_id_fkey(name, smaregi_product_id), subscriptions(status, next_billing_date))",
-    )
-    .not("customer_number", "is", null)
-    .order("customer_number", { ascending: false });
+export async function getCustomerSummaries(db: Db, filters: CustomerSummaryFilters): Promise<CustomerSummary[]> {
+  const customerRows = await db.query.customers.findMany({
+    where: isNotNull(customers.customerNumber),
+    orderBy: [desc(customers.customerNumber)],
+    columns: { id: true, customerNumber: true, name: true, email: true, phone: true },
+    with: {
+      orders: {
+        columns: { id: true, type: true, paymentMethod: true, amount: true, createdAt: true, parentOrderId: true },
+        with: {
+          product_productId: { columns: { name: true, smaregiProductId: true } },
+          subscriptions: { columns: { status: true, nextBillingDate: true } },
+        },
+      },
+    },
+  });
 
-  if (error) throw new Error(error.message);
-
-  const customers = (data ?? []) as unknown as CustomerRow[];
   const q = filters.q?.trim().toLowerCase() || "";
 
   // customers.smaregi_synced_at は連携実装前のプレースホルダーで常にnullのため、
   // 実際にスマレジへ連携済みかどうかは smaregi_sync_logs(status='ok') の実績で判定する。
-  const allOrderIds = customers.flatMap((c) => (c.orders ?? []).map((o) => o.id));
+  const allOrderIds = customerRows.flatMap((c) => c.orders.map((o) => o.id));
   const syncedOrderIds = new Set<string>();
   if (allOrderIds.length > 0) {
-    const { data: syncLogs, error: syncLogsError } = await supabase
-      .from("smaregi_sync_logs")
-      .select("order_id")
-      .eq("status", "ok")
-      .in("order_id", allOrderIds);
-    if (syncLogsError) throw new Error(syncLogsError.message);
-    for (const log of syncLogs ?? []) {
-      if (log.order_id) syncedOrderIds.add(log.order_id as string);
+    const syncLogs = await db
+      .select({ orderId: smaregiSyncLogs.orderId })
+      .from(smaregiSyncLogs)
+      .where(and(eq(smaregiSyncLogs.status, "ok"), inArray(smaregiSyncLogs.orderId, allOrderIds)));
+    for (const log of syncLogs) {
+      if (log.orderId) syncedOrderIds.add(log.orderId);
     }
   }
 
-  const rows = customers.map((customer) => {
-    const orders = customer.orders ?? [];
+  const rows = customerRows.map((customer) => {
+    const orders = customer.orders;
     const subscriptionOrders = orders.filter((o) => o.type === "subscription");
     // 定期の「親」注文(初回)にだけsubscriptionsが紐づく。renewal行はparent_order_idを持つ
-    const parentSubscriptionOrder = subscriptionOrders.find((o) => !o.parent_order_id && o.subscriptions?.length);
+    const parentSubscriptionOrder = subscriptionOrders.find((o) => !o.parentOrderId && o.subscriptions.length > 0);
     const subscriptionStatus: SubscriptionStatusFilter = !parentSubscriptionOrder
       ? "none"
-      : parentSubscriptionOrder.subscriptions?.[0]?.status === "canceled"
+      : parentSubscriptionOrder.subscriptions[0]?.status === "canceled"
         ? "canceled"
         : "active";
 
-    const isSmaregiManaged = orders.some((o) => o.payment_method !== "stripe");
+    const isSmaregiManaged = orders.some((o) => o.paymentMethod !== "stripe");
     const totalSubscriptionCount = subscriptionOrders.length;
     const totalSubscriptionAmount = subscriptionOrders.reduce((sum, o) => sum + o.amount, 0);
-    const latestOrder = [...orders].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    const latestOrder = [...orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
     const productHaystack = orders
-      .map((o) => `${o.products?.name ?? ""} ${o.products?.smaregi_product_id ?? ""}`)
+      .map((o) => `${o.product_productId?.name ?? ""} ${o.product_productId?.smaregiProductId ?? ""}`)
       .join(" ");
     const searchHaystack = `${customer.name} ${customer.email ?? ""} ${customer.phone ?? ""} ${productHaystack}`
       .toLowerCase();
@@ -98,14 +81,14 @@ export async function getCustomerSummaries(filters: CustomerSummaryFilters): Pro
     return {
       summary: {
         id: customer.id,
-        customerNumber: customer.customer_number,
+        customerNumber: customer.customerNumber!,
         name: customer.name,
         customerType: (isSmaregiManaged ? "スマレジ移行済み" : "チャット内定期") as CustomerSummary["customerType"],
-        productName: parentSubscriptionOrder?.products?.name ?? latestOrder?.products?.name ?? null,
+        productName: parentSubscriptionOrder?.product_productId?.name ?? latestOrder?.product_productId?.name ?? null,
         subscriptionStatus,
         totalSubscriptionCount,
         totalSubscriptionAmount,
-        nextShippingDate: parentSubscriptionOrder?.subscriptions?.[0]?.next_billing_date ?? null,
+        nextShippingDate: parentSubscriptionOrder?.subscriptions[0]?.nextBillingDate ?? null,
       } satisfies CustomerSummary,
       smaregiSynced: orders.some((o) => syncedOrderIds.has(o.id)),
       searchHaystack,

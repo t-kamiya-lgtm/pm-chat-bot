@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { bundleInsertItems, brands } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { listBundleInsertSetsWithDetails, sumItemDistribution } from "@/lib/bundle-insert-sets-query";
 
@@ -21,24 +23,31 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const [itemsRes, brandsRes, { sets, error: setsError }] = await Promise.all([
-    supabase.from("bundle_insert_items").select("*").order("registered_date", { ascending: false }),
-    supabase.from("brands").select("id, name, code"),
-    listBundleInsertSetsWithDetails(supabase),
-  ]);
-  if (itemsRes.error) return NextResponse.json({ error: itemsRes.error.message }, { status: 500 });
-  if (brandsRes.error) return NextResponse.json({ error: brandsRes.error.message }, { status: 500 });
-  if (setsError) return NextResponse.json({ error: setsError }, { status: 500 });
+  const db = await getDb();
+  try {
+    const [itemRows, brandRows, { sets }] = await Promise.all([
+      db.select().from(bundleInsertItems).orderBy(desc(bundleInsertItems.registeredDate)),
+      db.select({ id: brands.id, name: brands.name, code: brands.code }).from(brands),
+      listBundleInsertSetsWithDetails(db),
+    ]);
 
-  const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
-  const bundleInsertItems = (itemsRes.data ?? []).map((item) => ({
-    ...item,
-    brands: brandById.get(item.brand_id as string) ?? null,
-    distributedCount: sumItemDistribution(sets, item.id as string),
-  }));
+    const brandById = new Map(brandRows.map((b) => [b.id, b]));
+    const items = itemRows.map((item) => ({
+      id: item.id,
+      brand_id: item.brandId,
+      item_type: item.itemType,
+      name: item.name,
+      registered_date: item.registeredDate,
+      url: item.url,
+      status: item.status,
+      brands: brandById.get(item.brandId) ?? null,
+      distributedCount: sumItemDistribution(sets, item.id),
+    }));
 
-  return NextResponse.json({ bundleInsertItems });
+    return NextResponse.json({ bundleInsertItems: items });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -49,18 +58,20 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("bundle_insert_items")
-    .insert({
-      brand_id: parsed.data.brandId,
-      item_type: parsed.data.itemType,
-      name: parsed.data.name,
-      url: parsed.data.url || null,
-      ...(parsed.data.registeredDate && { registered_date: parsed.data.registeredDate }),
-    })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ bundleInsertItem: data }, { status: 201 });
+  const db = await getDb();
+  try {
+    const [data] = await db
+      .insert(bundleInsertItems)
+      .values({
+        brandId: parsed.data.brandId,
+        itemType: parsed.data.itemType,
+        name: parsed.data.name,
+        url: parsed.data.url || null,
+        ...(parsed.data.registeredDate && { registeredDate: parsed.data.registeredDate }),
+      })
+      .returning();
+    return NextResponse.json({ bundleInsertItem: data }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

@@ -1,13 +1,15 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroups, taxRates } from "@/db/schema";
 import { TaxRatesManager } from "@/components/admin/TaxRatesManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminTaxRatesPage() {
-  const supabase = createSupabaseAdminClient();
-  const [{ data: taxRates }, { data: productGroups }] = await Promise.all([
-    supabase.from("tax_rates").select("*").order("rate", { ascending: false }),
-    supabase.from("product_groups").select("id, name").order("name", { ascending: true }),
+  const db = await getDb();
+  const [taxRateRows, productGroupRows] = await Promise.all([
+    db.select().from(taxRates).orderBy(desc(taxRates.rate)),
+    db.select({ id: productGroups.id, name: productGroups.name }).from(productGroups).orderBy(asc(productGroups.name)),
   ]);
 
   return (
@@ -17,8 +19,8 @@ export default async function AdminTaxRatesPage() {
         税率メニュー(標準税率・軽減税率など)を登録し、アイテム(親品番)単位で適用期間を設定します。注文には作成時点の税率がスナップショットとして記録され、後から設定を変更しても過去の実績には影響しません。
       </p>
       <TaxRatesManager
-        initialTaxRates={(taxRates ?? []) as { id: string; name: string; rate: number }[]}
-        productGroups={(productGroups ?? []) as { id: string; name: string }[]}
+        initialTaxRates={taxRateRows.map((t) => ({ id: t.id, name: t.name, rate: Number(t.rate) }))}
+        productGroups={productGroupRows}
       />
     </div>
   );

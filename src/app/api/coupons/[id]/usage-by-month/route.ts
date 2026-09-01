@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { orders } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -10,13 +12,17 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("orders").select("created_at").eq("coupon_id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let data;
+  try {
+    const db = await getDb();
+    data = await db.select({ createdAt: orders.createdAt }).from(orders).where(eq(orders.couponId, id));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
   const countsByMonth = new Map<string, number>();
-  for (const row of data ?? []) {
-    const month = (row.created_at as string).slice(0, 7);
+  for (const row of data) {
+    const month = row.createdAt.slice(0, 7);
     countsByMonth.set(month, (countsByMonth.get(month) ?? 0) + 1);
   }
 

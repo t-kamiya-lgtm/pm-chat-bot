@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroups, products } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const updateSchema = z.object({
@@ -16,18 +18,19 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const [{ data: productGroup, error: groupError }, { data: products, error: productsError }] =
-    await Promise.all([
-      supabase.from("product_groups").select("*").eq("id", id).maybeSingle(),
-      supabase.from("products").select("*").eq("product_group_id", id).order("created_at"),
+  try {
+    const db = await getDb();
+    const [[productGroup], productRows] = await Promise.all([
+      db.select().from(productGroups).where(eq(productGroups.id, id)).limit(1),
+      db.select().from(products).where(eq(products.productGroupId, id)).orderBy(asc(products.createdAt)),
     ]);
 
-  if (groupError) return NextResponse.json({ error: groupError.message }, { status: 500 });
-  if (!productGroup) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (productsError) return NextResponse.json({ error: productsError.message }, { status: 500 });
+    if (!productGroup) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  return NextResponse.json({ productGroup, products });
+    return NextResponse.json({ productGroup, products: productRows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
@@ -42,20 +45,21 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_groups")
-    .update({
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.parentCode !== undefined && { parent_code: input.parentCode }),
-      ...(input.brandId !== undefined && { brand_id: input.brandId }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ productGroup: data });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .update(productGroups)
+      .set({
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.parentCode !== undefined && { parentCode: input.parentCode }),
+        ...(input.brandId !== undefined && { brandId: input.brandId }),
+      })
+      .where(eq(productGroups.id, id))
+      .returning();
+    return NextResponse.json({ productGroup: row });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -63,8 +67,11 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("product_groups").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const db = await getDb();
+    await db.delete(productGroups).where(eq(productGroups.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

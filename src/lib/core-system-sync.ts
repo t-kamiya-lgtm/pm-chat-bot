@@ -1,6 +1,9 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers, orders, subscriptions } from "@/db/schema";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
-import type { CustomerRow } from "@/lib/customers";
+import type { Address, OrderType, ShippingAddress, SubscriptionInterval } from "@/lib/types";
+import type { Db } from "@/lib/db";
 
 /**
  * Stripe決済で確定した注文(単品/定期初回/定期2回目以降のいずれも)を、
@@ -10,51 +13,48 @@ import type { CustomerRow } from "@/lib/customers";
  * すべての注文は支払方法を問わず基幹システムへ取り込む必要があるため、Stripe決済の注文にも適用する。
  */
 export async function submitStripeOrderToCoreSystem(orderId: string): Promise<void> {
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   try {
-    const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!order) return;
 
-    const [{ data: customer }, { data: subscription }] = await Promise.all([
-      supabase.from("customers").select("*").eq("id", order.customer_id).maybeSingle(),
+    const [[customer], [subscription]] = await Promise.all([
+      db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1),
       order.type === "subscription"
-        ? supabase
-            .from("subscriptions")
-            .select("interval")
-            .eq("order_id", order.parent_order_id ?? order.id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+        ? db
+            .select({ interval: subscriptions.interval })
+            .from(subscriptions)
+            .where(eq(subscriptions.orderId, order.parentOrderId ?? order.id))
+            .limit(1)
+        : Promise.resolve([null]),
     ]);
     if (!customer) return;
-    const customerRow = customer as CustomerRow;
 
     const coreSystem = getCoreSystemAdapter();
     const result = await coreSystem.submitOrder({
       orderId: order.id,
       customer: {
-        name: customerRow.name,
-        email: customerRow.email,
-        phone: customerRow.phone,
-        address: customerRow.address!,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        address: customer.address as Address,
       },
-      orderType: order.type,
+      orderType: order.type as OrderType,
       paymentMethod: "stripe",
-      product: { id: order.product_id, quantity: order.quantity },
-      subscriptionInterval: subscription?.interval,
+      product: { id: order.productId, quantity: order.quantity },
+      subscriptionInterval: subscription?.interval as SubscriptionInterval | undefined,
       amount: order.amount,
-      shippingFee: order.shipping_fee,
-      paymentFee: order.payment_fee,
-      addonProduct: order.addon_product_id
-        ? { id: order.addon_product_id, amount: order.addon_amount ?? 0 }
-        : undefined,
-      shippingAddress: order.shipping_address ?? undefined,
+      shippingFee: order.shippingFee,
+      paymentFee: order.paymentFee,
+      addonProduct: order.addonProductId ? { id: order.addonProductId, amount: order.addonAmount ?? 0 } : undefined,
+      shippingAddress: (order.shippingAddress as ShippingAddress | null) ?? undefined,
     });
     if (!result.accepted) {
-      await markImportError(supabase, orderId);
+      await markImportError(db, orderId);
     }
   } catch (err) {
     console.error("[core-system-sync] failed to submit stripe order", { orderId, err });
-    await markImportError(supabase, orderId);
+    await markImportError(db, orderId);
   }
 }
 
@@ -64,10 +64,9 @@ export async function submitStripeOrderToCoreSystem(orderId: string): Promise<vo
  * (フルフィルスタッフが管理画面のピンク表示で気づき、手動で取り込みし直す運用)。
  * 担当者がすでに手動でステータスを進めている場合(not_imported以外)は上書きしない。
  */
-async function markImportError(supabase: ReturnType<typeof createSupabaseAdminClient>, orderId: string) {
-  await supabase
-    .from("orders")
-    .update({ import_status: "import_error", import_status_updated_at: new Date().toISOString() })
-    .eq("id", orderId)
-    .eq("import_status", "not_imported");
+async function markImportError(db: Db, orderId: string) {
+  await db
+    .update(orders)
+    .set({ importStatus: "import_error", importStatusUpdatedAt: new Date().toISOString() })
+    .where(and(eq(orders.id, orderId), eq(orders.importStatus, "not_imported")));
 }

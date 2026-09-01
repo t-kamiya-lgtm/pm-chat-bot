@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroups, products } from "@/db/schema";
 import { ProductsTable, type ProductRow } from "@/components/admin/ProductsTable";
 import { sanitizeSubscriptionIntervals } from "@/lib/subscription-intervals";
 
@@ -11,32 +13,42 @@ export default async function AdminProductsPage({
   searchParams: Promise<{ productGroupId?: string }>;
 }) {
   const { productGroupId } = await searchParams;
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
-  let query = supabase
-    .from("products")
-    .select("*, product_groups(name)")
-    .order("smaregi_product_id", { ascending: true, nullsFirst: false });
-  if (productGroupId) query = query.eq("product_group_id", productGroupId);
-  const { data: products, error: productsError } = await query;
+  const loadProducts = () =>
+    db.query.products.findMany({
+      where: productGroupId ? eq(products.productGroupId, productGroupId) : undefined,
+      orderBy: asc(products.smaregiProductId),
+      with: { productGroup: { columns: { name: true } } },
+    });
 
-  const [{ data: productGroup }] = await Promise.all([
-    productGroupId
-      ? supabase.from("product_groups").select("id, name").eq("id", productGroupId).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  let productsError: string | null = null;
+  let productList: Awaited<ReturnType<typeof loadProducts>> = [];
+  try {
+    productList = await loadProducts();
+  } catch (err) {
+    productsError = String(err);
+  }
 
-  const rows: ProductRow[] = (products ?? []).map((product) => ({
+  const productGroup = productGroupId
+    ? (await db
+        .select({ id: productGroups.id, name: productGroups.name })
+        .from(productGroups)
+        .where(eq(productGroups.id, productGroupId))
+        .limit(1))[0] ?? null
+    : null;
+
+  const rows: ProductRow[] = productList.map((product) => ({
     id: product.id,
     name: product.name,
     price: product.price,
-    firstTimePrice: product.first_time_price,
-    shippingFee: product.shipping_fee,
-    orderType: product.order_type,
-    subscriptionIntervals: sanitizeSubscriptionIntervals(product.subscription_intervals),
-    smaregiProductId: product.smaregi_product_id,
-    productGroupName: (product.product_groups as { name: string } | null)?.name ?? null,
-    isActive: product.is_active ?? true,
+    firstTimePrice: product.firstTimePrice,
+    shippingFee: product.shippingFee,
+    orderType: product.orderType,
+    subscriptionIntervals: sanitizeSubscriptionIntervals(product.subscriptionIntervals),
+    smaregiProductId: product.smaregiProductId,
+    productGroupName: product.productGroup?.name ?? null,
+    isActive: product.isActive ?? true,
   }));
 
   return (
@@ -70,7 +82,7 @@ export default async function AdminProductsPage({
 
       {productsError && (
         <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          商品一覧の取得に失敗しました({productsError.message})
+          商品一覧の取得に失敗しました({productsError})
         </p>
       )}
 

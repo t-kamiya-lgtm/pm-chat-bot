@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroups } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -14,13 +16,16 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_groups")
-    .select("*, brands(name)")
-    .order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ productGroups: data });
+  try {
+    const db = await getDb();
+    const rows = await db.query.productGroups.findMany({
+      orderBy: desc(productGroups.createdAt),
+      with: { brand: { columns: { name: true } } },
+    });
+    return NextResponse.json({ productGroups: rows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -33,18 +38,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_groups")
-    .insert({
-      name: parsed.data.name,
-      parent_code: parsed.data.parentCode ?? null,
-      brand_id: parsed.data.brandId ?? null,
-      created_by: roleCheck.user.id,
-    })
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ productGroup: data }, { status: 201 });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(productGroups)
+      .values({
+        name: parsed.data.name,
+        parentCode: parsed.data.parentCode ?? null,
+        brandId: parsed.data.brandId ?? null,
+        createdBy: roleCheck.user.id,
+      })
+      .returning();
+    return NextResponse.json({ productGroup: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

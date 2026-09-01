@@ -1,6 +1,6 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
+import { eq } from "drizzle-orm";
+import { orders } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
 export type ImportStatus =
   | "not_imported"
@@ -40,19 +40,14 @@ export function isValidImportStatusTransition(from: ImportStatus, to: ImportStat
  * 遷移が許可されていない場合はエラーを返す。
  */
 export async function applyImportStatusChange(
-  supabase: SupabaseAdminClient,
+  db: Db,
   orderId: string,
   newStatus: ImportStatus,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: order, error: fetchError } = await supabase
-    .from("orders")
-    .select("id, import_status")
-    .eq("id", orderId)
-    .maybeSingle();
-  if (fetchError) return { ok: false, error: fetchError.message };
+  const [order] = await db.select({ id: orders.id, importStatus: orders.importStatus }).from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) return { ok: false, error: "order not found" };
 
-  const currentStatus = order.import_status as ImportStatus;
+  const currentStatus = order.importStatus as ImportStatus;
   if (!isValidImportStatusTransition(currentStatus, newStatus)) {
     return {
       ok: false,
@@ -60,11 +55,7 @@ export async function applyImportStatusChange(
     };
   }
 
-  const { error: updateError } = await supabase
-    .from("orders")
-    .update({ import_status: newStatus, import_status_updated_at: new Date().toISOString() })
-    .eq("id", orderId);
-  if (updateError) return { ok: false, error: updateError.message };
+  await db.update(orders).set({ importStatus: newStatus, importStatusUpdatedAt: new Date().toISOString() }).where(eq(orders.id, orderId));
 
   return { ok: true };
 }

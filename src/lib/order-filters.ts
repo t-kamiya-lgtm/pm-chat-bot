@@ -1,3 +1,6 @@
+import { and, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
+import { orders } from "@/db/schema";
+
 export type ImportStatus =
   | "imported"
   | "on_hold"
@@ -49,23 +52,20 @@ export function readOrderFilters(getParam: (key: string) => string | null | unde
 }
 
 /**
- * Supabaseのクエリビルダーに、注文一覧の絞り込み条件を適用する。
+ * 注文一覧の絞り込み条件を、Drizzleのwhere()にそのまま渡せるSQL条件として組み立てる。
  * orderIdsが指定されている場合は、チェックボックスで選択した注文だけを対象にするため
  * 他の絞り込み条件(日付・種別・受注ステータス)は無視する。
+ * 何も条件がない場合はundefinedを返す(呼び出し側は.where(undefined)でよい=絞り込みなし)。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyOrderFilters<T extends { gte: any; lte: any; eq: any; in: any }>(
-  query: T,
-  filters: OrderFilterParams,
-): T {
+export function buildOrderFilterConditions(filters: OrderFilterParams): SQL | undefined {
   if (filters.orderIds && filters.orderIds.length > 0) {
-    return query.in("id", filters.orderIds);
+    return inArray(orders.id, filters.orderIds);
   }
 
-  let q = query;
-  if (filters.dateFrom) q = q.gte("created_at", `${filters.dateFrom}T00:00:00`);
-  if (filters.dateTo) q = q.lte("created_at", `${filters.dateTo}T23:59:59`);
-  if (filters.orderType) q = q.eq("type", filters.orderType);
-  if (filters.importStatus) q = q.eq("import_status", filters.importStatus);
-  return q;
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(gte(orders.createdAt, `${filters.dateFrom}T00:00:00`));
+  if (filters.dateTo) conditions.push(lte(orders.createdAt, `${filters.dateTo}T23:59:59`));
+  if (filters.orderType) conditions.push(eq(orders.type, filters.orderType));
+  if (filters.importStatus) conditions.push(eq(orders.importStatus, filters.importStatus));
+  return conditions.length > 0 ? and(...conditions) : undefined;
 }

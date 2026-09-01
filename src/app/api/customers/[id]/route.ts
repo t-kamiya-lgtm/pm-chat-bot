@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 import { getStripeClient } from "@/lib/stripe";
 import { addressSchema } from "@/lib/checkout-schema";
@@ -31,18 +33,30 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data: customer, error: fetchError } = await supabase
-    .from("customers")
-    .select("id, name, name_kana, email, phone, address, stripe_customer_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  const db = await getDb();
+  let customer;
+  try {
+    [customer] = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        nameKana: customers.nameKana,
+        email: customers.email,
+        phone: customers.phone,
+        address: customers.address,
+        stripeCustomerId: customers.stripeCustomerId,
+      })
+      .from(customers)
+      .where(eq(customers.id, id))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   if (!customer) return NextResponse.json({ error: "customer not found" }, { status: 404 });
 
   const customerUpdate: Record<string, unknown> = {};
   if (input.name !== undefined) customerUpdate.name = input.name;
-  if (input.nameKana !== undefined) customerUpdate.name_kana = input.nameKana;
+  if (input.nameKana !== undefined) customerUpdate.nameKana = input.nameKana;
   if (input.email !== undefined) customerUpdate.email = input.email;
   if (input.phone !== undefined) customerUpdate.phone = input.phone;
   if (input.address !== undefined) customerUpdate.address = input.address;
@@ -51,13 +65,16 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     return NextResponse.json({ ok: true });
   }
 
-  const { error: updateError } = await supabase.from("customers").update(customerUpdate).eq("id", id);
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  try {
+    await db.update(customers).set(customerUpdate).where(eq(customers.id, id));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
-  if (customer.stripe_customer_id && (input.name || input.email || input.phone !== undefined)) {
+  if (customer.stripeCustomerId && (input.name || input.email || input.phone !== undefined)) {
     try {
       const stripe = getStripeClient();
-      await stripe.customers.update(customer.stripe_customer_id, {
+      await stripe.customers.update(customer.stripeCustomerId, {
         ...(input.name && { name: input.name }),
         ...(input.email && { email: input.email }),
         ...(input.phone !== undefined && { phone: input.phone ?? undefined }),
@@ -67,12 +84,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
   }
 
-  await recordChangeLog(supabase, {
+  await recordChangeLog(db, {
     customerId: id,
     action: "customer_info_update",
     changes: diffFields([
       { field: "name", label: "氏名", before: customer.name, after: input.name },
-      { field: "nameKana", label: "フリガナ", before: customer.name_kana, after: input.nameKana },
+      { field: "nameKana", label: "フリガナ", before: customer.nameKana, after: input.nameKana },
       { field: "email", label: "メールアドレス", before: customer.email, after: input.email },
       { field: "phone", label: "電話番号", before: customer.phone, after: input.phone },
       { field: "address", label: "住所", before: customer.address, after: input.address },
