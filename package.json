@@ -12,8 +12,6 @@
     "@google-cloud/cloud-sql-connector": "^1.11.3",
     "@stripe/react-stripe-js": "^6.8.0",
     "@stripe/stripe-js": "^9.12.1",
-    "@supabase/ssr": "^0.12.4",
-    "@supabase/supabase-js": "^2.111.0",
     "drizzle-orm": "^0.45.2",
     "firebase": "^12.18.0",
     "firebase-admin": "^14.3.0",
