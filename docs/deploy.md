@@ -41,8 +41,36 @@ gcloud run deploy pm-chat-bot \
 `.env.example`に列挙されている環境変数のうち、`NEXT_PUBLIC_*`はビルド時に、それ以外は
 実行時に設定してください(値はSecret Managerでの管理を推奨)。
 
+## 3. Cloud Schedulerジョブの作成(Phase 9)
+
+Vercel Cron(`vercel.json`、削除済み)が呼んでいた2つのcronエンドポイントは、アプリコード
+(`src/app/api/cron/*/route.ts`)側は無変更のまま、同じURL・同じ`CRON_SECRET`ヘッダーで
+Cloud Schedulerから呼び出す構成に置き換えます。両エンドポイントとも
+`Authorization: Bearer <CRON_SECRET>`ヘッダーで認証するため、Cloud Scheduler側は
+HTTPターゲット + OIDCトークンではなく、このヘッダーを直接設定するだけで済みます。
+
+```bash
+# 離脱リードへのリマインドメール(毎時0分)
+gcloud scheduler jobs create http abandoned-leads \
+  --location asia-northeast1 \
+  --schedule "0 * * * *" \
+  --uri "https://<Cloud RunサービスのURL>/api/cron/abandoned-leads" \
+  --http-method POST \
+  --headers "Authorization=Bearer <CRON_SECRETの値>"
+
+# 定期購入(代引き・後払い)の次回受注データ生成(毎日23時)
+gcloud scheduler jobs create http subscription-renewals \
+  --location asia-northeast1 \
+  --schedule "0 23 * * *" \
+  --uri "https://<Cloud RunサービスのURL>/api/cron/subscription-renewals" \
+  --http-method POST \
+  --headers "Authorization=Bearer <CRON_SECRETの値>"
+```
+
+スケジュール式・タイムゾーンは`vercel.json`で使っていたものと同じUTC基準です
+(Cloud Schedulerの`--time-zone`はデフォルトが`Etc/UTC`のため、明示指定は不要)。
+
 ## 未実施の作業(このPhaseの範囲外)
 
-- 実際の`gcloud run deploy`の実行(上記コマンドは実施者が実行)
-- Cloud Schedulerによるcronジョブの置き換え(Phase 9)
+- 実際の`gcloud run deploy`・`gcloud scheduler jobs create`の実行(上記コマンドは実施者が実行)
 - 移行前後の動作検証(Phase 10)

@@ -17,7 +17,7 @@ function isAuthorized(request: Request): boolean {
 }
 
 /**
- * Vercel Cron(vercel.jsonのcrons設定、毎日1回実行)から呼び出されるエンドポイント。
+ * Cloud Scheduler(毎日23時に実行、docs/deploy.md参照)から呼び出されるエンドポイント。
  * 代引き・後払いの定期購入について、次回お届け予定日が近づいたものの受注データを
  * チャットシステム側で生成し、スマレジへ連携する(スマレジのperiodical_order機能は
  * 使わず、毎回このバッチが生成する方式に統一している)。
