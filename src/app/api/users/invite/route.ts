@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 import { sendUserInviteEmail } from "@/lib/user-invite";
 
@@ -25,12 +26,15 @@ export async function POST(request: Request) {
   }
   const { email, role } = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("users")
-    .upsert({ email, role }, { onConflict: "email", ignoreDuplicates: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const db = await getDb();
+    await db
+      .insert(users)
+      .values({ email, role })
+      .onConflictDoUpdate({ target: users.email, set: { role } });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 
   try {
     const sent = await sendUserInviteEmail({ to: email, role, invitedByEmail: roleCheck.user.email });

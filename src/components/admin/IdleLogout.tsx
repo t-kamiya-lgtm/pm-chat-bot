@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getAuth, signOut } from "firebase/auth";
+import { firebaseApp } from "@/lib/firebase/client";
 
 const IDLE_LIMIT_MS = 60 * 60 * 1000; // 1時間
 const CHECK_INTERVAL_MS = 30 * 1000;
@@ -24,8 +25,8 @@ export function IdleLogout() {
     const timer = setInterval(async () => {
       if (lastActivityRef.current !== null && Date.now() - lastActivityRef.current >= IDLE_LIMIT_MS) {
         clearInterval(timer);
-        const supabase = createSupabaseBrowserClient();
-        await supabase.auth.signOut();
+        await signOut(getAuth(firebaseApp));
+        await fetch("/api/auth/session", { method: "DELETE" });
         setTimedOut(true);
       }
     }, CHECK_INTERVAL_MS);
