@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { checkoutFieldOrder } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { CHECKOUT_FIELD_KEYS } from "@/lib/checkout-fields";
 
@@ -18,14 +20,17 @@ export async function GET(request: Request) {
   const scenarioId = searchParams.get("scenarioId");
   if (!scenarioId) return NextResponse.json({ error: "scenarioId is required" }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("checkout_field_order")
-    .select("*")
-    .eq("scenario_id", scenarioId)
-    .order("display_order", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ fields: data });
+  try {
+    const db = await getDb();
+    const rows = await db
+      .select()
+      .from(checkoutFieldOrder)
+      .where(eq(checkoutFieldOrder.scenarioId, scenarioId))
+      .orderBy(asc(checkoutFieldOrder.displayOrder));
+    return NextResponse.json({ fields: rows });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 /** 質問順を一括更新する。orderには全フィールドキーを希望の表示順で渡す。 */
@@ -39,17 +44,22 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const results = await Promise.all(
-    parsed.data.order.map((fieldKey, index) =>
-      supabase.from("checkout_field_order").upsert(
-        { scenario_id: parsed.data.scenarioId, field_key: fieldKey, display_order: index },
-        { onConflict: "scenario_id,field_key" },
+  try {
+    const db = await getDb();
+    await Promise.all(
+      parsed.data.order.map((fieldKey, index) =>
+        db
+          .insert(checkoutFieldOrder)
+          .values({ scenarioId: parsed.data.scenarioId, fieldKey, displayOrder: index })
+          .onConflictDoUpdate({
+            target: [checkoutFieldOrder.scenarioId, checkoutFieldOrder.fieldKey],
+            set: { displayOrder: index },
+          }),
       ),
-    ),
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
+    );
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

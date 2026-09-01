@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { emailTemplates } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/email-templates";
 
@@ -24,24 +26,27 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("email_templates").select("*").eq("id", 1).maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const db = await getDb();
+    const [data] = await db.select().from(emailTemplates).where(eq(emailTemplates.id, 1)).limit(1);
 
-  return NextResponse.json({
-    orderCompletionSubject: data?.order_completion_subject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject,
-    orderCompletionBody: data?.order_completion_body || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody,
-    renewalSubject: data?.renewal_subject || DEFAULT_EMAIL_TEMPLATES.renewalSubject,
-    renewalBody: data?.renewal_body || DEFAULT_EMAIL_TEMPLATES.renewalBody,
-    abandonedLeadSubject: data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
-    abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
-    inquiryAutoReplySubject: data?.inquiry_auto_reply_subject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
-    inquiryAutoReplyBody: data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
-    cancellationSubject: data?.cancellation_subject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject,
-    cancellationBody: data?.cancellation_body || DEFAULT_EMAIL_TEMPLATES.cancellationBody,
-    shipmentCompleteSubject: data?.shipment_complete_subject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject,
-    shipmentCompleteBody: data?.shipment_complete_body || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody,
-  });
+    return NextResponse.json({
+      orderCompletionSubject: data?.orderCompletionSubject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject,
+      orderCompletionBody: data?.orderCompletionBody || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody,
+      renewalSubject: data?.renewalSubject || DEFAULT_EMAIL_TEMPLATES.renewalSubject,
+      renewalBody: data?.renewalBody || DEFAULT_EMAIL_TEMPLATES.renewalBody,
+      abandonedLeadSubject: data?.abandonedLeadSubject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
+      abandonedLeadBody: data?.abandonedLeadBody || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
+      inquiryAutoReplySubject: data?.inquiryAutoReplySubject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
+      inquiryAutoReplyBody: data?.inquiryAutoReplyBody || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
+      cancellationSubject: data?.cancellationSubject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject,
+      cancellationBody: data?.cancellationBody || DEFAULT_EMAIL_TEMPLATES.cancellationBody,
+      shipmentCompleteSubject: data?.shipmentCompleteSubject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject,
+      shipmentCompleteBody: data?.shipmentCompleteBody || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody,
+    });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request) {
@@ -55,33 +60,32 @@ export async function PATCH(request: Request) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("email_templates").upsert(
-    {
+  try {
+    const db = await getDb();
+    const values = {
       id: 1,
-      ...(input.orderCompletionSubject !== undefined && {
-        order_completion_subject: input.orderCompletionSubject,
-      }),
-      ...(input.orderCompletionBody !== undefined && { order_completion_body: input.orderCompletionBody }),
-      ...(input.renewalSubject !== undefined && { renewal_subject: input.renewalSubject }),
-      ...(input.renewalBody !== undefined && { renewal_body: input.renewalBody }),
-      ...(input.abandonedLeadSubject !== undefined && { abandoned_lead_subject: input.abandonedLeadSubject }),
-      ...(input.abandonedLeadBody !== undefined && { abandoned_lead_body: input.abandonedLeadBody }),
+      ...(input.orderCompletionSubject !== undefined && { orderCompletionSubject: input.orderCompletionSubject }),
+      ...(input.orderCompletionBody !== undefined && { orderCompletionBody: input.orderCompletionBody }),
+      ...(input.renewalSubject !== undefined && { renewalSubject: input.renewalSubject }),
+      ...(input.renewalBody !== undefined && { renewalBody: input.renewalBody }),
+      ...(input.abandonedLeadSubject !== undefined && { abandonedLeadSubject: input.abandonedLeadSubject }),
+      ...(input.abandonedLeadBody !== undefined && { abandonedLeadBody: input.abandonedLeadBody }),
       ...(input.inquiryAutoReplySubject !== undefined && {
-        inquiry_auto_reply_subject: input.inquiryAutoReplySubject,
+        inquiryAutoReplySubject: input.inquiryAutoReplySubject,
       }),
-      ...(input.inquiryAutoReplyBody !== undefined && { inquiry_auto_reply_body: input.inquiryAutoReplyBody }),
-      ...(input.cancellationSubject !== undefined && { cancellation_subject: input.cancellationSubject }),
-      ...(input.cancellationBody !== undefined && { cancellation_body: input.cancellationBody }),
+      ...(input.inquiryAutoReplyBody !== undefined && { inquiryAutoReplyBody: input.inquiryAutoReplyBody }),
+      ...(input.cancellationSubject !== undefined && { cancellationSubject: input.cancellationSubject }),
+      ...(input.cancellationBody !== undefined && { cancellationBody: input.cancellationBody }),
       ...(input.shipmentCompleteSubject !== undefined && {
-        shipment_complete_subject: input.shipmentCompleteSubject,
+        shipmentCompleteSubject: input.shipmentCompleteSubject,
       }),
-      ...(input.shipmentCompleteBody !== undefined && { shipment_complete_body: input.shipmentCompleteBody }),
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" },
-  );
+      ...(input.shipmentCompleteBody !== undefined && { shipmentCompleteBody: input.shipmentCompleteBody }),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.insert(emailTemplates).values(values).onConflictDoUpdate({ target: emailTemplates.id, set: values });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

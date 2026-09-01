@@ -1,15 +1,21 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { scenarios } from "@/db/schema";
 import { NewScenarioButton } from "@/components/admin/NewScenarioButton";
 import { ScenariosList } from "@/components/admin/ScenariosList";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminScenariosPage() {
-  const supabase = createSupabaseAdminClient();
-  const { data: scenarios, error: scenariosError } = await supabase
-    .from("scenarios")
-    .select("*")
-    .order("display_order", { ascending: true });
+  let scenarioRows: (typeof scenarios.$inferSelect)[] = [];
+  let loadError: string | null = null;
+  try {
+    const db = await getDb();
+    scenarioRows = await db.select().from(scenarios).orderBy(asc(scenarios.displayOrder));
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : String(err);
+    console.error("[admin/scenarios] failed to load scenarios", err);
+  }
 
   return (
     <div>
@@ -18,18 +24,18 @@ export default async function AdminScenariosPage() {
         <NewScenarioButton />
       </div>
 
-      {scenariosError && (
+      {loadError && (
         <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          シナリオ一覧の取得に失敗しました({scenariosError.message})
+          シナリオ一覧の取得に失敗しました({loadError})
         </p>
       )}
 
       <ScenariosList
-        initialScenarios={(scenarios ?? []).map((s) => ({
+        initialScenarios={scenarioRows.map((s) => ({
           id: s.id,
           name: s.name,
           status: s.status,
-          displayOrder: s.display_order ?? 0,
+          displayOrder: s.displayOrder ?? 0,
         }))}
       />
     </div>

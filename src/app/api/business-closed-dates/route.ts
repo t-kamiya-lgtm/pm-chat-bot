@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { businessClosedDates } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const dateSchema = z.object({
@@ -12,13 +14,13 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("business_closed_dates")
-    .select("*")
-    .order("date", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ closedDates: data });
+  try {
+    const db = await getDb();
+    const rows = await db.select().from(businessClosedDates).orderBy(asc(businessClosedDates.date));
+    return NextResponse.json({ closedDates: rows });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -31,12 +33,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("business_closed_dates")
-    .upsert({ date: parsed.data.date, reason: parsed.data.reason ?? null }, { onConflict: "date" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true }, { status: 201 });
+  try {
+    const db = await getDb();
+    const values = { date: parsed.data.date, reason: parsed.data.reason ?? null };
+    await db
+      .insert(businessClosedDates)
+      .values(values)
+      .onConflictDoUpdate({ target: businessClosedDates.date, set: values });
+    return NextResponse.json({ ok: true }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: Request) {
@@ -47,8 +54,11 @@ export async function DELETE(request: Request) {
   const date = searchParams.get("date");
   if (!date) return NextResponse.json({ error: "date is required" }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("business_closed_dates").delete().eq("date", date);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const db = await getDb();
+    await db.delete(businessClosedDates).where(eq(businessClosedDates.date, date));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

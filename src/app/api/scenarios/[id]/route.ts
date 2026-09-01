@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, ilike, ne } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { scenarioNodes, scenarios } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { MENU_LAYOUTS } from "@/lib/menu-layouts";
 
@@ -79,18 +81,19 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const [{ data: scenario, error: scenarioError }, { data: nodes, error: nodesError }] =
-    await Promise.all([
-      supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
-      supabase.from("scenario_nodes").select("*").eq("scenario_id", id),
+  try {
+    const db = await getDb();
+    const [[scenario], nodes] = await Promise.all([
+      db.select().from(scenarios).where(eq(scenarios.id, id)).limit(1),
+      db.select().from(scenarioNodes).where(eq(scenarioNodes.scenarioId, id)),
     ]);
 
-  if (scenarioError) return NextResponse.json({ error: scenarioError.message }, { status: 500 });
-  if (!scenario) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (nodesError) return NextResponse.json({ error: nodesError.message }, { status: 500 });
+    if (!scenario) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  return NextResponse.json({ scenario, nodes });
+    return NextResponse.json({ scenario, nodes });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
@@ -105,86 +108,85 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  if (input.orderCode) {
-    const { data: duplicate } = await supabase
-      .from("scenarios")
-      .select("id")
-      .ilike("order_code", input.orderCode)
-      .neq("id", id)
-      .maybeSingle();
-    if (duplicate) {
-      return NextResponse.json(
-        { error: "このシナリオコードは既に別のシナリオで使用されています" },
-        { status: 400 },
-      );
+    if (input.orderCode) {
+      const [duplicate] = await db
+        .select({ id: scenarios.id })
+        .from(scenarios)
+        .where(and(ilike(scenarios.orderCode, input.orderCode), ne(scenarios.id, id)))
+        .limit(1);
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "このシナリオコードは既に別のシナリオで使用されています" },
+          { status: 400 },
+        );
+      }
     }
-  }
 
-  const { data, error } = await supabase
-    .from("scenarios")
-    .update({
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.status !== undefined && { status: input.status }),
-      ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
-      ...(input.slug !== undefined && { slug: input.slug }),
-      ...(input.orderCode !== undefined && { order_code: input.orderCode }),
-      ...(input.chatBackgroundColor !== undefined && { chat_background_color: input.chatBackgroundColor }),
-      ...(input.menuBackgroundColor !== undefined && { menu_background_color: input.menuBackgroundColor }),
-      ...(input.messageBackgroundColor !== undefined && {
-        message_background_color: input.messageBackgroundColor,
-      }),
-      ...(input.userMessageBackgroundColor !== undefined && {
-        user_message_background_color: input.userMessageBackgroundColor,
-      }),
-      ...(input.headerMode !== undefined && { header_mode: input.headerMode }),
-      ...(input.headerImageUrl !== undefined && { header_image_url: input.headerImageUrl }),
-      ...(input.headerTitle !== undefined && { header_title: input.headerTitle }),
-      ...(input.headerBackgroundColor !== undefined && {
-        header_background_color: input.headerBackgroundColor,
-      }),
-      ...(input.headerTextColor !== undefined && { header_text_color: input.headerTextColor }),
-      ...(input.messageTextColor !== undefined && { message_text_color: input.messageTextColor }),
-      ...(input.userMessageTextColor !== undefined && {
-        user_message_text_color: input.userMessageTextColor,
-      }),
-      ...(input.menuTextColor !== undefined && { menu_text_color: input.menuTextColor }),
-      ...(input.adTag !== undefined && { ad_tag: input.adTag }),
-      ...(input.conversionTag !== undefined && { conversion_tag: input.conversionTag }),
-      ...(input.emailFromAddress !== undefined && { email_from_address: input.emailFromAddress }),
-      ...(input.inquiryReceiveEmail !== undefined && { inquiry_receive_email: input.inquiryReceiveEmail }),
-      ...(input.inquiryAutoReplyFrom !== undefined && { inquiry_auto_reply_from: input.inquiryAutoReplyFrom }),
-      ...(input.orderConfirmationFrom !== undefined && {
-        order_confirmation_from: input.orderConfirmationFrom,
-      }),
-      ...(input.abandonedReminderFrom !== undefined && {
-        abandoned_reminder_from: input.abandonedReminderFrom,
-      }),
-      ...(input.cancellationFrom !== undefined && { cancellation_from: input.cancellationFrom }),
-      ...(input.shipmentCompleteFrom !== undefined && {
-        shipment_complete_from: input.shipmentCompleteFrom,
-      }),
-      ...(input.popupIconUrl !== undefined && { popup_icon_url: input.popupIconUrl }),
-      ...(input.popupPosition !== undefined && { popup_position: input.popupPosition }),
-      ...(input.popupButtonText !== undefined && { popup_button_text: input.popupButtonText }),
-      ...(input.couponCodeFieldEnabled !== undefined && {
-        coupon_code_field_enabled: input.couponCodeFieldEnabled,
-      }),
-      ...(input.menuLayoutKey !== undefined && { menu_layout_key: input.menuLayoutKey }),
-      ...(input.menuImageUrl !== undefined && { menu_image_url: input.menuImageUrl }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
+    const [data] = await db
+      .update(scenarios)
+      .set({
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.status !== undefined && { status: input.status }),
+        ...(input.displayOrder !== undefined && { displayOrder: input.displayOrder }),
+        ...(input.slug !== undefined && { slug: input.slug }),
+        ...(input.orderCode !== undefined && { orderCode: input.orderCode }),
+        ...(input.chatBackgroundColor !== undefined && { chatBackgroundColor: input.chatBackgroundColor }),
+        ...(input.menuBackgroundColor !== undefined && { menuBackgroundColor: input.menuBackgroundColor }),
+        ...(input.messageBackgroundColor !== undefined && {
+          messageBackgroundColor: input.messageBackgroundColor,
+        }),
+        ...(input.userMessageBackgroundColor !== undefined && {
+          userMessageBackgroundColor: input.userMessageBackgroundColor,
+        }),
+        ...(input.headerMode !== undefined && { headerMode: input.headerMode }),
+        ...(input.headerImageUrl !== undefined && { headerImageUrl: input.headerImageUrl }),
+        ...(input.headerTitle !== undefined && { headerTitle: input.headerTitle }),
+        ...(input.headerBackgroundColor !== undefined && {
+          headerBackgroundColor: input.headerBackgroundColor,
+        }),
+        ...(input.headerTextColor !== undefined && { headerTextColor: input.headerTextColor }),
+        ...(input.messageTextColor !== undefined && { messageTextColor: input.messageTextColor }),
+        ...(input.userMessageTextColor !== undefined && {
+          userMessageTextColor: input.userMessageTextColor,
+        }),
+        ...(input.menuTextColor !== undefined && { menuTextColor: input.menuTextColor }),
+        ...(input.adTag !== undefined && { adTag: input.adTag }),
+        ...(input.conversionTag !== undefined && { conversionTag: input.conversionTag }),
+        ...(input.emailFromAddress !== undefined && { emailFromAddress: input.emailFromAddress }),
+        ...(input.inquiryReceiveEmail !== undefined && { inquiryReceiveEmail: input.inquiryReceiveEmail }),
+        ...(input.inquiryAutoReplyFrom !== undefined && { inquiryAutoReplyFrom: input.inquiryAutoReplyFrom }),
+        ...(input.orderConfirmationFrom !== undefined && {
+          orderConfirmationFrom: input.orderConfirmationFrom,
+        }),
+        ...(input.abandonedReminderFrom !== undefined && {
+          abandonedReminderFrom: input.abandonedReminderFrom,
+        }),
+        ...(input.cancellationFrom !== undefined && { cancellationFrom: input.cancellationFrom }),
+        ...(input.shipmentCompleteFrom !== undefined && {
+          shipmentCompleteFrom: input.shipmentCompleteFrom,
+        }),
+        ...(input.popupIconUrl !== undefined && { popupIconUrl: input.popupIconUrl }),
+        ...(input.popupPosition !== undefined && { popupPosition: input.popupPosition }),
+        ...(input.popupButtonText !== undefined && { popupButtonText: input.popupButtonText }),
+        ...(input.couponCodeFieldEnabled !== undefined && {
+          couponCodeFieldEnabled: input.couponCodeFieldEnabled,
+        }),
+        ...(input.menuLayoutKey !== undefined && { menuLayoutKey: input.menuLayoutKey }),
+        ...(input.menuImageUrl !== undefined && { menuImageUrl: input.menuImageUrl }),
+      })
+      .where(eq(scenarios.id, id))
+      .returning();
 
-  if (error) {
-    if (error.code === "23505") {
+    return NextResponse.json({ scenario: data });
+  } catch (err) {
+    if ((err as { code?: string }).code === "23505") {
       return NextResponse.json({ error: "このURLは既に他のシナリオで使用されています" }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
-  return NextResponse.json({ scenario: data });
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -192,8 +194,11 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("scenarios").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const db = await getDb();
+    await db.delete(scenarios).where(eq(scenarios.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { scenarioMenuItems } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const menuItemUpdateSchema = z.object({
@@ -25,23 +27,24 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("scenario_menu_items")
-    .update({
-      ...(input.label !== undefined && { label: input.label }),
-      ...(input.actionType !== undefined && { action_type: input.actionType }),
-      ...(input.targetNodeId !== undefined && { target_node_id: input.targetNodeId }),
-      ...(input.url !== undefined && { url: input.url }),
-      ...(input.displayOrder !== undefined && { display_order: input.displayOrder }),
-    })
-    .eq("id", itemId)
-    .eq("scenario_id", scenarioId)
-    .select("*")
-    .single();
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .update(scenarioMenuItems)
+      .set({
+        ...(input.label !== undefined && { label: input.label }),
+        ...(input.actionType !== undefined && { actionType: input.actionType }),
+        ...(input.targetNodeId !== undefined && { targetNodeId: input.targetNodeId }),
+        ...(input.url !== undefined && { url: input.url }),
+        ...(input.displayOrder !== undefined && { displayOrder: input.displayOrder }),
+      })
+      .where(and(eq(scenarioMenuItems.id, itemId), eq(scenarioMenuItems.scenarioId, scenarioId)))
+      .returning();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ menuItem: data });
+    return NextResponse.json({ menuItem: row });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -49,12 +52,13 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id: scenarioId, itemId } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("scenario_menu_items")
-    .delete()
-    .eq("id", itemId)
-    .eq("scenario_id", scenarioId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const db = await getDb();
+    await db
+      .delete(scenarioMenuItems)
+      .where(and(eq(scenarioMenuItems.id, itemId), eq(scenarioMenuItems.scenarioId, scenarioId)));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
