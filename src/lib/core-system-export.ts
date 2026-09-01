@@ -312,13 +312,13 @@ export function buildCoreSystemExportRows(params: {
         "",
         // 35列: 配送方法
         orderLevelColumns.shippingMethodLabel,
-        // 36列: 伝票記事(送り状への記載内容の指示。決済フォームで収集)
-        orderLevelColumns.invoiceNote,
+        // 36列: 伝票記事(廃止。お客様コメントは39列の備考に出力する)
+        "",
         // 37〜38列: 配送希望日/配送時間
         orderLevelColumns.deliveryDate,
         orderLevelColumns.deliveryTimeSlot,
-        // 39列: 備考(未使用)
-        "",
+        // 39列: 備考(お客様コメント欄。決済フォームで収集)
+        orderLevelColumns.invoiceNote,
         // 40〜50列: 商品番号/項目選択肢/単価/個数/商品合計/税額/手数料/送料/値引/請求額/商品名
         line.productNumber,
         line.itemOptions,
