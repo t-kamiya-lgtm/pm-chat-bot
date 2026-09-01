@@ -9,23 +9,30 @@
 ## 技術スタック
 
 - Next.js (App Router) / TypeScript / Tailwind CSS
-- Supabase (Postgres / Auth / Storage)
+- Google Cloud SQL (PostgreSQL) / Drizzle ORM
+- Google Cloud Identity Platform (Firebase Authentication)
 - Stripe (Payment Element / Billing / Webhook)
+- Cloud Run (デプロイ先)
 
 ## セットアップ
 
 ```bash
 npm install
 cp .env.example .env.local
-# .env.local に Supabase / Stripe 等の値を設定
+# .env.local に Cloud SQL / Firebase / Stripe 等の値を設定
 ```
 
-### Supabase
+### Cloud SQL (PostgreSQL)
 
-1. Supabaseプロジェクトを作成
-2. `supabase/migrations/0001_init.sql` を実行してテーブルを作成
-3. Authentication > Providers で Google OAuth を有効化
-4. `.env.local` に `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` を設定
+1. `db/migrations/README.md` の手順に沿ってCloud SQLインスタンス・DBを作成し、`db/migrations/*.sql` をファイル名順に適用
+2. `.env.local` に `CLOUD_SQL_INSTANCE_CONNECTION_NAME` / `DB_USER` / `DB_NAME` / `DB_PASSWORD` を設定
+   (ローカル開発でCloud SQL Auth Proxy等を使わない場合は `src/lib/db.ts` の接続方式に合わせて調整してください)
+
+### Firebase Authentication (Google Cloud Identity Platform)
+
+1. Firebaseコンソールで対象GCPプロジェクトのAuthenticationを有効化し、Googleログインプロバイダを設定
+2. `.env.local` に `NEXT_PUBLIC_FIREBASE_API_KEY` / `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` / `NEXT_PUBLIC_FIREBASE_PROJECT_ID` / `FIREBASE_PROJECT_ID` を設定
+   (詳細は `src/lib/firebase/README.md` を参照)
 
 ### Stripe
 
@@ -40,7 +47,7 @@ npm run dev
 ```
 
 - 管理画面: http://localhost:3000/admin (Googleログイン、初回は権限なしで作成されるため、
-  Supabaseの `users` テーブルで最初の1人を手動で `role='admin'` に更新してください)
+  `users` テーブルで最初の1人を手動で `role='admin'` に更新してください)
 - チャットウィジェット単体プレビュー: http://localhost:3000/widget
 - 埋め込みスニペット: `public/widget.js`(スマレジEC・リピートの「デザインPC/デザインSP」等にscriptタグを追加)
 

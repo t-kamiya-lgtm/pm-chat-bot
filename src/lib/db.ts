@@ -5,8 +5,7 @@ import * as schema from "@/db/schema";
 import * as relations from "@/db/relations";
 
 /**
- * Cloud SQL (PostgreSQL) への接続。src/lib/supabase/admin.ts に相当する、
- * アプリの全データアクセスが経由する唯一のクライアント。
+ * Cloud SQL (PostgreSQL) への接続。アプリの全データアクセスが経由する唯一のクライアント。
  *
  * Connector・Pool・drizzleインスタンスはモジュールレベルでシングルトン化し、
  * 同一Cloud Runコンテナ内のリクエスト間で使い回す(サーバーレスの毎リクエスト

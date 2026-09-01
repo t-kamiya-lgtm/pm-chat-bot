@@ -3,8 +3,8 @@ import { getAuth, type Auth } from "firebase-admin/auth";
 
 /**
  * サーバー側のFirebase Admin初期化(Google Cloud Identity Platform)。
- * src/lib/supabase/admin.tsの認証版に相当。Cloud Run上ではサービスアカウントの
- * Application Default Credentials(ADC)で認証するため、鍵ファイルの管理は不要。
+ * Cloud Run上ではサービスアカウントのApplication Default Credentials(ADC)で
+ * 認証するため、鍵ファイルの管理は不要。
  */
 function getAdminApp(): App {
   const existing = getApps();

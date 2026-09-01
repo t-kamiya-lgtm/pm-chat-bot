@@ -2,8 +2,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 
 /**
  * ブラウザ側のFirebase初期化(Google Cloud Identity Platform)。
- * NEXT_PUBLIC_*はクライアントバンドルに埋め込まれる値で、Supabase版の
- * NEXT_PUBLIC_SUPABASE_URL/ANON_KEYに相当する(秘匿情報ではない)。
+ * NEXT_PUBLIC_*はクライアントバンドルに埋め込まれる値(秘匿情報ではない)。
  */
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
