@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# drizzle-kit introspect/generate の作業出力(再生成可能な使い捨てファイル)
+/db/drizzle/
