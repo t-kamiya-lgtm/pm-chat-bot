@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type Stripe from "stripe";
+import { eq } from "drizzle-orm";
 import { getStripeClient } from "@/lib/stripe";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { orders, subscriptions, leads } from "@/db/schema";
 import {
   customerInputSchema,
   shippingAddressSchema,
@@ -113,9 +115,9 @@ export async function POST(request: Request) {
   // 定期のPrice(2回目以降の請求額)には値引きを含めない(アドオンは初回請求のみの一括請求項目として追加する)
   const recurringBreakdown = calculateTotal(amount, product.shipping_fee, 0);
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   // クーポン割引も、定期の単価自体は変えず初回請求のみの一括値引き項目として適用する
-  const appliedCoupon = await resolveApplicableCoupon(supabase, {
+  const appliedCoupon = await resolveApplicableCoupon(db, {
     scenarioId,
     code: couponCode,
     subtotal: amount + addonAmount,
@@ -269,59 +271,64 @@ export async function POST(request: Request) {
     );
   }
 
-  const orderNumber = await generateOrderNumber(supabase, scenarioId);
-  const costSnapshot = await resolveOrderCostSnapshot(supabase, productId, new Date().toISOString());
-  const { data: order, error } = await supabase
-    .from("orders")
-    .insert({
-      customer_id: customer.id,
-      product_id: productId,
-      scenario_id: scenarioId ?? null,
-      order_number: orderNumber,
-      session_id: sessionId ?? null,
-      type: "subscription",
-      payment_method: "stripe",
-      amount,
-      quantity,
-      shipping_fee: product.shipping_fee,
-      payment_fee: 0,
-      ...costSnapshot,
-      status: "pending",
-      stripe_subscription_id: subscription.id,
-      delivery_date: deliveryDate || null,
-      delivery_time_slot: deliveryTimeSlot || null,
-      invoice_note: invoiceNote || null,
-      agreed_terms_at: new Date().toISOString(),
-      addon_product_id: addonProduct?.id ?? null,
-      addon_amount: addonProduct ? addonAmount : null,
-      is_addon_subscription: Boolean(addonProduct && addonIsSubscription),
-      shipping_address: shippingAddress ?? null,
-      survey_responses: surveyResponses ?? null,
-      utm_source: utmSource ?? null,
-      utm_medium: utmMedium ?? null,
-      utm_campaign: utmCampaign ?? null,
-      coupon_id: appliedCoupon?.id ?? null,
-      coupon_code: appliedCoupon?.code ?? null,
-      discount_amount: appliedCoupon?.discountAmount ?? 0,
-      first_time_discount_amount: firstTimeDiscountAmount || null,
-      set_selections: setSelections ?? null,
-    })
-    .select("id")
-    .single();
+  const orderNumber = await generateOrderNumber(db, scenarioId);
+  const costSnapshot = await resolveOrderCostSnapshot(db, productId, new Date().toISOString());
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let order;
+  try {
+    [order] = await db
+      .insert(orders)
+      .values({
+        customerId: customer.id,
+        productId: productId,
+        scenarioId: scenarioId ?? null,
+        orderNumber: orderNumber,
+        sessionId: sessionId ?? null,
+        type: "subscription",
+        paymentMethod: "stripe",
+        amount,
+        quantity,
+        shippingFee: product.shipping_fee,
+        paymentFee: 0,
+        costAmount: costSnapshot.cost_amount,
+        bundleInsertCost: costSnapshot.bundle_insert_cost,
+        shippingCost: costSnapshot.shipping_cost,
+        salesCommissionAmount: costSnapshot.sales_commission_amount,
+        taxRate: costSnapshot.tax_rate !== null ? String(costSnapshot.tax_rate) : null,
+        status: "pending",
+        stripeSubscriptionId: subscription.id,
+        deliveryDate: deliveryDate || null,
+        deliveryTimeSlot: deliveryTimeSlot || null,
+        invoiceNote: invoiceNote || null,
+        agreedTermsAt: new Date().toISOString(),
+        addonProductId: addonProduct?.id ?? null,
+        addonAmount: addonProduct ? addonAmount : null,
+        isAddonSubscription: Boolean(addonProduct && addonIsSubscription),
+        shippingAddress: shippingAddress ?? null,
+        surveyResponses: surveyResponses ?? null,
+        utmSource: utmSource ?? null,
+        utmMedium: utmMedium ?? null,
+        utmCampaign: utmCampaign ?? null,
+        couponId: appliedCoupon?.id ?? null,
+        couponCode: appliedCoupon?.code ?? null,
+        discountAmount: appliedCoupon?.discountAmount ?? 0,
+        firstTimeDiscountAmount: firstTimeDiscountAmount || null,
+        setSelections: setSelections ?? null,
+      })
+      .returning({ id: orders.id });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 
-  await supabase.from("subscriptions").insert({
-    order_id: order.id,
+  await db.insert(subscriptions).values({
+    orderId: order.id,
     interval: subscriptionInterval,
     status: "active",
   });
 
   // このセッションの離脱リードが実際には注文につながったことを記録する(以後、別注文で上書きしない)。
   if (sessionId) {
-    await supabase.from("leads").update({ order_status: "ordered" }).eq("session_id", sessionId);
+    await db.update(leads).set({ orderStatus: "ordered" }).where(eq(leads.sessionId, sessionId));
   }
 
   return NextResponse.json({ orderId: order.id, clientSecret, breakdown });

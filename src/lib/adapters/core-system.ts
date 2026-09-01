@@ -1,4 +1,5 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { coreSystemSyncLogs } from "@/db/schema";
 import type { Address, OrderType, ShippingAddress, SubscriptionInterval } from "@/lib/types";
 
 export type CoreSystemPaymentMethod = "deferred_invoice" | "cod" | "stripe";
@@ -40,9 +41,9 @@ export interface CoreSystemAdapter {
  */
 export class MockCoreSystemAdapter implements CoreSystemAdapter {
   async submitOrder(order: CoreSystemOrderInput): Promise<{ accepted: boolean }> {
-    const supabase = createSupabaseAdminClient();
-    await supabase.from("core_system_sync_logs").insert({
-      order_id: order.orderId,
+    const db = await getDb();
+    await db.insert(coreSystemSyncLogs).values({
+      orderId: order.orderId,
       payload: order,
       status: "ok",
     });

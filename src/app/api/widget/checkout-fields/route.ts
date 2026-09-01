@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import {
-  DEFAULT_CHECKOUT_FIELD_ORDER,
-  mergeCheckoutFieldOrder,
-  type CheckoutFieldKey,
-} from "@/lib/checkout-fields";
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { checkoutFieldOrder } from "@/db/schema";
+import { DEFAULT_CHECKOUT_FIELD_ORDER, mergeCheckoutFieldOrder, type CheckoutFieldKey } from "@/lib/checkout-fields";
 
 /** チャットウィジェット用: 決済フォーム(1問1答)の質問表示順(シナリオ単位、認証不要)。 */
 export async function GET(request: Request) {
@@ -12,18 +10,22 @@ export async function GET(request: Request) {
   const scenarioId = searchParams.get("scenarioId");
   if (!scenarioId) return NextResponse.json({ order: DEFAULT_CHECKOUT_FIELD_ORDER });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("checkout_field_order")
-    .select("field_key")
-    .eq("scenario_id", scenarioId)
-    .order("display_order", { ascending: true });
+  try {
+    const db = await getDb();
+    const rows = await db
+      .select({ fieldKey: checkoutFieldOrder.fieldKey })
+      .from(checkoutFieldOrder)
+      .where(eq(checkoutFieldOrder.scenarioId, scenarioId))
+      .orderBy(asc(checkoutFieldOrder.displayOrder));
 
-  if (error || !data || data.length === 0) {
+    if (rows.length === 0) {
+      return NextResponse.json({ order: DEFAULT_CHECKOUT_FIELD_ORDER });
+    }
+
+    return NextResponse.json({
+      order: mergeCheckoutFieldOrder(rows.map((row) => row.fieldKey as CheckoutFieldKey)),
+    });
+  } catch {
     return NextResponse.json({ order: DEFAULT_CHECKOUT_FIELD_ORDER });
   }
-
-  return NextResponse.json({
-    order: mergeCheckoutFieldOrder(data.map((row) => row.field_key as CheckoutFieldKey)),
-  });
 }

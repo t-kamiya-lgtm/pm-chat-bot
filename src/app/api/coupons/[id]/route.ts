@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, ne } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { coupons } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const couponUpdateSchema = z.object({
@@ -35,43 +37,44 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  if (input.code !== undefined) {
-    const { data: existing } = await supabase
-      .from("coupons")
-      .select("id")
-      .eq("code", input.code)
-      .neq("id", id)
-      .maybeSingle();
-    if (existing) {
-      return NextResponse.json({ error: `コード「${input.code}」は既に使用されています` }, { status: 409 });
+    if (input.code !== undefined) {
+      const [existing] = await db
+        .select({ id: coupons.id })
+        .from(coupons)
+        .where(and(eq(coupons.code, input.code), ne(coupons.id, id)))
+        .limit(1);
+      if (existing) {
+        return NextResponse.json({ error: `コード「${input.code}」は既に使用されています` }, { status: 409 });
+      }
     }
+
+    const [data] = await db
+      .update(coupons)
+      .set({
+        ...(input.code !== undefined && { code: input.code }),
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.discountType !== undefined && { discountType: input.discountType }),
+        ...(input.discountValue !== undefined && { discountValue: input.discountValue }),
+        ...(input.startsAt !== undefined && { startsAt: input.startsAt }),
+        ...(input.endsAt !== undefined && { endsAt: input.endsAt }),
+        ...(input.maxUses !== undefined && { maxUses: input.maxUses }),
+        ...(input.minOrderAmount !== undefined && { minOrderAmount: input.minOrderAmount }),
+        ...(input.isActive !== undefined && { isActive: input.isActive }),
+        ...(input.imageUrl !== undefined && { imageUrl: input.imageUrl }),
+        ...(input.promoMessage !== undefined && { promoMessage: input.promoMessage }),
+        ...(input.targetProductIds !== undefined && { targetProductIds: input.targetProductIds }),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(coupons.id, id))
+      .returning();
+
+    return NextResponse.json({ coupon: data });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from("coupons")
-    .update({
-      ...(input.code !== undefined && { code: input.code }),
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.discountType !== undefined && { discount_type: input.discountType }),
-      ...(input.discountValue !== undefined && { discount_value: input.discountValue }),
-      ...(input.startsAt !== undefined && { starts_at: input.startsAt }),
-      ...(input.endsAt !== undefined && { ends_at: input.endsAt }),
-      ...(input.maxUses !== undefined && { max_uses: input.maxUses }),
-      ...(input.minOrderAmount !== undefined && { min_order_amount: input.minOrderAmount }),
-      ...(input.isActive !== undefined && { is_active: input.isActive }),
-      ...(input.imageUrl !== undefined && { image_url: input.imageUrl }),
-      ...(input.promoMessage !== undefined && { promo_message: input.promoMessage }),
-      ...(input.targetProductIds !== undefined && { target_product_ids: input.targetProductIds }),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ coupon: data });
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -79,22 +82,20 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  const { data: coupon, error: fetchError } = await supabase
-    .from("coupons")
-    .select("used_count")
-    .eq("id", id)
-    .maybeSingle();
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  if (coupon && coupon.used_count > 0) {
-    return NextResponse.json(
-      { error: "使用実績のあるクーポンは削除できません。無効化(今すぐ停止)をご利用ください。" },
-      { status: 409 },
-    );
+    const [coupon] = await db.select({ usedCount: coupons.usedCount }).from(coupons).where(eq(coupons.id, id)).limit(1);
+    if (coupon && coupon.usedCount > 0) {
+      return NextResponse.json(
+        { error: "使用実績のあるクーポンは削除できません。無効化(今すぐ停止)をご利用ください。" },
+        { status: 409 },
+      );
+    }
+
+    await db.delete(coupons).where(eq(coupons.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
-
-  const { error } = await supabase.from("coupons").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
 }

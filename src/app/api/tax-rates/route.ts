@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { taxRates } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -13,10 +15,13 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("tax_rates").select("*").order("rate", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ taxRates: data });
+  try {
+    const db = await getDb();
+    const rows = await db.select().from(taxRates).orderBy(desc(taxRates.rate));
+    return NextResponse.json({ taxRates: rows.map((r) => ({ ...r, rate: Number(r.rate) })) });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -27,12 +32,14 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("tax_rates")
-    .insert({ name: parsed.data.name, rate: parsed.data.ratePercent / 100 })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ taxRate: data }, { status: 201 });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(taxRates)
+      .values({ name: parsed.data.name, rate: String(parsed.data.ratePercent / 100) })
+      .returning();
+    return NextResponse.json({ taxRate: { ...row, rate: Number(row.rate) } }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

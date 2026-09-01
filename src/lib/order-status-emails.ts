@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, isNull } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers, orders, products, scenarios } from "@/db/schema";
 import { sendResendEmail } from "@/lib/email";
 import { getEmailTemplates, renderEmailTemplate } from "@/lib/email-templates";
 import { resolveScenarioFrom } from "@/lib/scenario-email";
@@ -10,40 +12,46 @@ import { resolveScenarioFrom } from "@/lib/scenario-email";
  */
 export async function sendCancellationEmail(orderId: string): Promise<void> {
   try {
-    const supabase = createSupabaseAdminClient();
+    const db = await getDb();
 
-    const { data: order } = await supabase
-      .from("orders")
-      .update({ cancellation_email_sent_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .is("cancellation_email_sent_at", null)
-      .select("order_number, customer_id, product_id, scenario_id")
-      .maybeSingle();
+    const [order] = await db
+      .update(orders)
+      .set({ cancellationEmailSentAt: new Date().toISOString() })
+      .where(and(eq(orders.id, orderId), isNull(orders.cancellationEmailSentAt)))
+      .returning({
+        orderNumber: orders.orderNumber,
+        customerId: orders.customerId,
+        productId: orders.productId,
+        scenarioId: orders.scenarioId,
+      });
     if (!order) return;
 
-    const [{ data: customer }, { data: product }, { data: scenario }] = await Promise.all([
-      supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
-      supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
-      order.scenario_id
-        ? supabase
-            .from("scenarios")
-            .select("email_from_address, cancellation_from")
-            .eq("id", order.scenario_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+    const [[customer], [product], [scenario]] = await Promise.all([
+      db.select({ email: customers.email, name: customers.name }).from(customers).where(eq(customers.id, order.customerId)).limit(1),
+      db.select({ name: products.name }).from(products).where(eq(products.id, order.productId)).limit(1),
+      order.scenarioId
+        ? db
+            .select({ emailFromAddress: scenarios.emailFromAddress, cancellationFrom: scenarios.cancellationFrom })
+            .from(scenarios)
+            .where(eq(scenarios.id, order.scenarioId))
+            .limit(1)
+        : Promise.resolve([null]),
     ]);
     if (!customer?.email) return;
 
-    const templates = await getEmailTemplates(supabase);
+    const templates = await getEmailTemplates();
     const vars = {
       customer_name: customer.name ?? "",
       product_name: product?.name ?? "",
-      order_number: order.order_number ?? "",
+      order_number: order.orderNumber ?? "",
     };
 
     await sendResendEmail({
       to: customer.email,
-      from: resolveScenarioFrom(scenario, "cancellation_from"),
+      from: resolveScenarioFrom(
+        scenario ? { email_from_address: scenario.emailFromAddress, cancellation_from: scenario.cancellationFrom } : null,
+        "cancellation_from",
+      ),
       subject: renderEmailTemplate(templates.cancellationSubject, vars),
       text: renderEmailTemplate(templates.cancellationBody, vars),
     });
@@ -58,52 +66,63 @@ export async function sendCancellationEmail(orderId: string): Promise<void> {
  */
 export async function sendShipmentCompleteEmail(orderId: string): Promise<void> {
   try {
-    const supabase = createSupabaseAdminClient();
+    const db = await getDb();
 
-    const { data: order } = await supabase
-      .from("orders")
-      .update({ shipment_email_sent_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .is("shipment_email_sent_at", null)
-      .select(
-        "order_number, customer_id, product_id, scenario_id, shipped_at, carrier_name, tracking_number, delivery_date, delivery_time_slot",
-      )
-      .maybeSingle();
+    const [order] = await db
+      .update(orders)
+      .set({ shipmentEmailSentAt: new Date().toISOString() })
+      .where(and(eq(orders.id, orderId), isNull(orders.shipmentEmailSentAt)))
+      .returning({
+        orderNumber: orders.orderNumber,
+        customerId: orders.customerId,
+        productId: orders.productId,
+        scenarioId: orders.scenarioId,
+        shippedAt: orders.shippedAt,
+        carrierName: orders.carrierName,
+        trackingNumber: orders.trackingNumber,
+        deliveryDate: orders.deliveryDate,
+        deliveryTimeSlot: orders.deliveryTimeSlot,
+      });
     if (!order) return;
 
-    const [{ data: customer }, { data: product }, { data: scenario }] = await Promise.all([
-      supabase.from("customers").select("email, name").eq("id", order.customer_id).maybeSingle(),
-      supabase.from("products").select("name").eq("id", order.product_id).maybeSingle(),
-      order.scenario_id
-        ? supabase
-            .from("scenarios")
-            .select("email_from_address, shipment_complete_from")
-            .eq("id", order.scenario_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+    const [[customer], [product], [scenario]] = await Promise.all([
+      db.select({ email: customers.email, name: customers.name }).from(customers).where(eq(customers.id, order.customerId)).limit(1),
+      db.select({ name: products.name }).from(products).where(eq(products.id, order.productId)).limit(1),
+      order.scenarioId
+        ? db
+            .select({ emailFromAddress: scenarios.emailFromAddress, shipmentCompleteFrom: scenarios.shipmentCompleteFrom })
+            .from(scenarios)
+            .where(eq(scenarios.id, order.scenarioId))
+            .limit(1)
+        : Promise.resolve([null]),
     ]);
     if (!customer?.email) return;
 
-    const templates = await getEmailTemplates(supabase);
+    const templates = await getEmailTemplates();
     // お届け希望日時は、配送方法が宅急便(宅配便)の場合のみ案内する
     // (メール便=郵メールはポスト投函のため日時指定を受け付けていない)。
     const deliveryDateTimeLine =
-      order.carrier_name === "宅急便" && order.delivery_date
-        ? `\n■お届け希望日時: ${new Date(order.delivery_date).toLocaleDateString("ja-JP")} ${order.delivery_time_slot ?? ""}`.trimEnd()
+      order.carrierName === "宅急便" && order.deliveryDate
+        ? `\n■お届け希望日時: ${new Date(order.deliveryDate).toLocaleDateString("ja-JP")} ${order.deliveryTimeSlot ?? ""}`.trimEnd()
         : "";
     const vars = {
       customer_name: customer.name ?? "",
       product_name: product?.name ?? "",
-      order_number: order.order_number ?? "",
-      ship_date: order.shipped_at ? new Date(order.shipped_at).toLocaleDateString("ja-JP") : "",
-      carrier_name: order.carrier_name ?? "",
-      tracking_number: order.tracking_number ?? "",
+      order_number: order.orderNumber ?? "",
+      ship_date: order.shippedAt ? new Date(order.shippedAt).toLocaleDateString("ja-JP") : "",
+      carrier_name: order.carrierName ?? "",
+      tracking_number: order.trackingNumber ?? "",
       delivery_datetime_line: deliveryDateTimeLine,
     };
 
     await sendResendEmail({
       to: customer.email,
-      from: resolveScenarioFrom(scenario, "shipment_complete_from"),
+      from: resolveScenarioFrom(
+        scenario
+          ? { email_from_address: scenario.emailFromAddress, shipment_complete_from: scenario.shipmentCompleteFrom }
+          : null,
+        "shipment_complete_from",
+      ),
       subject: renderEmailTemplate(templates.shipmentCompleteSubject, vars),
       text: renderEmailTemplate(templates.shipmentCompleteBody, vars),
     });

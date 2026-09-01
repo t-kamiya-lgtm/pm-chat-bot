@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, isNull } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { leads } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -11,12 +13,15 @@ export default async function UnsubscribePage({
   const { leadId } = await searchParams;
 
   if (leadId) {
-    const supabase = createSupabaseAdminClient();
-    await supabase
-      .from("leads")
-      .update({ unsubscribed_at: new Date().toISOString() })
-      .eq("id", leadId)
-      .is("unsubscribed_at", null);
+    try {
+      const db = await getDb();
+      await db
+        .update(leads)
+        .set({ unsubscribedAt: new Date().toISOString() })
+        .where(and(eq(leads.id, leadId), isNull(leads.unsubscribedAt)));
+    } catch (err) {
+      console.error("[unsubscribe] failed to update lead", err);
+    }
   }
 
   return (

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { bundleInsertItems } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { listBundleInsertSetsWithDetails, sumItemDistribution } from "@/lib/bundle-insert-sets-query";
 
@@ -23,21 +25,23 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("bundle_insert_items")
-    .update({
-      ...(parsed.data.itemType !== undefined && { item_type: parsed.data.itemType }),
-      ...(parsed.data.name !== undefined && { name: parsed.data.name }),
-      ...(parsed.data.url !== undefined && { url: parsed.data.url }),
-      ...(parsed.data.registeredDate !== undefined && { registered_date: parsed.data.registeredDate }),
-      ...(parsed.data.status !== undefined && { status: parsed.data.status }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ bundleInsertItem: data });
+  const db = await getDb();
+  try {
+    const [data] = await db
+      .update(bundleInsertItems)
+      .set({
+        ...(parsed.data.itemType !== undefined && { itemType: parsed.data.itemType }),
+        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+        ...(parsed.data.url !== undefined && { url: parsed.data.url }),
+        ...(parsed.data.registeredDate !== undefined && { registeredDate: parsed.data.registeredDate }),
+        ...(parsed.data.status !== undefined && { status: parsed.data.status }),
+      })
+      .where(eq(bundleInsertItems.id, id))
+      .returning();
+    return NextResponse.json({ bundleInsertItem: data });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 /** 配布実績(この同梱物を含むセットの累計配布件数)が1件以上ある場合は削除できないようにする。 */
@@ -46,9 +50,13 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { sets, error: setsError } = await listBundleInsertSetsWithDetails(supabase);
-  if (setsError) return NextResponse.json({ error: setsError }, { status: 500 });
+  const db = await getDb();
+  let sets;
+  try {
+    ({ sets } = await listBundleInsertSetsWithDetails(db));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
   const distributedCount = sumItemDistribution(sets, id);
   if (distributedCount > 0) {
@@ -58,7 +66,10 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
     );
   }
 
-  const { error } = await supabase.from("bundle_insert_items").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await db.delete(bundleInsertItems).where(eq(bundleInsertItems.id, id));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

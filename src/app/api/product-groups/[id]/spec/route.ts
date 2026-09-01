@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productSpecs } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const specInputSchema = z.object({
@@ -19,14 +21,13 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_specs")
-    .select("*")
-    .eq("product_group_id", id)
-    .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ spec: data });
+  try {
+    const db = await getDb();
+    const [row] = await db.select().from(productSpecs).where(eq(productSpecs.productGroupId, id)).limit(1);
+    return NextResponse.json({ spec: row ?? null });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 /** 商品種類(親品番)の仕様情報を登録/更新する。商品QA生成の入力データ。 */
@@ -42,24 +43,34 @@ export async function PUT(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_specs")
-    .upsert(
-      {
-        product_group_id: id,
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(productSpecs)
+      .values({
+        productGroupId: id,
         ingredients: input.ingredients ?? null,
         allergens: input.allergens ?? null,
         volume: input.volume ?? null,
         usage: input.usage ?? null,
         nutrition: input.nutrition ?? null,
         extra: input.extra,
-      },
-      { onConflict: "product_group_id" },
-    )
-    .select("*")
-    .single();
+      })
+      .onConflictDoUpdate({
+        target: productSpecs.productGroupId,
+        set: {
+          ingredients: input.ingredients ?? null,
+          allergens: input.allergens ?? null,
+          volume: input.volume ?? null,
+          usage: input.usage ?? null,
+          nutrition: input.nutrition ?? null,
+          extra: input.extra,
+        },
+      })
+      .returning();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ spec: data });
+    return NextResponse.json({ spec: row });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

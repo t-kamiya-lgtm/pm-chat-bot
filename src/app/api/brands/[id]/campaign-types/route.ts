@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { retentionCampaignTypes } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -16,14 +18,17 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("retention_campaign_types")
-    .select("*")
-    .eq("brand_id", id)
-    .order("created_at", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ campaignTypes: data });
+  try {
+    const db = await getDb();
+    const rows = await db
+      .select()
+      .from(retentionCampaignTypes)
+      .where(eq(retentionCampaignTypes.brandId, id))
+      .orderBy(asc(retentionCampaignTypes.createdAt));
+    return NextResponse.json({ campaignTypes: rows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
@@ -35,12 +40,14 @@ export async function POST(request: Request, { params }: RouteParams) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("retention_campaign_types")
-    .insert({ brand_id: id, title: parsed.data.title, description: parsed.data.description ?? null })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ campaignType: data }, { status: 201 });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(retentionCampaignTypes)
+      .values({ brandId: id, title: parsed.data.title, description: parsed.data.description ?? null })
+      .returning();
+    return NextResponse.json({ campaignType: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

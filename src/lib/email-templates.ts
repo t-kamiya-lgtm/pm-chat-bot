@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { emailTemplates } from "@/db/schema";
 
 export interface EmailTemplates {
   orderCompletionSubject: string;
@@ -92,22 +94,21 @@ export function renderEmailTemplate(template: string, vars: Record<string, strin
 }
 
 /** 管理画面で編集された件名・本文テンプレートを取得する(未設定項目はデフォルト文言を返す)。 */
-export async function getEmailTemplates(
-  supabase = createSupabaseAdminClient(),
-): Promise<EmailTemplates> {
-  const { data } = await supabase.from("email_templates").select("*").eq("id", 1).maybeSingle();
+export async function getEmailTemplates(): Promise<EmailTemplates> {
+  const db = await getDb();
+  const [data] = await db.select().from(emailTemplates).where(eq(emailTemplates.id, 1)).limit(1);
   return {
-    orderCompletionSubject: data?.order_completion_subject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject,
-    orderCompletionBody: data?.order_completion_body || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody,
-    renewalSubject: data?.renewal_subject || DEFAULT_EMAIL_TEMPLATES.renewalSubject,
-    renewalBody: data?.renewal_body || DEFAULT_EMAIL_TEMPLATES.renewalBody,
-    abandonedLeadSubject: data?.abandoned_lead_subject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
-    abandonedLeadBody: data?.abandoned_lead_body || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
-    inquiryAutoReplySubject: data?.inquiry_auto_reply_subject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
-    inquiryAutoReplyBody: data?.inquiry_auto_reply_body || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
-    cancellationSubject: data?.cancellation_subject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject,
-    cancellationBody: data?.cancellation_body || DEFAULT_EMAIL_TEMPLATES.cancellationBody,
-    shipmentCompleteSubject: data?.shipment_complete_subject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject,
-    shipmentCompleteBody: data?.shipment_complete_body || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody,
+    orderCompletionSubject: data?.orderCompletionSubject || DEFAULT_EMAIL_TEMPLATES.orderCompletionSubject,
+    orderCompletionBody: data?.orderCompletionBody || DEFAULT_EMAIL_TEMPLATES.orderCompletionBody,
+    renewalSubject: data?.renewalSubject || DEFAULT_EMAIL_TEMPLATES.renewalSubject,
+    renewalBody: data?.renewalBody || DEFAULT_EMAIL_TEMPLATES.renewalBody,
+    abandonedLeadSubject: data?.abandonedLeadSubject || DEFAULT_EMAIL_TEMPLATES.abandonedLeadSubject,
+    abandonedLeadBody: data?.abandonedLeadBody || DEFAULT_EMAIL_TEMPLATES.abandonedLeadBody,
+    inquiryAutoReplySubject: data?.inquiryAutoReplySubject || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplySubject,
+    inquiryAutoReplyBody: data?.inquiryAutoReplyBody || DEFAULT_EMAIL_TEMPLATES.inquiryAutoReplyBody,
+    cancellationSubject: data?.cancellationSubject || DEFAULT_EMAIL_TEMPLATES.cancellationSubject,
+    cancellationBody: data?.cancellationBody || DEFAULT_EMAIL_TEMPLATES.cancellationBody,
+    shipmentCompleteSubject: data?.shipmentCompleteSubject || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteSubject,
+    shipmentCompleteBody: data?.shipmentCompleteBody || DEFAULT_EMAIL_TEMPLATES.shipmentCompleteBody,
   };
 }

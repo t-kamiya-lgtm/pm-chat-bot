@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, asc, eq, ne } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { scenarioNodes } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { migrateCheckoutUpsellToProductNodes } from "@/lib/scenario-upsell-migration";
 
@@ -29,46 +31,42 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
-  // 「開始ノードにする」は独立したフラグとして持たず、表示順を1番目にすることで表現する。
-  // これにより、以後の並び替えで開始ノードの位置がずれる心配がなくなる。
-  let displayOrder = input.displayOrder;
-  if (input.isEntry) {
-    const { data: others } = await supabase
-      .from("scenario_nodes")
-      .select("id")
-      .eq("scenario_id", scenarioId)
-      .neq("id", nodeId)
-      .order("display_order", { ascending: true });
-    if (others && others.length > 0) {
-      await Promise.all(
-        others.map((n, i) =>
-          supabase.from("scenario_nodes").update({ display_order: i + 1 }).eq("id", n.id),
-        ),
-      );
+  try {
+    // 「開始ノードにする」は独立したフラグとして持たず、表示順を1番目にすることで表現する。
+    // これにより、以後の並び替えで開始ノードの位置がずれる心配がなくなる。
+    let displayOrder = input.displayOrder;
+    if (input.isEntry) {
+      const others = await db
+        .select({ id: scenarioNodes.id })
+        .from(scenarioNodes)
+        .where(and(eq(scenarioNodes.scenarioId, scenarioId), ne(scenarioNodes.id, nodeId)))
+        .orderBy(asc(scenarioNodes.displayOrder));
+      if (others.length > 0) {
+        await Promise.all(
+          others.map((n, i) => db.update(scenarioNodes).set({ displayOrder: i + 1 }).where(eq(scenarioNodes.id, n.id))),
+        );
+      }
+      displayOrder = 0;
     }
-    displayOrder = 0;
+
+    const [data] = await db
+      .update(scenarioNodes)
+      .set({
+        ...(input.type !== undefined && { type: input.type }),
+        ...(input.content !== undefined && { content: input.content }),
+        ...(input.nextNodeMap !== undefined && { nextNodeMap: input.nextNodeMap }),
+        ...(displayOrder !== undefined && { displayOrder: displayOrder }),
+        ...(input.memo !== undefined && { memo: input.memo }),
+      })
+      .where(and(eq(scenarioNodes.id, nodeId), eq(scenarioNodes.scenarioId, scenarioId)))
+      .returning();
+
+    return NextResponse.json({ node: data });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from("scenario_nodes")
-    .update({
-      ...(input.type !== undefined && { type: input.type }),
-      ...(input.content !== undefined && { content: input.content }),
-      ...(input.nextNodeMap !== undefined && { next_node_map: input.nextNodeMap }),
-      ...(displayOrder !== undefined && { display_order: displayOrder }),
-      ...(input.memo !== undefined && { memo: input.memo }),
-    })
-    .eq("id", nodeId)
-    .eq("scenario_id", scenarioId)
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-
-  return NextResponse.json({ node: data });
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
@@ -76,15 +74,14 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id: scenarioId, nodeId } = await params;
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   // 決済導線ノードは廃止済み。削除でアップセル・クロスセルの設定が失われないよう、
   // 先に商品提示ノードのマトリクスへ退避する。
-  await migrateCheckoutUpsellToProductNodes(supabase, scenarioId, nodeId);
-  const { error } = await supabase
-    .from("scenario_nodes")
-    .delete()
-    .eq("id", nodeId)
-    .eq("scenario_id", scenarioId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await migrateCheckoutUpsellToProductNodes(db, scenarioId, nodeId);
+  try {
+    await db.delete(scenarioNodes).where(and(eq(scenarioNodes.id, nodeId), eq(scenarioNodes.scenarioId, scenarioId)));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

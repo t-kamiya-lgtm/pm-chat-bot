@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { LeadsTable } from "@/components/admin/LeadsTable";
+import { desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { leads } from "@/db/schema";
+import { LeadsTable, type LeadRow } from "@/components/admin/LeadsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +12,32 @@ export const dynamic = "force-dynamic";
  * 注文状況は注文作成時(セッションID紐付け)に一度だけ確定し、後から別の注文が入っても更新されない。
  */
 export default async function AdminLeadsPage() {
-  const supabase = createSupabaseAdminClient();
-  const { data: leads } = await supabase
-    .from("leads")
-    .select("*, products(name)")
-    .order("updated_at", { ascending: false })
-    .limit(500);
+  let leadRows: LeadRow[] = [];
+  try {
+    const db = await getDb();
+    const rows = await db.query.leads.findMany({
+      orderBy: [desc(leads.updatedAt)],
+      limit: 500,
+      with: {
+        product: { columns: { name: true } },
+      },
+    });
+    leadRows = rows.map((lead) => ({
+      id: lead.id,
+      updated_at: lead.updatedAt,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      products: lead.product ? { name: lead.product.name } : null,
+      survey_responses: lead.surveyResponses as Record<string, string> | null,
+      order_status: lead.orderStatus as LeadRow["order_status"],
+      contacted_phone: lead.contactedPhone,
+      contacted_email: lead.contactedEmail,
+      contacted_sms: lead.contactedSms,
+    }));
+  } catch (err) {
+    console.error("[admin/leads] failed to load leads", err);
+  }
 
   return (
     <div>
@@ -35,7 +57,7 @@ export default async function AdminLeadsPage() {
         </Link>
       </div>
 
-      <LeadsTable leads={leads ?? []} />
+      <LeadsTable leads={leadRows} />
     </div>
   );
 }

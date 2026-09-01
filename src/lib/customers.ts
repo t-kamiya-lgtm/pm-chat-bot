@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers } from "@/db/schema";
 import type { Address } from "@/lib/types";
 
 export interface CustomerInput {
@@ -26,33 +28,39 @@ export interface CustomerRow {
 
 /** メールアドレスを一意キーとして顧客を作成/更新する */
 export async function upsertCustomer(input: CustomerInput): Promise<CustomerRow> {
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
-  const { data, error } = await supabase
-    .from("customers")
-    .upsert(
-      {
-        email: input.email,
-        name: input.name,
-        name_kana: input.nameKana,
-        phone: input.phone ?? null,
-        gender: input.gender || null,
-        birth_date: input.birthDate || null,
-        address: input.address,
-      },
-      { onConflict: "email" },
-    )
-    .select("*")
-    .single();
+  const values = {
+    email: input.email,
+    name: input.name,
+    nameKana: input.nameKana,
+    phone: input.phone ?? null,
+    gender: input.gender || null,
+    birthDate: input.birthDate || null,
+    address: input.address,
+  };
 
-  if (error) throw error;
-  return data as CustomerRow;
+  const [row] = await db
+    .insert(customers)
+    .values(values)
+    .onConflictDoUpdate({ target: customers.email, set: values })
+    .returning();
+
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    name_kana: row.nameKana,
+    phone: row.phone,
+    address: row.address as Address | null,
+    gender: row.gender,
+    birth_date: row.birthDate,
+    smaregi_member_id: row.smaregiMemberId,
+    stripe_customer_id: row.stripeCustomerId,
+  };
 }
 
 export async function setCustomerStripeId(customerId: string, stripeCustomerId: string) {
-  const supabase = createSupabaseAdminClient();
-  await supabase
-    .from("customers")
-    .update({ stripe_customer_id: stripeCustomerId })
-    .eq("id", customerId);
+  const db = await getDb();
+  await db.update(customers).set({ stripeCustomerId }).where(eq(customers.id, customerId));
 }

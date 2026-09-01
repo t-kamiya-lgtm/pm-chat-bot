@@ -1,8 +1,8 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
+import { orders, productGroups, products } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
-type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
-
-const CONFIRMED_ORDER_STATUSES = ["paid", "accepted"];
+const CONFIRMED_ORDER_STATUSES = ["paid", "accepted"] as const;
 
 export interface DistributionCountTarget {
   brandId: string;
@@ -24,32 +24,26 @@ function nextDay(dateStr: string): string {
  * 合致する注文(支払い完了/受付済み)の件数。同梱したかどうかを個別に記録する仕組みは
  * 持たないため、条件から都度再集計する。
  */
-export async function countDistributedOrders(
-  supabase: SupabaseAdminClient,
-  target: DistributionCountTarget,
-): Promise<number> {
+export async function countDistributedOrders(db: Db, target: DistributionCountTarget): Promise<number> {
   let productIds = target.targetProductIds;
   if (!productIds) {
-    const { data: groups } = await supabase.from("product_groups").select("id").eq("brand_id", target.brandId);
-    const groupIds = (groups ?? []).map((g) => g.id as string);
+    const groups = await db.select({ id: productGroups.id }).from(productGroups).where(eq(productGroups.brandId, target.brandId));
+    const groupIds = groups.map((g) => g.id);
     if (groupIds.length === 0) return 0;
-    const { data: products } = await supabase.from("products").select("id").in("product_group_id", groupIds);
-    productIds = (products ?? []).map((p) => p.id as string);
+    const productRows = await db.select({ id: products.id }).from(products).where(inArray(products.productGroupId, groupIds));
+    productIds = productRows.map((p) => p.id);
   }
   if (productIds.length === 0) return 0;
 
-  let query = supabase
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .in("product_id", productIds)
-    .in("status", CONFIRMED_ORDER_STATUSES)
-    .gte("created_at", target.periodStart);
+  const conditions = [
+    inArray(orders.productId, productIds),
+    inArray(orders.status, CONFIRMED_ORDER_STATUSES),
+    gte(orders.createdAt, target.periodStart),
+  ];
+  if (target.periodEnd) conditions.push(lt(orders.createdAt, nextDay(target.periodEnd)));
+  if (target.targetOrderType !== "both") conditions.push(eq(orders.type, target.targetOrderType));
+  if (target.targetCycleNumbers) conditions.push(inArray(orders.billingCycleNumber, target.targetCycleNumbers));
 
-  if (target.periodEnd) query = query.lt("created_at", nextDay(target.periodEnd));
-  if (target.targetOrderType !== "both") query = query.eq("type", target.targetOrderType);
-  if (target.targetCycleNumbers) query = query.in("billing_cycle_number", target.targetCycleNumbers);
-
-  const { count, error } = await query;
-  if (error) return 0;
-  return count ?? 0;
+  const [{ value }] = await db.select({ value: count() }).from(orders).where(and(...conditions));
+  return value;
 }

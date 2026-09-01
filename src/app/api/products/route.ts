@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { products, productSetOptions } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { toAdminErrorMessage } from "@/lib/api-error";
 import { subscriptionIntervalSchema } from "@/lib/checkout-schema";
@@ -44,13 +46,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const productGroupId = searchParams.get("productGroupId");
 
-  const supabase = createSupabaseAdminClient();
-  let query = supabase.from("products").select("*").order("display_order", { ascending: true });
-  if (productGroupId) query = query.eq("product_group_id", productGroupId);
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
-  return NextResponse.json({ products: data });
+  try {
+    const db = await getDb();
+    const rows = await db
+      .select()
+      .from(products)
+      .where(productGroupId ? eq(products.productGroupId, productGroupId) : undefined)
+      .orderBy(asc(products.displayOrder));
+    return NextResponse.json({ products: rows });
+  } catch (err) {
+    return NextResponse.json({ error: toAdminErrorMessage(String(err)) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -77,65 +83,64 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  const { data: lastProduct } = await supabase
-    .from("products")
-    .select("display_order")
-    .order("display_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const displayOrder = (lastProduct?.display_order ?? -1) + 1;
+    const [lastProduct] = await db
+      .select({ displayOrder: products.displayOrder })
+      .from(products)
+      .orderBy(desc(products.displayOrder))
+      .limit(1);
+    const displayOrder = (lastProduct?.displayOrder ?? -1) + 1;
 
-  const { data, error } = await supabase
-    .from("products")
-    .insert({
-      product_group_id: input.productGroupId,
-      display_order: displayOrder,
-      name: input.name,
-      description: input.description ?? null,
-      memo: input.memo ?? null,
-      price: input.price,
-      list_price: input.listPrice ?? null,
-      first_time_price: input.orderType === "subscription" ? (input.firstTimePrice ?? null) : null,
-      next_cycle_product_id: input.orderType === "subscription" ? (input.nextCycleProductId ?? null) : null,
-      next_cycle_interval: input.orderType === "subscription" ? (input.nextCycleInterval ?? null) : null,
-      compare_price_type: input.comparePriceType,
-      unit_total_price: input.unitTotalPrice ?? null,
-      custom_compare_label: input.customCompareLabel ?? null,
-      custom_compare_price: input.customComparePrice ?? null,
-      price_label: input.priceLabel ?? null,
-      tax_rate: input.taxRate,
-      shipping_fee: input.shippingFee,
-      cost_amount: input.costAmount,
-      bundle_insert_cost: input.bundleInsertCost,
-      shipping_cost: input.shippingCost,
-      sales_commission_amount: input.salesCommissionAmount,
-      is_mail_deliverable: input.isMailDeliverable,
-      image_url: input.imageUrls[0] ?? input.imageUrl ?? null,
-      image_urls: input.imageUrls,
-      smaregi_product_id: input.smaregiProductId ?? null,
-      order_type: input.orderType,
-      subscription_intervals: input.orderType === "subscription" ? input.subscriptionIntervals : [],
-      is_set: input.isSet,
-      set_item_count: input.isSet ? input.setItemCount : null,
-      created_by: roleCheck.user.id,
-    })
-    .select("*")
-    .single();
+    const [row] = await db
+      .insert(products)
+      .values({
+        productGroupId: input.productGroupId,
+        displayOrder,
+        name: input.name,
+        description: input.description ?? null,
+        memo: input.memo ?? null,
+        price: input.price,
+        listPrice: input.listPrice ?? null,
+        firstTimePrice: input.orderType === "subscription" ? (input.firstTimePrice ?? null) : null,
+        nextCycleProductId: input.orderType === "subscription" ? (input.nextCycleProductId ?? null) : null,
+        nextCycleInterval: input.orderType === "subscription" ? (input.nextCycleInterval ?? null) : null,
+        comparePriceType: input.comparePriceType,
+        unitTotalPrice: input.unitTotalPrice ?? null,
+        customCompareLabel: input.customCompareLabel ?? null,
+        customComparePrice: input.customComparePrice ?? null,
+        priceLabel: input.priceLabel ?? null,
+        taxRate: input.taxRate,
+        shippingFee: input.shippingFee,
+        costAmount: input.costAmount,
+        bundleInsertCost: input.bundleInsertCost,
+        shippingCost: input.shippingCost,
+        salesCommissionAmount: input.salesCommissionAmount,
+        isMailDeliverable: input.isMailDeliverable,
+        imageUrl: input.imageUrls[0] ?? input.imageUrl ?? null,
+        imageUrls: input.imageUrls,
+        smaregiProductId: input.smaregiProductId ?? null,
+        orderType: input.orderType,
+        subscriptionIntervals: input.orderType === "subscription" ? input.subscriptionIntervals : [],
+        isSet: input.isSet,
+        setItemCount: input.isSet ? input.setItemCount : null,
+        createdBy: roleCheck.user.id,
+      })
+      .returning();
 
-  if (error) return NextResponse.json({ error: toAdminErrorMessage(error.message) }, { status: 500 });
+    if (input.isSet && input.setOptionProductIds.length > 0) {
+      await db.insert(productSetOptions).values(
+        input.setOptionProductIds.map((optionProductId, index) => ({
+          productId: row.id,
+          optionProductId,
+          displayOrder: index,
+        })),
+      );
+    }
 
-  if (input.isSet && input.setOptionProductIds.length > 0) {
-    const { error: optionsError } = await supabase.from("product_set_options").insert(
-      input.setOptionProductIds.map((optionProductId, index) => ({
-        product_id: data.id,
-        option_product_id: optionProductId,
-        display_order: index,
-      })),
-    );
-    if (optionsError) return NextResponse.json({ error: toAdminErrorMessage(optionsError.message) }, { status: 500 });
+    return NextResponse.json({ product: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: toAdminErrorMessage(String(err)) }, { status: 500 });
   }
-
-  return NextResponse.json({ product: data }, { status: 201 });
 }

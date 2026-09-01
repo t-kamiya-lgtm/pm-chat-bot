@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productFaqs } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 /** 管理画面用: 商品QAの一覧(レビュー待ち含む)。?productGroupId=&status= でフィルタ可能。 */
@@ -12,14 +14,22 @@ export async function GET(request: Request) {
   const productGroupId = searchParams.get("productGroupId");
   const status = searchParams.get("status");
 
-  const supabase = createSupabaseAdminClient();
-  let query = supabase.from("product_faqs").select("*").order("created_at", { ascending: false });
-  if (productGroupId) query = query.eq("product_group_id", productGroupId);
-  if (status) query = query.eq("status", status);
+  try {
+    const db = await getDb();
+    const conditions = [
+      productGroupId ? eq(productFaqs.productGroupId, productGroupId) : undefined,
+      status ? eq(productFaqs.status, status) : undefined,
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ faqs: data });
+    const rows = await db
+      .select()
+      .from(productFaqs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(productFaqs.createdAt));
+    return NextResponse.json({ faqs: rows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 const createSchema = z.object({
@@ -41,22 +51,23 @@ export async function POST(request: Request) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_faqs")
-    .insert({
-      product_group_id: input.productGroupId,
-      category_id: input.categoryId ?? null,
-      question: input.question,
-      answer: input.answer,
-      status: "published",
-      source: "manual",
-      reviewed_by: roleCheck.user.id,
-      reviewed_at: new Date().toISOString(),
-    })
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ faq: data }, { status: 201 });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(productFaqs)
+      .values({
+        productGroupId: input.productGroupId,
+        categoryId: input.categoryId ?? null,
+        question: input.question,
+        answer: input.answer,
+        status: "published",
+        source: "manual",
+        reviewedBy: roleCheck.user.id,
+        reviewedAt: new Date().toISOString(),
+      })
+      .returning();
+    return NextResponse.json({ faq: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

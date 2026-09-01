@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { orders, subscriptionItems, subscriptions } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 import { getProductById } from "@/lib/products";
 import { diffFields, recordChangeLog } from "@/lib/customer-change-log";
@@ -29,18 +31,22 @@ export async function POST(request: Request, { params }: RouteParams) {
   const parsed = addSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("id, customer_id, type, payment_method, parent_order_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (orderError) return NextResponse.json({ error: orderError.message }, { status: 500 });
+  const db = await getDb();
+  let order;
+  try {
+    [order] = await db
+      .select({ id: orders.id, customerId: orders.customerId, type: orders.type, paymentMethod: orders.paymentMethod, parentOrderId: orders.parentOrderId })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   if (!order) return NextResponse.json({ error: "order not found" }, { status: 404 });
-  if (order.type !== "subscription" || order.parent_order_id) {
+  if (order.type !== "subscription" || order.parentOrderId) {
     return NextResponse.json({ error: "定期の親注文(初回)に対してのみ追加できます" }, { status: 400 });
   }
-  if (order.payment_method === "stripe") {
+  if (order.paymentMethod === "stripe") {
     return NextResponse.json(
       { error: "Stripeの定期購入への商品追加には対応していません" },
       { status: 400 },
@@ -50,29 +56,36 @@ export async function POST(request: Request, { params }: RouteParams) {
   const product = await getProductById(parsed.data.productId);
   if (!product) return NextResponse.json({ error: "product not found" }, { status: 404 });
 
-  const { data: subscriptionRow, error: subError } = await supabase
-    .from("subscriptions")
-    .select("id")
-    .eq("order_id", order.id)
-    .maybeSingle();
-  if (subError) return NextResponse.json({ error: subError.message }, { status: 500 });
+  let subscriptionRow;
+  try {
+    [subscriptionRow] = await db
+      .select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(eq(subscriptions.orderId, order.id))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   if (!subscriptionRow) return NextResponse.json({ error: "subscription not found" }, { status: 404 });
 
-  const { data: item, error: insertError } = await supabase
-    .from("subscription_items")
-    .insert({
-      subscription_id: subscriptionRow.id,
-      product_id: parsed.data.productId,
-      quantity: parsed.data.quantity,
-      unit_amount: parsed.data.unitAmount,
-      created_by: roleCheck.user.id,
-    })
-    .select("id")
-    .single();
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+  let item;
+  try {
+    [item] = await db
+      .insert(subscriptionItems)
+      .values({
+        subscriptionId: subscriptionRow.id,
+        productId: parsed.data.productId,
+        quantity: parsed.data.quantity,
+        unitAmount: parsed.data.unitAmount,
+        createdBy: roleCheck.user.id,
+      })
+      .returning({ id: subscriptionItems.id });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
-  await recordChangeLog(supabase, {
-    customerId: order.customer_id,
+  await recordChangeLog(db, {
+    customerId: order.customerId,
     subscriptionId: subscriptionRow.id,
     action: "subscription_item_add",
     changes: diffFields([
@@ -99,41 +112,57 @@ export async function DELETE(request: Request, { params }: RouteParams) {
   const parsed = removeSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const supabase = createSupabaseAdminClient();
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("id, customer_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (orderError) return NextResponse.json({ error: orderError.message }, { status: 500 });
+  const db = await getDb();
+  let order;
+  try {
+    [order] = await db
+      .select({ id: orders.id, customerId: orders.customerId })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   if (!order) return NextResponse.json({ error: "order not found" }, { status: 404 });
 
-  const { data: item, error: itemError } = await supabase
-    .from("subscription_items")
-    .select("id, subscription_id, product_id, quantity, unit_amount, subscriptions!inner(order_id)")
-    .eq("id", parsed.data.subscriptionItemId)
-    .maybeSingle();
-  if (itemError) return NextResponse.json({ error: itemError.message }, { status: 500 });
-  if (!item || (item.subscriptions as unknown as { order_id: string }).order_id !== order.id) {
+  let item;
+  try {
+    [item] = await db
+      .select({
+        id: subscriptionItems.id,
+        subscriptionId: subscriptionItems.subscriptionId,
+        productId: subscriptionItems.productId,
+        quantity: subscriptionItems.quantity,
+        unitAmount: subscriptionItems.unitAmount,
+        subscriptionOrderId: subscriptions.orderId,
+      })
+      .from(subscriptionItems)
+      .innerJoin(subscriptions, eq(subscriptionItems.subscriptionId, subscriptions.id))
+      .where(eq(subscriptionItems.id, parsed.data.subscriptionItemId))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+  if (!item || item.subscriptionOrderId !== order.id) {
     return NextResponse.json({ error: "subscription item not found" }, { status: 404 });
   }
 
-  const { error: updateError } = await supabase
-    .from("subscription_items")
-    .update({ removed_at: new Date().toISOString() })
-    .eq("id", item.id);
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  try {
+    await db.update(subscriptionItems).set({ removedAt: new Date().toISOString() }).where(eq(subscriptionItems.id, item.id));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
-  const product = await getProductById(item.product_id);
-  await recordChangeLog(supabase, {
-    customerId: order.customer_id,
-    subscriptionId: item.subscription_id,
+  const product = await getProductById(item.productId);
+  await recordChangeLog(db, {
+    customerId: order.customerId,
+    subscriptionId: item.subscriptionId,
     action: "subscription_item_remove",
     changes: diffFields([
       {
         field: "subscriptionItem",
         label: "同梱商品終了",
-        before: `${product?.name ?? item.product_id} × ${item.quantity}(¥${item.unit_amount})`,
+        before: `${product?.name ?? item.productId} × ${item.quantity}(¥${item.unitAmount})`,
         after: null,
       },
     ]),

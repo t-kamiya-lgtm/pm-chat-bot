@@ -1,7 +1,7 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc } from "drizzle-orm";
+import { bundleInsertItems, bundleInsertSets, brands } from "@/db/schema";
 import { countDistributedOrders } from "@/lib/bundle-insert-distribution";
-
-type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
+import type { Db } from "@/lib/db";
 
 export interface BundleInsertSetWithDetails {
   id: string;
@@ -27,37 +27,44 @@ export interface BundleInsertSetWithDetails {
  * ②同梱物設定の両方の画面で使う共通ロジック。
  */
 export async function listBundleInsertSetsWithDetails(
-  supabase: SupabaseAdminClient,
+  db: Db,
 ): Promise<{ sets: BundleInsertSetWithDetails[]; error: string | null }> {
-  const [setsRes, brandsRes, itemsRes] = await Promise.all([
-    supabase.from("bundle_insert_sets").select("*").order("period_start", { ascending: false }),
-    supabase.from("brands").select("id, name, code"),
-    supabase.from("bundle_insert_items").select("id, name, item_type"),
+  const [setRows, brandRows, itemRows] = await Promise.all([
+    db.select().from(bundleInsertSets).orderBy(desc(bundleInsertSets.periodStart)),
+    db.select({ id: brands.id, name: brands.name, code: brands.code }).from(brands),
+    db.select({ id: bundleInsertItems.id, name: bundleInsertItems.name, item_type: bundleInsertItems.itemType }).from(bundleInsertItems),
   ]);
-  const error = setsRes.error?.message ?? brandsRes.error?.message ?? itemsRes.error?.message ?? null;
-  if (error) return { sets: [], error };
 
-  const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
-  const itemById = new Map((itemsRes.data ?? []).map((i) => [i.id as string, i]));
+  const brandById = new Map(brandRows.map((b) => [b.id, b]));
+  const itemById = new Map(itemRows.map((i) => [i.id, i]));
 
   const sets = await Promise.all(
-    (setsRes.data ?? []).map(async (set) => {
-      const distributedCount = await countDistributedOrders(supabase, {
-        brandId: set.brand_id as string,
-        periodStart: set.period_start as string,
-        periodEnd: set.period_end as string | null,
-        targetOrderType: set.target_order_type as "subscription" | "one_time" | "both",
-        targetCycleNumbers: set.target_cycle_numbers as number[] | null,
-        targetProductIds: set.target_product_ids as string[] | null,
+    setRows.map(async (set) => {
+      const distributedCount = await countDistributedOrders(db, {
+        brandId: set.brandId,
+        periodStart: set.periodStart,
+        periodEnd: set.periodEnd,
+        targetOrderType: set.targetOrderType as "subscription" | "one_time" | "both",
+        targetCycleNumbers: set.targetCycleNumbers,
+        targetProductIds: set.targetProductIds,
       });
       return {
-        ...set,
-        brands: brandById.get(set.brand_id as string) ?? null,
-        items: ((set.item_ids as string[] | null) ?? [])
-          .map((id) => itemById.get(id))
-          .filter((i): i is NonNullable<typeof i> => Boolean(i)),
+        id: set.id,
+        brand_id: set.brandId,
+        name: set.name,
+        insert_label: set.insertLabel,
+        period_start: set.periodStart,
+        period_end: set.periodEnd,
+        target_order_type: set.targetOrderType as BundleInsertSetWithDetails["target_order_type"],
+        target_cycle_numbers: set.targetCycleNumbers,
+        target_product_ids: set.targetProductIds,
+        item_ids: set.itemIds,
+        description: set.description,
+        status: set.status as BundleInsertSetWithDetails["status"],
+        brands: brandById.get(set.brandId) ?? null,
+        items: (set.itemIds ?? []).map((id) => itemById.get(id)).filter((i): i is NonNullable<typeof i> => Boolean(i)),
         distributedCount,
-      } as BundleInsertSetWithDetails;
+      } satisfies BundleInsertSetWithDetails;
     }),
   );
 

@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc, eq, isNull } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customerRetentionActions, customerViewLogs, customers, orders, retentionCampaignTypes, subscriptionItems } from "@/db/schema";
 import { maskEmail, maskPhone, maskAddress } from "@/lib/mask";
 import { getCustomerChangeLogs, type CustomerChangeLogRow } from "@/lib/customer-change-log";
 import { resolveCustomerBrandId } from "@/lib/brand-resolution";
@@ -131,46 +133,76 @@ export async function getCustomerDetail(
   customerId: string,
   viewer: { role: UserRole; email: string },
 ): Promise<CustomerDetailResult | null> {
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   const isAdmin = viewer.role === "admin";
 
-  const { data: customer } = await supabase.from("customers").select("*").eq("id", customerId).maybeSingle();
+  const [customer] = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
   if (!customer) return null;
 
-  const { data: orders } = await supabase
-    .from("orders")
-    .select(
-      `*, products!orders_product_id_fkey(name, smaregi_product_id),
-       subscriptions(
-         id, status, next_billing_date, interval,
-         override_product_id, override_quantity, override_amount, override_payment_method,
-         override_product:products!subscriptions_override_product_id_fkey(name, smaregi_product_id),
-         subscription_items(id, product_id, quantity, unit_amount, added_at, removed_at, products(name, smaregi_product_id))
-       )`,
-    )
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false });
-
-  await supabase.from("customer_view_logs").insert({
-    customer_id: customerId,
-    viewed_by_email: viewer.email,
+  const orderRows = await db.query.orders.findMany({
+    where: eq(orders.customerId, customerId),
+    orderBy: [desc(orders.createdAt)],
+    with: {
+      product_productId: { columns: { name: true, smaregiProductId: true } },
+      subscriptions: {
+        with: {
+          product: { columns: { name: true, smaregiProductId: true } },
+          subscriptionItems: {
+            where: isNull(subscriptionItems.removedAt),
+            with: { product: { columns: { name: true, smaregiProductId: true } } },
+          },
+        },
+      },
+    },
   });
 
-  const changeLogs = await getCustomerChangeLogs(supabase, customerId, isAdmin);
+  await db.insert(customerViewLogs).values({ customerId, viewedByEmail: viewer.email });
 
-  const rows = (orders ?? []) as unknown as (CustomerDetailOrder & {
-    subscriptions: (CustomerDetailSubscription & { subscription_items: (CustomerDetailSubscriptionItem & { removed_at: string | null })[] })[] | null;
-  })[];
+  const changeLogs = await getCustomerChangeLogs(db, customerId, isAdmin);
 
-  for (const row of rows) {
-    if (row.subscriptions) {
-      for (const sub of row.subscriptions) {
-        sub.items = (sub as unknown as { subscription_items: (CustomerDetailSubscriptionItem & { removed_at: string | null })[] }).subscription_items.filter(
-          (item) => !item.removed_at,
-        );
-      }
-    }
-  }
+  const rows: CustomerDetailOrder[] = orderRows.map((row) => ({
+    id: row.id,
+    order_number: row.orderNumber,
+    type: row.type,
+    payment_method: row.paymentMethod,
+    amount: row.amount,
+    addon_amount: row.addonAmount,
+    discount_amount: row.discountAmount,
+    first_time_discount_amount: row.firstTimeDiscountAmount,
+    shipping_fee: row.shippingFee,
+    payment_fee: row.paymentFee,
+    quantity: row.quantity,
+    status: row.status,
+    created_at: row.createdAt,
+    delivery_date: row.deliveryDate,
+    delivery_time_slot: row.deliveryTimeSlot,
+    shipping_address: row.shippingAddress as ShippingAddress | null,
+    survey_responses: row.surveyResponses as Record<string, string> | null,
+    parent_order_id: row.parentOrderId,
+    billing_cycle_number: row.billingCycleNumber,
+    subscription_item_id: row.subscriptionItemId,
+    stripe_subscription_id: row.stripeSubscriptionId,
+    products: row.product_productId ? { name: row.product_productId.name, smaregi_product_id: row.product_productId.smaregiProductId } : null,
+    subscriptions: row.subscriptions.map((sub) => ({
+      id: sub.id,
+      status: sub.status,
+      next_billing_date: sub.nextBillingDate,
+      interval: sub.interval,
+      override_product_id: sub.overrideProductId,
+      override_quantity: sub.overrideQuantity,
+      override_amount: sub.overrideAmount,
+      override_payment_method: sub.overridePaymentMethod,
+      override_product: sub.product ? { name: sub.product.name, smaregi_product_id: sub.product.smaregiProductId } : null,
+      items: sub.subscriptionItems.map((item) => ({
+        id: item.id,
+        product_id: item.productId,
+        quantity: item.quantity,
+        unit_amount: item.unitAmount,
+        added_at: item.addedAt,
+        products: item.product ? { name: item.product.name, smaregi_product_id: item.product.smaregiProductId } : null,
+      })),
+    })),
+  }));
 
   const subscriptionRootOrders = rows.filter((o) => o.type === "subscription" && !o.parent_order_id);
   let tenureMonths: number | null = null;
@@ -186,52 +218,44 @@ export async function getCustomerDetail(
 
   const address = customer.address as Address | null;
 
-  const brandId = await resolveCustomerBrandId(supabase, customerId);
+  const brandId = await resolveCustomerBrandId(db, customerId);
 
   const availableCampaignTypes: CustomerRetentionCampaignType[] = [];
   if (brandId) {
-    const { data: campaignTypes } = await supabase
-      .from("retention_campaign_types")
-      .select("id, title, description")
-      .eq("brand_id", brandId)
-      .order("created_at", { ascending: true });
-    availableCampaignTypes.push(...((campaignTypes ?? []) as CustomerRetentionCampaignType[]));
+    const campaignTypes = await db
+      .select({ id: retentionCampaignTypes.id, title: retentionCampaignTypes.title, description: retentionCampaignTypes.description })
+      .from(retentionCampaignTypes)
+      .where(eq(retentionCampaignTypes.brandId, brandId))
+      .orderBy(retentionCampaignTypes.createdAt);
+    availableCampaignTypes.push(...campaignTypes);
   }
 
-  const { data: retentionActionRows } = await supabase
-    .from("customer_retention_actions")
-    .select("id, campaign_type_id, performed_month, subscription_id, detail, created_at, retention_campaign_types(title)")
-    .eq("customer_id", customerId)
-    .order("performed_month", { ascending: false });
+  const retentionActionRows = await db.query.customerRetentionActions.findMany({
+    where: eq(customerRetentionActions.customerId, customerId),
+    orderBy: [desc(customerRetentionActions.performedMonth)],
+    with: { retentionCampaignType: { columns: { title: true } } },
+  });
 
-  const retentionActions: CustomerRetentionAction[] = ((retentionActionRows ?? []) as unknown as {
-    id: string;
-    campaign_type_id: string;
-    performed_month: string;
-    subscription_id: string | null;
-    detail: string | null;
-    created_at: string;
-    retention_campaign_types: { title: string } | null;
-  }[]).map((row) => ({
+  const retentionActions: CustomerRetentionAction[] = retentionActionRows.map((row) => ({
     id: row.id,
-    campaignTypeId: row.campaign_type_id,
-    campaignTitle: row.retention_campaign_types?.title ?? "(削除された施策)",
-    performedMonth: row.performed_month,
-    subscriptionId: row.subscription_id,
+    campaignTypeId: row.campaignTypeId,
+    campaignTitle: row.retentionCampaignType?.title ?? "(削除された施策)",
+    performedMonth: row.performedMonth,
+    subscriptionId: row.subscriptionId,
     detail: row.detail,
-    createdAt: row.created_at,
+    createdAt: row.createdAt,
   }));
 
   return {
     customer: {
       id: customer.id,
-      customerNumber: customer.customer_number,
+      customerNumber: customer.customerNumber,
       name: customer.name,
-      nameKana: customer.name_kana,
+      nameKana: customer.nameKana,
       email: isAdmin ? customer.email : maskEmail(customer.email),
       phone: customer.phone ? (isAdmin ? customer.phone : maskPhone(customer.phone)) : null,
       address: isAdmin ? address : maskAddress(address),
-      createdAt: customer.created_at,
+      createdAt: customer.createdAt,
       isMasked: !isAdmin,
     },
     orders: rows,

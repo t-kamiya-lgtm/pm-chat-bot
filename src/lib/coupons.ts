@@ -1,10 +1,14 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { sql, eq, and, asc } from "drizzle-orm";
+import { coupons } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
 export interface AppliedCoupon {
   id: string;
   code: string | null;
   discountAmount: number;
 }
+
+type CouponRow = typeof coupons.$inferSelect;
 
 /**
  * 適用可能なクーポンを解決する。
@@ -18,7 +22,7 @@ export interface AppliedCoupon {
  * (対象外の商品との合計買いで金額条件を満たしても適用される)。
  */
 export async function resolveApplicableCoupon(
-  supabase: SupabaseClient,
+  db: Db,
   {
     scenarioId,
     code,
@@ -34,25 +38,23 @@ export async function resolveApplicableCoupon(
 ): Promise<AppliedCoupon | null> {
   const trimmedCode = code?.trim();
   if (trimmedCode) {
-    const { data: manual } = await supabase
-      .from("coupons")
-      .select("*")
-      .eq("type", "manual_code")
-      .eq("code", trimmedCode)
-      .maybeSingle();
+    const [manual] = await db
+      .select()
+      .from(coupons)
+      .where(and(eq(coupons.type, "manual_code"), eq(coupons.code, trimmedCode)))
+      .limit(1);
     if (manual && isCouponUsable(manual, subtotal, cartProductIds)) {
       return { id: manual.id, code: manual.code, discountAmount: computeDiscount(manual, subtotal) };
     }
   }
 
   if (scenarioId) {
-    const { data: autoCoupons } = await supabase
-      .from("coupons")
-      .select("*")
-      .eq("type", "scenario_auto")
-      .eq("scenario_id", scenarioId)
-      .order("created_at", { ascending: true });
-    const applicable = (autoCoupons ?? []).find((c) => isCouponUsable(c, subtotal, cartProductIds));
+    const autoCoupons = await db
+      .select()
+      .from(coupons)
+      .where(and(eq(coupons.type, "scenario_auto"), eq(coupons.scenarioId, scenarioId)))
+      .orderBy(asc(coupons.createdAt));
+    const applicable = autoCoupons.find((c) => isCouponUsable(c, subtotal, cartProductIds));
     if (applicable) {
       return { id: applicable.id, code: null, discountAmount: computeDiscount(applicable, subtotal) };
     }
@@ -61,15 +63,14 @@ export async function resolveApplicableCoupon(
   return null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isCouponUsable(coupon: any, subtotal: number, cartProductIds?: string[]): boolean {
-  if (!coupon.is_active) return false;
+function isCouponUsable(coupon: CouponRow, subtotal: number, cartProductIds?: string[]): boolean {
+  if (!coupon.isActive) return false;
   const now = new Date();
-  if (coupon.starts_at && new Date(coupon.starts_at) > now) return false;
-  if (coupon.ends_at && new Date(coupon.ends_at) < now) return false;
-  if (coupon.max_uses !== null && coupon.used_count >= coupon.max_uses) return false;
-  if (coupon.min_order_amount !== null && subtotal < coupon.min_order_amount) return false;
-  const targetProductIds = coupon.target_product_ids as string[] | null;
+  if (coupon.startsAt && new Date(coupon.startsAt) > now) return false;
+  if (coupon.endsAt && new Date(coupon.endsAt) < now) return false;
+  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) return false;
+  if (coupon.minOrderAmount !== null && subtotal < coupon.minOrderAmount) return false;
+  const targetProductIds = coupon.targetProductIds;
   if (targetProductIds && targetProductIds.length > 0) {
     const inCart = cartProductIds ?? [];
     if (!targetProductIds.some((id) => inCart.includes(id))) return false;
@@ -77,15 +78,12 @@ function isCouponUsable(coupon: any, subtotal: number, cartProductIds?: string[]
   return true;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function computeDiscount(coupon: any, subtotal: number): number {
+function computeDiscount(coupon: CouponRow, subtotal: number): number {
   const raw =
-    coupon.discount_type === "percent"
-      ? Math.round((subtotal * coupon.discount_value) / 100)
-      : coupon.discount_value;
+    coupon.discountType === "percent" ? Math.round((subtotal * coupon.discountValue) / 100) : coupon.discountValue;
   return Math.max(0, Math.min(raw, subtotal));
 }
 
-export async function recordCouponUsage(supabase: SupabaseClient, couponId: string): Promise<void> {
-  await supabase.rpc("increment_coupon_usage", { p_coupon_id: couponId });
+export async function recordCouponUsage(db: Db, couponId: string): Promise<void> {
+  await db.execute(sql`select increment_coupon_usage(${couponId})`);
 }

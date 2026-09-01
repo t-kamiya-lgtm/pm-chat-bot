@@ -1,5 +1,6 @@
 import { getCustomerSummaries, type SmaregiFilter, type SubscriptionStatusFilter } from "@/lib/customer-summaries";
 import { CustomersTable } from "@/components/admin/CustomersTable";
+import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,8 @@ export default async function AdminCustomersPage({
   let customers: Awaited<ReturnType<typeof getCustomerSummaries>> = [];
   let loadError: string | null = null;
   try {
-    customers = await getCustomerSummaries({ q, subscriptionStatus, smaregiFilter });
+    const db = await getDb();
+    customers = await getCustomerSummaries(db, { q, subscriptionStatus, smaregiFilter });
   } catch (err) {
     loadError = err instanceof Error ? err.message : String(err);
     console.error("[admin/customers] failed to load customer summaries", err);

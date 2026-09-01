@@ -1,62 +1,65 @@
 import { notFound } from "next/navigation";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { checkoutFieldOrder, coupons, products, scenarioMenuItems, scenarioNodes, scenarios } from "@/db/schema";
 import { ScenarioEditor } from "@/components/admin/ScenarioEditor";
 import { DEFAULT_CHECKOUT_FIELD_ORDER, mergeCheckoutFieldOrder, type CheckoutFieldKey } from "@/lib/checkout-fields";
-import type { Coupon, MenuItemActionType, ScenarioMenuItem, ScenarioNode } from "@/lib/types";
+import type {
+  Coupon,
+  MenuItemActionType,
+  Scenario,
+  ScenarioMenuItem,
+  ScenarioNode,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function extractGroupName(value: unknown): string | null {
-  const row = Array.isArray(value) ? value[0] : value;
-  return (row as { name?: string } | null)?.name ?? null;
-}
-
-function mapMenuItemRow(row: Record<string, unknown>): ScenarioMenuItem {
+function mapMenuItemRow(row: typeof scenarioMenuItems.$inferSelect): ScenarioMenuItem {
   return {
-    id: row.id as string,
-    scenarioId: row.scenario_id as string,
-    label: row.label as string,
-    actionType: row.action_type as MenuItemActionType,
-    targetNodeId: (row.target_node_id as string | null) ?? null,
-    url: (row.url as string | null) ?? null,
-    displayOrder: (row.display_order as number | null) ?? 0,
+    id: row.id,
+    scenarioId: row.scenarioId,
+    label: row.label,
+    actionType: row.actionType as MenuItemActionType,
+    targetNodeId: row.targetNodeId,
+    url: row.url,
+    displayOrder: row.displayOrder ?? 0,
   };
 }
 
-function mapCouponRow(row: Record<string, unknown>): Coupon {
+function mapCouponRow(row: typeof coupons.$inferSelect): Coupon {
   return {
-    id: row.id as string,
+    id: row.id,
     type: row.type as Coupon["type"],
-    scenarioId: (row.scenario_id as string | null) ?? null,
-    code: (row.code as string | null) ?? null,
-    name: row.name as string,
-    discountType: row.discount_type as Coupon["discountType"],
-    discountValue: row.discount_value as number,
-    startsAt: (row.starts_at as string | null) ?? null,
-    endsAt: (row.ends_at as string | null) ?? null,
-    maxUses: (row.max_uses as number | null) ?? null,
-    usedCount: row.used_count as number,
-    minOrderAmount: (row.min_order_amount as number | null) ?? null,
-    isActive: row.is_active as boolean,
-    imageUrl: (row.image_url as string | null) ?? null,
-    promoMessage: (row.promo_message as string | null) ?? null,
-    targetProductIds: (row.target_product_ids as string[] | null) ?? null,
-    createdAt: row.created_at as string,
-    updatedAt: row.updated_at as string,
+    scenarioId: row.scenarioId,
+    code: row.code,
+    name: row.name,
+    discountType: row.discountType as Coupon["discountType"],
+    discountValue: row.discountValue,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    maxUses: row.maxUses,
+    usedCount: row.usedCount,
+    minOrderAmount: row.minOrderAmount,
+    isActive: row.isActive,
+    imageUrl: row.imageUrl,
+    promoMessage: row.promoMessage,
+    targetProductIds: row.targetProductIds,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
-function mapNodeRow(row: Record<string, unknown>): ScenarioNode {
+function mapNodeRow(row: typeof scenarioNodes.$inferSelect): ScenarioNode {
   return {
-    id: row.id as string,
-    scenarioId: row.scenario_id as string,
+    id: row.id,
+    scenarioId: row.scenarioId,
     type: row.type as ScenarioNode["type"],
     content: row.content as Record<string, unknown>,
-    nextNodeMap: row.next_node_map as Record<string, string>,
-    isEntry: row.is_entry as boolean,
-    displayOrder: (row.display_order as number | null) ?? 0,
-    memo: (row.memo as string | null) ?? null,
-    createdAt: row.created_at as string,
+    nextNodeMap: row.nextNodeMap as Record<string, string>,
+    isEntry: row.isEntry,
+    displayOrder: row.displayOrder ?? 0,
+    memo: row.memo,
+    createdAt: row.createdAt,
   };
 }
 
@@ -66,103 +69,126 @@ export default async function ScenarioEditorPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
-  const [
-    { data: scenario },
-    { data: nodes },
-    { data: products, error: productsError },
-    { data: menuItems },
-    { data: coupons },
-    { data: checkoutFieldOrderRows },
-  ] = await Promise.all([
-    supabase.from("scenarios").select("*").eq("id", id).maybeSingle(),
-    supabase.from("scenario_nodes").select("*").eq("scenario_id", id).order("display_order"),
-    supabase
-      .from("products")
-      .select("id, name, price, order_type, image_url, product_group_id, product_groups(name)")
-      .order("created_at", { ascending: false }),
-    supabase.from("scenario_menu_items").select("*").eq("scenario_id", id).order("display_order"),
-    supabase
-      .from("coupons")
-      .select("*")
-      .eq("scenario_id", id)
-      .eq("type", "scenario_auto")
-      .order("created_at", { ascending: true })
-      .limit(1),
-    supabase
-      .from("checkout_field_order")
-      .select("field_key")
-      .eq("scenario_id", id)
-      .order("display_order", { ascending: true }),
-  ]);
+  const [scenarioResult, nodesResult, productsResult, menuItemsResult, couponsResult, checkoutFieldOrderResult] =
+    await Promise.allSettled([
+      db.select().from(scenarios).where(eq(scenarios.id, id)).limit(1),
+      db
+        .select()
+        .from(scenarioNodes)
+        .where(eq(scenarioNodes.scenarioId, id))
+        .orderBy(asc(scenarioNodes.displayOrder)),
+      db.query.products.findMany({
+        columns: {
+          id: true,
+          name: true,
+          price: true,
+          orderType: true,
+          imageUrl: true,
+          productGroupId: true,
+        },
+        orderBy: [desc(products.createdAt)],
+        with: { productGroup: { columns: { name: true } } },
+      }),
+      db
+        .select()
+        .from(scenarioMenuItems)
+        .where(eq(scenarioMenuItems.scenarioId, id))
+        .orderBy(asc(scenarioMenuItems.displayOrder)),
+      db
+        .select()
+        .from(coupons)
+        .where(and(eq(coupons.scenarioId, id), eq(coupons.type, "scenario_auto")))
+        .orderBy(asc(coupons.createdAt))
+        .limit(1),
+      db
+        .select({ fieldKey: checkoutFieldOrder.fieldKey })
+        .from(checkoutFieldOrder)
+        .where(eq(checkoutFieldOrder.scenarioId, id))
+        .orderBy(asc(checkoutFieldOrder.displayOrder)),
+    ]);
 
+  const scenario = scenarioResult.status === "fulfilled" ? scenarioResult.value[0] : undefined;
   if (!scenario) notFound();
 
-  const checkoutFieldOrder =
-    checkoutFieldOrderRows && checkoutFieldOrderRows.length > 0
-      ? mergeCheckoutFieldOrder(checkoutFieldOrderRows.map((row) => row.field_key as CheckoutFieldKey))
+  const nodeRows = nodesResult.status === "fulfilled" ? nodesResult.value : [];
+  const productRows = productsResult.status === "fulfilled" ? productsResult.value : [];
+  const productsError =
+    productsResult.status === "rejected"
+      ? productsResult.reason instanceof Error
+        ? productsResult.reason.message
+        : String(productsResult.reason)
+      : null;
+  const menuItemRows = menuItemsResult.status === "fulfilled" ? menuItemsResult.value : [];
+  const couponRows = couponsResult.status === "fulfilled" ? couponsResult.value : [];
+  const checkoutFieldOrderRows =
+    checkoutFieldOrderResult.status === "fulfilled" ? checkoutFieldOrderResult.value : [];
+
+  const checkoutFieldOrderValue =
+    checkoutFieldOrderRows.length > 0
+      ? mergeCheckoutFieldOrder(checkoutFieldOrderRows.map((row) => row.fieldKey as CheckoutFieldKey))
       : DEFAULT_CHECKOUT_FIELD_ORDER;
 
   return (
     <div>
       {productsError && (
         <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          品番一覧の取得に失敗しました({productsError.message})。品番の選択・アップセル/クロスセルの設定ができません。
+          品番一覧の取得に失敗しました({productsError})。品番の選択・アップセル/クロスセルの設定ができません。
         </p>
       )}
       <ScenarioEditor
         scenario={{
           id: scenario.id,
           name: scenario.name,
-          status: scenario.status,
+          status: scenario.status as Scenario["status"],
           slug: scenario.slug,
-          orderCode: scenario.order_code,
-          chatBackgroundColor: scenario.chat_background_color,
-          menuBackgroundColor: scenario.menu_background_color,
-          menuTextColor: scenario.menu_text_color,
-          messageBackgroundColor: scenario.message_background_color,
-          messageTextColor: scenario.message_text_color,
-          userMessageBackgroundColor: scenario.user_message_background_color,
-          userMessageTextColor: scenario.user_message_text_color,
-          headerMode: scenario.header_mode,
-          headerImageUrl: scenario.header_image_url,
-          headerTitle: scenario.header_title,
-          headerBackgroundColor: scenario.header_background_color,
-          headerTextColor: scenario.header_text_color,
-          adTag: scenario.ad_tag,
-          conversionTag: scenario.conversion_tag,
-          emailFromAddress: scenario.email_from_address,
-          inquiryReceiveEmail: scenario.inquiry_receive_email,
-          inquiryAutoReplyFrom: scenario.inquiry_auto_reply_from,
-          orderConfirmationFrom: scenario.order_confirmation_from,
-          abandonedReminderFrom: scenario.abandoned_reminder_from,
-          cancellationFrom: scenario.cancellation_from,
-          shipmentCompleteFrom: scenario.shipment_complete_from,
-          popupIconUrl: scenario.popup_icon_url,
-          popupPosition: scenario.popup_position,
-          popupButtonText: scenario.popup_button_text,
-          couponCodeFieldEnabled: scenario.coupon_code_field_enabled,
-          menuLayoutKey: scenario.menu_layout_key ?? "row-3",
-          menuImageUrl: scenario.menu_image_url,
+          orderCode: scenario.orderCode,
+          chatBackgroundColor: scenario.chatBackgroundColor,
+          menuBackgroundColor: scenario.menuBackgroundColor,
+          menuTextColor: scenario.menuTextColor as Scenario["menuTextColor"],
+          messageBackgroundColor: scenario.messageBackgroundColor,
+          messageTextColor: scenario.messageTextColor as Scenario["messageTextColor"],
+          userMessageBackgroundColor: scenario.userMessageBackgroundColor,
+          userMessageTextColor: scenario.userMessageTextColor as Scenario["userMessageTextColor"],
+          headerMode: scenario.headerMode as Scenario["headerMode"],
+          headerImageUrl: scenario.headerImageUrl,
+          headerTitle: scenario.headerTitle,
+          headerBackgroundColor: scenario.headerBackgroundColor,
+          headerTextColor: scenario.headerTextColor as Scenario["headerTextColor"],
+          adTag: scenario.adTag,
+          conversionTag: scenario.conversionTag,
+          emailFromAddress: scenario.emailFromAddress,
+          inquiryReceiveEmail: scenario.inquiryReceiveEmail,
+          inquiryAutoReplyFrom: scenario.inquiryAutoReplyFrom,
+          orderConfirmationFrom: scenario.orderConfirmationFrom,
+          abandonedReminderFrom: scenario.abandonedReminderFrom,
+          cancellationFrom: scenario.cancellationFrom,
+          shipmentCompleteFrom: scenario.shipmentCompleteFrom,
+          popupIconUrl: scenario.popupIconUrl,
+          popupPosition: scenario.popupPosition as Scenario["popupPosition"],
+          popupButtonText: scenario.popupButtonText,
+          couponCodeFieldEnabled: scenario.couponCodeFieldEnabled,
+          menuLayoutKey: scenario.menuLayoutKey ?? "row-3",
+          menuImageUrl: scenario.menuImageUrl,
           version: scenario.version,
-          createdBy: scenario.created_by,
-          createdAt: scenario.created_at,
-          updatedAt: scenario.updated_at,
+          createdBy: scenario.createdBy,
+          createdAt: scenario.createdAt,
+          updatedAt: scenario.updatedAt,
         }}
-        nodes={(nodes ?? []).map(mapNodeRow)}
-        products={(products ?? []).map((p) => ({
-          id: p.id as string,
-          name: p.name as string,
-          price: p.price as number,
-          orderType: p.order_type as "one_time" | "subscription",
-          imageUrl: (p.image_url as string | null) ?? null,
-          productGroupId: p.product_group_id as string | null,
-          productGroupName: extractGroupName(p.product_groups),
+        nodes={nodeRows.map(mapNodeRow)}
+        products={productRows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          orderType: p.orderType as "one_time" | "subscription",
+          imageUrl: p.imageUrl,
+          productGroupId: p.productGroupId,
+          productGroupName: p.productGroup?.name ?? null,
         }))}
-        menuItems={(menuItems ?? []).map(mapMenuItemRow)}
-        coupon={coupons && coupons.length > 0 ? mapCouponRow(coupons[0]) : null}
-        checkoutFieldOrder={checkoutFieldOrder}
+        menuItems={menuItemRows.map(mapMenuItemRow)}
+        coupon={couponRows.length > 0 ? mapCouponRow(couponRows[0]) : null}
+        checkoutFieldOrder={checkoutFieldOrderValue}
       />
     </div>
   );

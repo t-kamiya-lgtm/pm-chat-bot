@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { desc } from "drizzle-orm";
 import { requireAdminRole } from "@/lib/require-role";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { smaregiSyncLogs } from "@/db/schema";
 
 /**
  * 【調査用・一時的なエンドポイント】スマレジ連携の実行結果(smaregi_sync_logs)を直近分だけ確認する。
@@ -10,13 +12,23 @@ export async function GET() {
   const roleCheck = await requireAdminRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("smaregi_sync_logs")
-    .select("id, order_id, status, error, payload, created_at")
-    .order("created_at", { ascending: false })
-    .limit(5);
+  try {
+    const db = await getDb();
+    const data = await db
+      .select({
+        id: smaregiSyncLogs.id,
+        order_id: smaregiSyncLogs.orderId,
+        status: smaregiSyncLogs.status,
+        error: smaregiSyncLogs.error,
+        payload: smaregiSyncLogs.payload,
+        created_at: smaregiSyncLogs.createdAt,
+      })
+      .from(smaregiSyncLogs)
+      .orderBy(desc(smaregiSyncLogs.createdAt))
+      .limit(5);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ logs: data });
+    return NextResponse.json({ logs: data });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

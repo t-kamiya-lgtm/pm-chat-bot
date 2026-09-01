@@ -1,26 +1,40 @@
 import Link from "next/link";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productFaqCategories, productFaqs, productGroups } from "@/db/schema";
 import { FaqReviewList } from "@/components/admin/FaqReviewList";
 import { NewFaqForm } from "@/components/admin/NewFaqForm";
 import type { ProductFaq } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function mapFaqRow(row: Record<string, unknown>): ProductFaq & { categoryTitle: string | null } {
-  const category = row.product_faq_categories as { title: string } | null;
+function mapFaqRow(row: {
+  id: string;
+  productGroupId: string | null;
+  categoryId: string | null;
+  productFaqCategory: { title: string } | null;
+  question: string;
+  answer: string;
+  status: string;
+  source: string;
+  generatedFromSpecId: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}): ProductFaq & { categoryTitle: string | null } {
   return {
-    id: row.id as string,
-    productGroupId: row.product_group_id as string,
-    categoryId: row.category_id as string | null,
-    categoryTitle: category?.title ?? null,
-    question: row.question as string,
-    answer: row.answer as string,
+    id: row.id,
+    productGroupId: row.productGroupId as string,
+    categoryId: row.categoryId,
+    categoryTitle: row.productFaqCategory?.title ?? null,
+    question: row.question,
+    answer: row.answer,
     status: row.status as ProductFaq["status"],
     source: row.source as ProductFaq["source"],
-    generatedFromSpecId: row.generated_from_spec_id as string | null,
-    reviewedBy: row.reviewed_by as string | null,
-    reviewedAt: row.reviewed_at as string | null,
-    createdAt: row.created_at as string,
+    generatedFromSpecId: row.generatedFromSpecId,
+    reviewedBy: row.reviewedBy,
+    reviewedAt: row.reviewedAt,
+    createdAt: row.createdAt,
   };
 }
 
@@ -30,17 +44,17 @@ export default async function AdminFaqsPage({
   searchParams: Promise<{ productGroupId?: string }>;
 }) {
   const { productGroupId } = await searchParams;
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
   if (!productGroupId) {
-    const [{ data: productGroups }, { data: allFaqs }] = await Promise.all([
-      supabase.from("product_groups").select("id, name").order("name"),
-      supabase.from("product_faqs").select("product_group_id, status"),
+    const [productGroupRows, allFaqs] = await Promise.all([
+      db.select({ id: productGroups.id, name: productGroups.name }).from(productGroups).orderBy(asc(productGroups.name)),
+      db.select({ productGroupId: productFaqs.productGroupId, status: productFaqs.status }).from(productFaqs),
     ]);
 
     const countsByGroup = new Map<string, { total: number; draft: number }>();
-    for (const faq of allFaqs ?? []) {
-      const groupId = faq.product_group_id as string | null;
+    for (const faq of allFaqs) {
+      const groupId = faq.productGroupId;
       if (!groupId) continue;
       const current = countsByGroup.get(groupId) ?? { total: 0, draft: 0 };
       current.total += 1;
@@ -55,8 +69,8 @@ export default async function AdminFaqsPage({
           アイテムを選択すると、そのアイテムのQA内容を表示・編集できます。
         </p>
         <div className="space-y-2">
-          {(productGroups ?? []).map((group) => {
-            const counts = countsByGroup.get(group.id as string) ?? { total: 0, draft: 0 };
+          {productGroupRows.map((group) => {
+            const counts = countsByGroup.get(group.id) ?? { total: 0, draft: 0 };
             return (
               <Link
                 key={group.id}
@@ -75,7 +89,7 @@ export default async function AdminFaqsPage({
               </Link>
             );
           })}
-          {!productGroups?.length && (
+          {!productGroupRows.length && (
             <p className="rounded-lg border border-dashed border-neutral-300 p-6 text-center text-neutral-400">
               アイテムが登録されていません
             </p>
@@ -85,20 +99,19 @@ export default async function AdminFaqsPage({
     );
   }
 
-  const [{ data: productGroup }, { data: faqs }, { data: categoryRows }] = await Promise.all([
-    supabase.from("product_groups").select("id, name").eq("id", productGroupId).maybeSingle(),
-    supabase
-      .from("product_faqs")
-      .select("*, product_faq_categories(title)")
-      .eq("product_group_id", productGroupId)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("product_faq_categories")
-      .select("id, title")
-      .eq("product_group_id", productGroupId)
-      .order("display_order", { ascending: true }),
+  const [[productGroup], faqs, categories] = await Promise.all([
+    db.select({ id: productGroups.id, name: productGroups.name }).from(productGroups).where(eq(productGroups.id, productGroupId)).limit(1),
+    db.query.productFaqs.findMany({
+      where: eq(productFaqs.productGroupId, productGroupId),
+      orderBy: desc(productFaqs.createdAt),
+      with: { productFaqCategory: { columns: { title: true } } },
+    }),
+    db
+      .select({ id: productFaqCategories.id, title: productFaqCategories.title })
+      .from(productFaqCategories)
+      .where(eq(productFaqCategories.productGroupId, productGroupId))
+      .orderBy(asc(productFaqCategories.displayOrder)),
   ]);
-  const categories = categoryRows ?? [];
 
   return (
     <div>
@@ -111,7 +124,7 @@ export default async function AdminFaqsPage({
       <div className="mb-4">
         <NewFaqForm productGroupId={productGroupId} categories={categories} />
       </div>
-      <FaqReviewList faqs={(faqs ?? []).map(mapFaqRow)} categories={categories} />
+      <FaqReviewList faqs={faqs.map(mapFaqRow)} categories={categories} />
     </div>
   );
 }

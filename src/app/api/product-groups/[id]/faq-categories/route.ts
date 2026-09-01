@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productFaqCategories } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -16,14 +18,17 @@ export async function GET(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_faq_categories")
-    .select("*")
-    .eq("product_group_id", id)
-    .order("display_order", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ categories: data });
+  try {
+    const db = await getDb();
+    const rows = await db
+      .select()
+      .from(productFaqCategories)
+      .where(eq(productFaqCategories.productGroupId, id))
+      .orderBy(asc(productFaqCategories.displayOrder));
+    return NextResponse.json({ categories: rows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
@@ -37,26 +42,27 @@ export async function POST(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  let displayOrder = parsed.data.displayOrder;
-  if (displayOrder === undefined) {
-    const { data: existing } = await supabase
-      .from("product_faq_categories")
-      .select("display_order")
-      .eq("product_group_id", id)
-      .order("display_order", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    displayOrder = (existing?.display_order ?? -1) + 1;
+    let displayOrder = parsed.data.displayOrder;
+    if (displayOrder === undefined) {
+      const [existing] = await db
+        .select({ displayOrder: productFaqCategories.displayOrder })
+        .from(productFaqCategories)
+        .where(eq(productFaqCategories.productGroupId, id))
+        .orderBy(desc(productFaqCategories.displayOrder))
+        .limit(1);
+      displayOrder = (existing?.displayOrder ?? -1) + 1;
+    }
+
+    const [row] = await db
+      .insert(productFaqCategories)
+      .values({ productGroupId: id, title: parsed.data.title, displayOrder })
+      .returning();
+
+    return NextResponse.json({ category: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from("product_faq_categories")
-    .insert({ product_group_id: id, title: parsed.data.title, display_order: displayOrder })
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ category: data }, { status: 201 });
 }

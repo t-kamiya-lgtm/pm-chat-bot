@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { scenarioNodes } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const nodeSchema = z.object({
@@ -24,32 +26,31 @@ export async function POST(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  const { data: lastNode } = await supabase
-    .from("scenario_nodes")
-    .select("display_order")
-    .eq("scenario_id", scenarioId)
-    .order("display_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const displayOrder = (lastNode?.display_order ?? -1) + 1;
+    const [lastNode] = await db
+      .select({ displayOrder: scenarioNodes.displayOrder })
+      .from(scenarioNodes)
+      .where(eq(scenarioNodes.scenarioId, scenarioId))
+      .orderBy(desc(scenarioNodes.displayOrder))
+      .limit(1);
+    const displayOrder = (lastNode?.displayOrder ?? -1) + 1;
 
-  const { data, error } = await supabase
-    .from("scenario_nodes")
-    .insert({
-      scenario_id: scenarioId,
-      type: input.type,
-      content: input.content,
-      next_node_map: input.nextNodeMap,
-      display_order: displayOrder,
-      memo: input.memo ?? null,
-    })
-    .select("*")
-    .single();
+    const [row] = await db
+      .insert(scenarioNodes)
+      .values({
+        scenarioId,
+        type: input.type,
+        content: input.content,
+        nextNodeMap: input.nextNodeMap,
+        displayOrder,
+        memo: input.memo ?? null,
+      })
+      .returning();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-
-  return NextResponse.json({ node: data }, { status: 201 });
+    return NextResponse.json({ node: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

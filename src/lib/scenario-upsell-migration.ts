@@ -1,6 +1,6 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
+import { and, eq } from "drizzle-orm";
+import { scenarioNodes } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
 interface ProductUpsellEntry {
   upsellProductId?: string;
@@ -28,16 +28,15 @@ interface CheckoutContent {
  * 商品提示ノード側に既に設定がある品番は上書きしない(管理画面で入力した内容を優先する)。
  */
 export async function migrateCheckoutUpsellToProductNodes(
-  supabase: SupabaseAdminClient,
+  db: Db,
   scenarioId: string,
   checkoutNodeId: string,
 ): Promise<void> {
-  const { data: checkoutNode } = await supabase
-    .from("scenario_nodes")
-    .select("id, type, content")
-    .eq("id", checkoutNodeId)
-    .eq("scenario_id", scenarioId)
-    .maybeSingle();
+  const [checkoutNode] = await db
+    .select({ id: scenarioNodes.id, type: scenarioNodes.type, content: scenarioNodes.content })
+    .from(scenarioNodes)
+    .where(and(eq(scenarioNodes.id, checkoutNodeId), eq(scenarioNodes.scenarioId, scenarioId)))
+    .limit(1);
 
   if (!checkoutNode || checkoutNode.type !== "checkout") return;
 
@@ -55,13 +54,12 @@ export async function migrateCheckoutUpsellToProductNodes(
     ...(content.crossSellComment && { crossSellComment: content.crossSellComment }),
   };
 
-  const { data: productNodes } = await supabase
-    .from("scenario_nodes")
-    .select("id, content")
-    .eq("scenario_id", scenarioId)
-    .eq("type", "product");
+  const productNodes = await db
+    .select({ id: scenarioNodes.id, content: scenarioNodes.content })
+    .from(scenarioNodes)
+    .where(and(eq(scenarioNodes.scenarioId, scenarioId), eq(scenarioNodes.type, "product")));
 
-  for (const node of productNodes ?? []) {
+  for (const node of productNodes) {
     const nodeContent = node.content as {
       productIds?: string[];
       productUpsell?: Record<string, ProductUpsellEntry>;
@@ -69,14 +67,14 @@ export async function migrateCheckoutUpsellToProductNodes(
     if (!Array.isArray(nodeContent.productIds) || !nodeContent.productIds.includes(productId)) continue;
     if (nodeContent.productUpsell?.[productId]) continue;
 
-    await supabase
-      .from("scenario_nodes")
-      .update({
+    await db
+      .update(scenarioNodes)
+      .set({
         content: {
           ...nodeContent,
           productUpsell: { ...(nodeContent.productUpsell ?? {}), [productId]: entry },
         },
       })
-      .eq("id", node.id);
+      .where(eq(scenarioNodes.id, node.id));
   }
 }

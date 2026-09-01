@@ -1,23 +1,25 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { brands, productGroups } from "@/db/schema";
 import { NewBrandButton } from "@/components/admin/NewBrandButton";
 import { BrandsList } from "@/components/admin/BrandsList";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminBrandsPage() {
-  const supabase = createSupabaseAdminClient();
-  const [{ data: brands }, { data: groups }] = await Promise.all([
-    supabase.from("brands").select("*").order("created_at", { ascending: false }),
-    supabase.from("product_groups").select("id, name, brand_id"),
+  const db = await getDb();
+  const [brandRows, groupRows] = await Promise.all([
+    db.select().from(brands).orderBy(desc(brands.createdAt)),
+    db.select({ id: productGroups.id, name: productGroups.name, brandId: productGroups.brandId }).from(productGroups),
   ]);
 
-  const rows = (brands ?? []).map((brand) => ({
-    id: brand.id as string,
-    name: brand.name as string,
-    code: (brand.code as string | null) ?? null,
-    groups: (groups ?? [])
-      .filter((g) => g.brand_id === brand.id)
-      .map((g) => ({ id: g.id as string, name: g.name as string })),
+  const rows = brandRows.map((brand) => ({
+    id: brand.id,
+    name: brand.name,
+    code: brand.code ?? null,
+    groups: groupRows
+      .filter((g) => g.brandId === brand.id)
+      .map((g) => ({ id: g.id, name: g.name })),
   }));
 
   return (

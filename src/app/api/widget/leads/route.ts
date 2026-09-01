@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { leads } from "@/db/schema";
 
 const leadInputSchema = z.object({
   sessionId: z.string().min(1),
@@ -24,21 +25,22 @@ export async function POST(request: Request) {
   }
   const { sessionId, name, phone, email, productId, scenarioId, surveyResponses } = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from("leads").upsert(
-    {
-      session_id: sessionId,
+  try {
+    const db = await getDb();
+    const values = {
+      sessionId,
       ...(name !== undefined && { name: name || null }),
       ...(phone !== undefined && { phone: phone || null }),
       ...(email !== undefined && { email: email || null }),
-      ...(productId !== undefined && { product_id: productId }),
-      ...(scenarioId !== undefined && { scenario_id: scenarioId }),
-      ...(surveyResponses !== undefined && { survey_responses: surveyResponses }),
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "session_id" },
-  );
+      ...(productId !== undefined && { productId }),
+      ...(scenarioId !== undefined && { scenarioId }),
+      ...(surveyResponses !== undefined && { surveyResponses }),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.insert(leads).values(values).onConflictDoUpdate({ target: leads.sessionId, set: values });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

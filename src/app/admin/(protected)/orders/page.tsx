@@ -1,6 +1,9 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { readOrderFilters, applyOrderFilters } from "@/lib/order-filters";
-import { OrdersTable } from "@/components/admin/OrdersTable";
+import { desc, eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { getDb } from "@/lib/db";
+import { customers, orders, products } from "@/db/schema";
+import { readOrderFilters, buildOrderFilterConditions } from "@/lib/order-filters";
+import { OrdersTable, type OrderRow } from "@/components/admin/OrdersTable";
 import { ShipmentImportForm } from "@/components/admin/ShipmentImportForm";
 
 export const dynamic = "force-dynamic";
@@ -17,16 +20,81 @@ export default async function AdminOrdersPage({
   };
   const filters = readOrderFilters(getParam);
 
-  const supabase = createSupabaseAdminClient();
-  let query = supabase
-    .from("orders")
-    .select("*, customers(name, email), products!product_id(name), addon_products:products!addon_product_id(name)")
-    .order("created_at", { ascending: false });
-  query = applyOrderFilters(query, filters);
-  if (!filters.showAll) query = query.limit(100);
+  const db = await getDb();
+  const addonProducts = alias(products, "addon_products");
+  let orderRows: OrderRow[] = [];
+  let ordersError: Error | null = null;
+  try {
+    const condition = buildOrderFilterConditions(filters);
+    const baseQuery = db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        createdAt: orders.createdAt,
+        type: orders.type,
+        paymentMethod: orders.paymentMethod,
+        amount: orders.amount,
+        quantity: orders.quantity,
+        shippingFee: orders.shippingFee,
+        paymentFee: orders.paymentFee,
+        addonAmount: orders.addonAmount,
+        discountAmount: orders.discountAmount,
+        firstTimeDiscountAmount: orders.firstTimeDiscountAmount,
+        status: orders.status,
+        deliveryDate: orders.deliveryDate,
+        deliveryTimeSlot: orders.deliveryTimeSlot,
+        surveyResponses: orders.surveyResponses,
+        setSelections: orders.setSelections,
+        importStatus: orders.importStatus,
+        billingCycleNumber: orders.billingCycleNumber,
+        shippedAt: orders.shippedAt,
+        carrierName: orders.carrierName,
+        trackingNumber: orders.trackingNumber,
+        customerName: customers.name,
+        customerEmail: customers.email,
+        productName: products.name,
+        addonProductName: addonProducts.name,
+      })
+      .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
+      .leftJoin(products, eq(orders.productId, products.id))
+      .leftJoin(addonProducts, eq(orders.addonProductId, addonProducts.id))
+      .where(condition)
+      .orderBy(desc(orders.createdAt));
 
-  const { data: orders, error: ordersError } = await query;
-  if (ordersError) console.error("[admin/orders] failed to load orders", ordersError);
+    const rows = filters.showAll ? await baseQuery : await baseQuery.limit(100);
+
+    orderRows = rows.map((r) => ({
+      id: r.id,
+      order_number: r.orderNumber,
+      created_at: r.createdAt,
+      type: r.type,
+      payment_method: r.paymentMethod,
+      amount: r.amount,
+      quantity: r.quantity,
+      shipping_fee: r.shippingFee,
+      payment_fee: r.paymentFee,
+      addon_amount: r.addonAmount,
+      discount_amount: r.discountAmount,
+      first_time_discount_amount: r.firstTimeDiscountAmount,
+      status: r.status,
+      delivery_date: r.deliveryDate,
+      delivery_time_slot: r.deliveryTimeSlot,
+      survey_responses: r.surveyResponses as Record<string, string> | null,
+      set_selections: r.setSelections as { id: string; name: string }[] | null,
+      import_status: r.importStatus as OrderRow["import_status"],
+      billing_cycle_number: r.billingCycleNumber,
+      shipped_at: r.shippedAt,
+      carrier_name: r.carrierName,
+      tracking_number: r.trackingNumber,
+      customers: r.customerName !== null ? { name: r.customerName, email: r.customerEmail! } : null,
+      products: r.productName !== null ? { name: r.productName } : null,
+      addon_products: r.addonProductName !== null ? { name: r.addonProductName } : null,
+    }));
+  } catch (err) {
+    ordersError = err instanceof Error ? err : new Error(String(err));
+    console.error("[admin/orders] failed to load orders", ordersError);
+  }
 
   const currentQuery = new URLSearchParams();
   if (filters.dateFrom) currentQuery.set("dateFrom", filters.dateFrom);
@@ -108,7 +176,7 @@ export default async function AdminOrdersPage({
         </p>
       )}
 
-      <OrdersTable orders={orders ?? []} exportQuery={exportQuery.toString()} />
+      <OrdersTable orders={orderRows} exportQuery={exportQuery.toString()} />
     </div>
   );
 }

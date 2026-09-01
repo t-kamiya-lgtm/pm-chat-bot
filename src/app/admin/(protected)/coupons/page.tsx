@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { coupons, scenarios, orders } from "@/db/schema";
 import { CouponsTable, type CouponRow } from "@/components/admin/CouponsTable";
 import { CouponUsageReportView } from "@/components/admin/CouponUsageReportView";
 import { TabbedPanels } from "@/components/admin/TabbedPanels";
@@ -37,52 +39,74 @@ export default async function AdminCouponsPage({
   const nextMonthDate = new Date(monthYear, monthNum, 1);
   const monthEnd = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01T00:00:00+09:00`;
 
-  const supabase = createSupabaseAdminClient();
-  const [{ data: coupons, error }, { data: scenarios }, { data: usageOrders, error: usageError }] = await Promise.all([
-    supabase
-      .from("coupons")
-      .select("*, scenarios(id, name)")
-      .order("created_at", { ascending: false }),
-    supabase.from("scenarios").select("id, name").order("name"),
-    supabase
-      .from("orders")
-      .select("created_at, discount_amount, coupons(type)")
-      .not("coupon_id", "is", null)
-      .in("status", CONFIRMED_ORDER_STATUSES)
-      .gte("created_at", monthStart)
-      .lt("created_at", monthEnd),
-  ]);
+  let rows: CouponRow[] = [];
+  let scenarioOptions: { id: string; name: string }[] = [];
+  let usageOrderRows: CouponUsageOrderRow[] = [];
+  let error: string | null = null;
+  let usageError: string | null = null;
 
-  const rows: CouponRow[] = (coupons ?? []).map((c) => {
-    const scenario = c.scenarios as { id: string; name: string } | null;
-    return {
+  try {
+    const db = await getDb();
+    const [couponRows, scenarioRows] = await Promise.all([
+      db.query.coupons.findMany({
+        orderBy: [desc(coupons.createdAt)],
+        with: {
+          scenario: { columns: { id: true, name: true } },
+        },
+      }),
+      db.select({ id: scenarios.id, name: scenarios.name }).from(scenarios).orderBy(scenarios.name),
+    ]);
+    scenarioOptions = scenarioRows;
+
+    rows = couponRows.map((c) => ({
       id: c.id,
-      type: c.type,
+      type: c.type as CouponRow["type"],
       code: c.code,
       name: c.name,
-      discountType: c.discount_type,
-      discountValue: c.discount_value,
-      startsAt: c.starts_at,
-      endsAt: c.ends_at,
-      maxUses: c.max_uses,
-      usedCount: c.used_count,
-      minOrderAmount: c.min_order_amount,
-      isActive: c.is_active,
-      scenarioId: c.scenario_id,
-      scenarioName: scenario?.name ?? null,
-      createdAt: c.created_at,
-    };
-  });
+      discountType: c.discountType as CouponRow["discountType"],
+      discountValue: c.discountValue,
+      startsAt: c.startsAt,
+      endsAt: c.endsAt,
+      maxUses: c.maxUses,
+      usedCount: c.usedCount,
+      minOrderAmount: c.minOrderAmount,
+      isActive: c.isActive,
+      scenarioId: c.scenarioId,
+      scenarioName: c.scenario?.name ?? null,
+      createdAt: c.createdAt,
+    }));
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
 
-  const usageOrderRows: CouponUsageOrderRow[] = (usageOrders ?? []).map((o) => {
-    const joined = o.coupons as unknown;
-    const coupon = (Array.isArray(joined) ? joined[0] : joined) as { type: "scenario_auto" | "manual_code" } | null;
-    return {
-      created_at: o.created_at as string,
-      discount_amount: (o.discount_amount as number) ?? 0,
-      coupon_type: coupon?.type ?? "manual_code",
-    };
-  });
+  try {
+    const db = await getDb();
+    const usageOrders = await db
+      .select({
+        createdAt: orders.createdAt,
+        discountAmount: orders.discountAmount,
+        couponType: coupons.type,
+      })
+      .from(orders)
+      .leftJoin(coupons, eq(orders.couponId, coupons.id))
+      .where(
+        and(
+          isNotNull(orders.couponId),
+          inArray(orders.status, CONFIRMED_ORDER_STATUSES),
+          gte(orders.createdAt, monthStart),
+          lt(orders.createdAt, monthEnd),
+        ),
+      );
+
+    usageOrderRows = usageOrders.map((o) => ({
+      created_at: o.createdAt,
+      discount_amount: o.discountAmount ?? 0,
+      coupon_type: (o.couponType ?? "manual_code") as CouponUsageOrderRow["coupon_type"],
+    }));
+  } catch (err) {
+    usageError = err instanceof Error ? err.message : String(err);
+  }
+
   const usageReport = buildCouponUsageReport(usageOrderRows, month);
 
   return (
@@ -97,12 +121,12 @@ export default async function AdminCouponsPage({
 
       {error && (
         <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          クーポン一覧の取得に失敗しました({error.message})
+          クーポン一覧の取得に失敗しました({error})
         </p>
       )}
       {usageError && (
         <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          クーポン実績の取得に失敗しました({usageError.message})
+          クーポン実績の取得に失敗しました({usageError})
         </p>
       )}
 
@@ -112,7 +136,7 @@ export default async function AdminCouponsPage({
           {
             key: "manage",
             label: "クーポン管理",
-            content: <CouponsTable initialCoupons={rows} scenarios={scenarios ?? []} />,
+            content: <CouponsTable initialCoupons={rows} scenarios={scenarioOptions} />,
           },
           {
             key: "usage",

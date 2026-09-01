@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { coupons } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const couponInputSchema = z
@@ -40,14 +42,21 @@ export async function GET(request: Request) {
   const type = searchParams.get("type");
   const scenarioId = searchParams.get("scenarioId");
 
-  const supabase = createSupabaseAdminClient();
-  let query = supabase.from("coupons").select("*").order("created_at", { ascending: false });
-  if (type) query = query.eq("type", type);
-  if (scenarioId) query = query.eq("scenario_id", scenarioId);
+  try {
+    const db = await getDb();
+    const conditions = [];
+    if (type) conditions.push(eq(coupons.type, type));
+    if (scenarioId) conditions.push(eq(coupons.scenarioId, scenarioId));
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ coupons: data });
+    const data = await db
+      .select()
+      .from(coupons)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(coupons.createdAt));
+    return NextResponse.json({ coupons: data });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -61,40 +70,38 @@ export async function POST(request: Request) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
+  try {
+    const db = await getDb();
 
-  if (input.type === "manual_code" && input.code) {
-    const { data: existing } = await supabase
-      .from("coupons")
-      .select("id")
-      .eq("code", input.code)
-      .maybeSingle();
-    if (existing) {
-      return NextResponse.json({ error: `コード「${input.code}」は既に使用されています` }, { status: 409 });
+    if (input.type === "manual_code" && input.code) {
+      const [existing] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.code, input.code)).limit(1);
+      if (existing) {
+        return NextResponse.json({ error: `コード「${input.code}」は既に使用されています` }, { status: 409 });
+      }
     }
+
+    const [data] = await db
+      .insert(coupons)
+      .values({
+        type: input.type,
+        scenarioId: input.type === "scenario_auto" ? input.scenarioId : null,
+        code: input.type === "manual_code" ? input.code : null,
+        name: input.name,
+        discountType: input.discountType,
+        discountValue: input.discountValue,
+        startsAt: input.startsAt ?? null,
+        endsAt: input.endsAt ?? null,
+        maxUses: input.maxUses ?? null,
+        minOrderAmount: input.minOrderAmount ?? null,
+        isActive: input.isActive ?? true,
+        imageUrl: input.imageUrl ?? null,
+        promoMessage: input.promoMessage ?? null,
+        targetProductIds: input.targetProductIds ?? null,
+      })
+      .returning();
+
+    return NextResponse.json({ coupon: data }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from("coupons")
-    .insert({
-      type: input.type,
-      scenario_id: input.type === "scenario_auto" ? input.scenarioId : null,
-      code: input.type === "manual_code" ? input.code : null,
-      name: input.name,
-      discount_type: input.discountType,
-      discount_value: input.discountValue,
-      starts_at: input.startsAt ?? null,
-      ends_at: input.endsAt ?? null,
-      max_uses: input.maxUses ?? null,
-      min_order_amount: input.minOrderAmount ?? null,
-      is_active: input.isActive ?? true,
-      image_url: input.imageUrl ?? null,
-      promo_message: input.promoMessage ?? null,
-      target_product_ids: input.targetProductIds ?? null,
-    })
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ coupon: data }, { status: 201 });
 }

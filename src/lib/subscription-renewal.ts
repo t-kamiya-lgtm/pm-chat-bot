@@ -1,12 +1,25 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers, orders, subscriptionItems, subscriptions } from "@/db/schema";
 import { generateOrderNumber } from "@/lib/order-number";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
-import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
+import { resolveOrderCostSnapshot, type OrderCostSnapshot } from "@/lib/order-cost-snapshot";
 import { getProductById } from "@/lib/products";
-import type { Address, SubscriptionInterval } from "@/lib/types";
+import type { Address, ShippingAddress, SubscriptionInterval } from "@/lib/types";
+
+/** OrderCostSnapshot(snake_case)を、ordersテーブルのinsert用カラム(camelCase)へ変換する。 */
+function costSnapshotToInsertFields(snap: OrderCostSnapshot) {
+  return {
+    costAmount: snap.cost_amount,
+    bundleInsertCost: snap.bundle_insert_cost,
+    shippingCost: snap.shipping_cost,
+    salesCommissionAmount: snap.sales_commission_amount,
+    taxRate: snap.tax_rate !== null ? String(snap.tax_rate) : null,
+  };
+}
 
 /**
  * 定期購入(Stripe決済)の2回目以降の周期課金(invoice.paid, billing_reason=subscription_cycle)を
@@ -19,100 +32,87 @@ export async function createSubscriptionRenewalOrder(params: {
   invoiceId: string;
 }): Promise<void> {
   try {
-    const supabase = createSupabaseAdminClient();
+    const db = await getDb();
 
-    const { data: existing } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("stripe_payment_intent_id", params.invoiceId)
-      .maybeSingle();
+    const [existing] = await db.select({ id: orders.id }).from(orders).where(eq(orders.stripePaymentIntentId, params.invoiceId)).limit(1);
     if (existing) return;
 
-    const { data: original } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("stripe_subscription_id", params.stripeSubscriptionId)
-      .is("parent_order_id", null)
-      .maybeSingle();
+    const [original] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.stripeSubscriptionId, params.stripeSubscriptionId), isNull(orders.parentOrderId)))
+      .limit(1);
     if (!original) return;
 
-    const { data: latestChild } = await supabase
-      .from("orders")
-      .select("billing_cycle_number")
-      .eq("parent_order_id", original.id)
-      .order("billing_cycle_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const nextCycleNumber = (latestChild?.billing_cycle_number ?? original.billing_cycle_number ?? 1) + 1;
+    const [latestChild] = await db
+      .select({ billingCycleNumber: orders.billingCycleNumber })
+      .from(orders)
+      .where(eq(orders.parentOrderId, original.id))
+      .orderBy(desc(orders.billingCycleNumber))
+      .limit(1);
+    const nextCycleNumber = (latestChild?.billingCycleNumber ?? original.billingCycleNumber ?? 1) + 1;
 
     // お試し→本品自動切替プランの場合、2回目以降はStripe側のSubscription Scheduleが
     // 既に本品の価格を自動課金している。チャット側の注文記録もそれに合わせて、
     // 元の品番(root)に設定された本品(next_cycle_product_id)を都度確認して反映する
     // (通常の定期は設定が無いため、従来通りoriginalをそのまま使う)。
-    const rootProduct = await getProductById(original.product_id);
+    const rootProduct = await getProductById(original.productId);
     const nextCycleProductId = rootProduct?.next_cycle_product_id ?? null;
-    const productId = nextCycleProductId ?? original.product_id;
-    const isProductSwitched = productId !== original.product_id;
+    const productId = nextCycleProductId ?? original.productId;
+    const isProductSwitched = productId !== original.productId;
     const nextCycleProduct = isProductSwitched ? await getProductById(productId) : null;
     const amount = isProductSwitched && nextCycleProduct ? nextCycleProduct.price * original.quantity : original.amount;
-    const shippingFee =
-      isProductSwitched && nextCycleProduct ? nextCycleProduct.shipping_fee : original.shipping_fee;
+    const shippingFee = isProductSwitched && nextCycleProduct ? nextCycleProduct.shipping_fee : original.shippingFee;
     // 原価・費用・税率は、商品が切り替わっていなければ初回注文時点のスナップショットを
     // そのまま引き継ぎ、切り替わっている場合のみ本品の現在の設定から都度解決する。
-    const costSnapshot = isProductSwitched
-      ? await resolveOrderCostSnapshot(supabase, productId, new Date().toISOString())
+    const costSnapshot: OrderCostSnapshot = isProductSwitched
+      ? await resolveOrderCostSnapshot(db, productId, new Date().toISOString())
       : {
-          cost_amount: original.cost_amount,
-          bundle_insert_cost: original.bundle_insert_cost,
-          shipping_cost: original.shipping_cost,
-          sales_commission_amount: original.sales_commission_amount,
-          tax_rate: original.tax_rate,
+          cost_amount: original.costAmount ?? 0,
+          bundle_insert_cost: original.bundleInsertCost ?? 0,
+          shipping_cost: original.shippingCost ?? 0,
+          sales_commission_amount: original.salesCommissionAmount ?? 0,
+          tax_rate: original.taxRate !== null ? Number(original.taxRate) : null,
         };
 
-    const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
+    const orderNumber = await generateOrderNumber(db, original.scenarioId);
 
-    const { data: newOrder, error } = await supabase
-      .from("orders")
-      .insert({
-        customer_id: original.customer_id,
-        product_id: productId,
-        scenario_id: original.scenario_id,
-        order_number: orderNumber,
-        session_id: original.session_id,
+    const [newOrder] = await db
+      .insert(orders)
+      .values({
+        customerId: original.customerId,
+        productId,
+        scenarioId: original.scenarioId,
+        orderNumber,
+        sessionId: original.sessionId,
         type: "subscription",
-        payment_method: "stripe",
+        paymentMethod: "stripe",
         amount,
         quantity: original.quantity,
-        shipping_fee: shippingFee,
-        payment_fee: original.payment_fee,
-        ...costSnapshot,
+        shippingFee,
+        paymentFee: original.paymentFee,
+        ...costSnapshotToInsertFields(costSnapshot),
         status: "paid",
         // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、未取込みのまま生成する
-        stripe_subscription_id: params.stripeSubscriptionId,
-        stripe_payment_intent_id: params.invoiceId,
-        delivery_date: original.delivery_date,
-        delivery_time_slot: original.delivery_time_slot,
-        agreed_terms_at: original.agreed_terms_at,
-        shipping_address: original.shipping_address,
+        stripeSubscriptionId: params.stripeSubscriptionId,
+        stripePaymentIntentId: params.invoiceId,
+        deliveryDate: original.deliveryDate,
+        deliveryTimeSlot: original.deliveryTimeSlot,
+        agreedTermsAt: original.agreedTermsAt,
+        shippingAddress: original.shippingAddress,
         // よりどり(セット品)の内訳選択は、定期継続中は初回と同じ内容を引き継ぐ。
-        set_selections: original.set_selections,
-        parent_order_id: original.id,
-        billing_cycle_number: nextCycleNumber,
+        setSelections: original.setSelections,
+        parentOrderId: original.id,
+        billingCycleNumber: nextCycleNumber,
         // アドオンが定期便として同時申込されている場合のみ、2回目以降の注文にも引き継ぐ
         // (単発アドオンは初回のみの一括請求だったため、従来通りここではコピーしない)。
-        ...(original.is_addon_subscription && {
-          addon_product_id: original.addon_product_id,
-          addon_amount: original.addon_amount,
-          is_addon_subscription: true,
+        ...(original.isAddonSubscription && {
+          addonProductId: original.addonProductId,
+          addonAmount: original.addonAmount,
+          isAddonSubscription: true,
         }),
       })
-      .select("id")
-      .single();
-
-    if (error) {
-      console.error("[subscription-renewal] failed to create renewal order", error);
-      return;
-    }
+      .returning({ id: orders.id });
 
     await sendOrderCompletionEmail(newOrder.id);
     await submitStripeOrderToCoreSystem(newOrder.id);
@@ -131,38 +131,28 @@ export async function createSubscriptionRenewalOrder(params: {
  * チャットシステム側では判定結果を受け取るだけでよい。
  */
 export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: string): Promise<void> {
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   try {
-    const { data: subscriptionRow } = await supabase
-      .from("subscriptions")
-      .select("*")
-      .eq("id", subscriptionRowId)
-      .maybeSingle();
-    if (!subscriptionRow || subscriptionRow.status !== "active" || !subscriptionRow.next_billing_date) return;
+    const [subscriptionRow] = await db.select().from(subscriptions).where(eq(subscriptions.id, subscriptionRowId)).limit(1);
+    if (!subscriptionRow || subscriptionRow.status !== "active" || !subscriptionRow.nextBillingDate) return;
 
-    const { data: original } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", subscriptionRow.order_id)
-      .maybeSingle();
+    const [original] = await db.select().from(orders).where(eq(orders.id, subscriptionRow.orderId)).limit(1);
     if (!original) return;
 
-    const { data: latestChild } = await supabase
-      .from("orders")
-      .select("billing_cycle_number")
-      .eq("parent_order_id", original.id)
-      .order("billing_cycle_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const nextCycleNumber = (latestChild?.billing_cycle_number ?? original.billing_cycle_number ?? 1) + 1;
+    const [latestChild] = await db
+      .select({ billingCycleNumber: orders.billingCycleNumber })
+      .from(orders)
+      .where(eq(orders.parentOrderId, original.id))
+      .orderBy(desc(orders.billingCycleNumber))
+      .limit(1);
+    const nextCycleNumber = (latestChild?.billingCycleNumber ?? original.billingCycleNumber ?? 1) + 1;
 
     // 同じ周期の注文が既に生成済みであれば何もしない(Cronの多重実行対策)。
-    const { data: existing } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("parent_order_id", original.id)
-      .eq("billing_cycle_number", nextCycleNumber)
-      .maybeSingle();
+    const [existing] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.parentOrderId, original.id), eq(orders.billingCycleNumber, nextCycleNumber)))
+      .limit(1);
     if (existing) return;
 
     // 2回目以降は常に通常価格(初回特別価格・クーポンは初回のみ適用)。
@@ -171,88 +161,79 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
     // 反映されるようにするため)。ただし優先順位は、①顧客管理画面でスタッフが個別に上書き設定した
     // 場合(subscriptionsのoverride列)、②お試し→本品自動切替プランの設定(products.next_cycle_*)、
     // ③初回注文のスナップショット、の順(初回注文自体の記録は書き換えない)。
-    const rootProduct = await getProductById(original.product_id);
-    const overrideProductId = subscriptionRow.override_product_id as string | null;
+    const rootProduct = await getProductById(original.productId);
+    const overrideProductId = subscriptionRow.overrideProductId;
     const autoSwitchProductId = !overrideProductId ? (rootProduct?.next_cycle_product_id ?? null) : null;
-    const productId = overrideProductId ?? autoSwitchProductId ?? original.product_id;
+    const productId = overrideProductId ?? autoSwitchProductId ?? original.productId;
     const autoSwitchProduct = autoSwitchProductId ? await getProductById(autoSwitchProductId) : null;
-    const quantity = (subscriptionRow.override_quantity as number | null) ?? (original.quantity as number);
-    const amount =
-      (subscriptionRow.override_amount as number | null) ??
-      (autoSwitchProduct ? autoSwitchProduct.price * quantity : (original.amount as number));
+    const quantity = subscriptionRow.overrideQuantity ?? original.quantity;
+    const amount = subscriptionRow.overrideAmount ?? (autoSwitchProduct ? autoSwitchProduct.price * quantity : original.amount);
     const shippingFee =
-      (subscriptionRow.override_shipping_fee as number | null) ??
-      (autoSwitchProduct ? autoSwitchProduct.shipping_fee : (original.shipping_fee as number));
-    const paymentFee = (subscriptionRow.override_payment_fee as number | null) ?? (original.payment_fee as number);
-    const paymentMethod = (subscriptionRow.override_payment_method as string | null) ?? original.payment_method;
-    const deliveryDate = subscriptionRow.next_billing_date as string;
+      subscriptionRow.overrideShippingFee ?? (autoSwitchProduct ? autoSwitchProduct.shipping_fee : original.shippingFee);
+    const paymentFee = subscriptionRow.overridePaymentFee ?? original.paymentFee;
+    const paymentMethod = subscriptionRow.overridePaymentMethod ?? original.paymentMethod;
+    const deliveryDate = subscriptionRow.nextBillingDate;
     // 自動切替プランで頻度も指定されていれば、次回以降はその頻度に切り替える。
     const effectiveInterval: SubscriptionInterval =
       autoSwitchProduct && rootProduct?.next_cycle_interval
         ? rootProduct.next_cycle_interval
         : (subscriptionRow.interval as SubscriptionInterval);
 
-    const orderNumber = await generateOrderNumber(supabase, original.scenario_id);
+    const orderNumber = await generateOrderNumber(db, original.scenarioId);
     // 商品自体が上書きされている可能性があるため、原価・費用・税率は初回注文の値を
     // そのまま引き継がず、実際に出荷する商品(productId)の現在の設定から都度解決する
     // (amount/shippingFee/paymentFeeと同じくoverride列を優先するのと同じ考え方)。
-    const costSnapshot = await resolveOrderCostSnapshot(supabase, productId, deliveryDate);
-    const { data: newOrder, error } = await supabase
-      .from("orders")
-      .insert({
-        customer_id: original.customer_id,
-        product_id: productId,
-        scenario_id: original.scenario_id,
-        order_number: orderNumber,
-        session_id: original.session_id,
+    const costSnapshot = await resolveOrderCostSnapshot(db, productId, deliveryDate);
+    const [newOrder] = await db
+      .insert(orders)
+      .values({
+        customerId: original.customerId,
+        productId,
+        scenarioId: original.scenarioId,
+        orderNumber,
+        sessionId: original.sessionId,
         type: "subscription",
-        payment_method: paymentMethod,
+        paymentMethod,
         amount,
         quantity,
-        shipping_fee: shippingFee,
-        payment_fee: paymentFee,
-        ...costSnapshot,
+        shippingFee,
+        paymentFee,
+        ...costSnapshotToInsertFields(costSnapshot),
         status: "pending",
-        delivery_date: deliveryDate,
-        delivery_time_slot: original.delivery_time_slot,
-        invoice_note: original.invoice_note,
-        agreed_terms_at: original.agreed_terms_at,
-        shipping_address: original.shipping_address,
+        deliveryDate,
+        deliveryTimeSlot: original.deliveryTimeSlot,
+        invoiceNote: original.invoiceNote,
+        agreedTermsAt: original.agreedTermsAt,
+        shippingAddress: original.shippingAddress,
         // よりどり(セット品)の内訳選択は、定期継続中は初回と同じ内容を引き継ぐ。
-        set_selections: original.set_selections,
-        parent_order_id: original.id,
-        billing_cycle_number: nextCycleNumber,
+        setSelections: original.setSelections,
+        parentOrderId: original.id,
+        billingCycleNumber: nextCycleNumber,
         // アドオンが定期便として同時申込されている場合のみ、2回目以降の注文にも引き継ぐ
         // (単発アドオンは初回のみの一括購入だったため、従来通りここではコピーしない)。
-        ...(original.is_addon_subscription && {
-          addon_product_id: original.addon_product_id,
-          addon_amount: original.addon_amount,
-          is_addon_subscription: true,
+        ...(original.isAddonSubscription && {
+          addonProductId: original.addonProductId,
+          addonAmount: original.addonAmount,
+          isAddonSubscription: true,
         }),
       })
-      .select("id")
-      .single();
-
-    if (error) {
-      console.error("[subscription-renewal] failed to create deferred renewal order", error);
-      return;
-    }
+      .returning({ id: orders.id });
 
     // 受注データの生成に成功した時点で、後続処理(与信・スマレジ連携)の成否に関わらず
     // 次回の予定日を進める(1周期分の失敗で以後のスケジュールが止まらないようにするため)。
     // 自動切替で頻度が変わった場合は、以後この新しい頻度で定期購読を進める。
     const nextDate = new Date(deliveryDate);
     nextDate.setDate(nextDate.getDate() + SUBSCRIPTION_INTERVAL_DAYS[effectiveInterval]);
-    await supabase
-      .from("subscriptions")
-      .update({ next_billing_date: nextDate.toISOString().slice(0, 10), interval: effectiveInterval })
-      .eq("id", subscriptionRowId);
+    await db
+      .update(subscriptions)
+      .set({ nextBillingDate: nextDate.toISOString().slice(0, 10), interval: effectiveInterval })
+      .where(eq(subscriptions.id, subscriptionRowId));
 
-    const { data: customer } = await supabase
-      .from("customers")
-      .select("name, email, phone, address")
-      .eq("id", original.customer_id)
-      .maybeSingle();
+    const [customer] = await db
+      .select({ name: customers.name, email: customers.email, phone: customers.phone, address: customers.address })
+      .from(customers)
+      .where(eq(customers.id, original.customerId))
+      .limit(1);
     if (!customer) return;
 
     const coreSystem = getCoreSystemAdapter();
@@ -271,46 +252,45 @@ export async function createDeferredSubscriptionRenewalOrder(subscriptionRowId: 
       shippingFee,
       paymentFee,
       addonProduct:
-        original.is_addon_subscription && original.addon_product_id
-          ? { id: original.addon_product_id, amount: original.addon_amount ?? 0 }
+        original.isAddonSubscription && original.addonProductId
+          ? { id: original.addonProductId, amount: original.addonAmount ?? 0 }
           : undefined,
-      shippingAddress: original.shipping_address ?? undefined,
+      shippingAddress: (original.shippingAddress as ShippingAddress | null) ?? undefined,
     });
 
     const newStatus = accepted ? "accepted" : "failed";
-    await supabase.from("orders").update({ status: newStatus }).eq("id", newOrder.id);
+    await db.update(orders).set({ status: newStatus }).where(eq(orders.id, newOrder.id));
 
     // 定期プランに後から追加された商品(同梱設定)を、本体と同じ配送日・同じ周期番号で
     // 追加の注文行として生成する(送料・手数料は本体側にのみ計上するため0円)。
-    const { data: bundledItems } = await supabase
-      .from("subscription_items")
-      .select("id, product_id, quantity, unit_amount")
-      .eq("subscription_id", subscriptionRowId)
-      .is("removed_at", null);
+    const bundledItems = await db
+      .select({ id: subscriptionItems.id, productId: subscriptionItems.productId, quantity: subscriptionItems.quantity, unitAmount: subscriptionItems.unitAmount })
+      .from(subscriptionItems)
+      .where(and(eq(subscriptionItems.subscriptionId, subscriptionRowId), isNull(subscriptionItems.removedAt)));
 
-    for (const item of bundledItems ?? []) {
-      const itemOrderNumber = await generateOrderNumber(supabase, original.scenario_id);
-      const itemCostSnapshot = await resolveOrderCostSnapshot(supabase, item.product_id, deliveryDate);
-      await supabase.from("orders").insert({
-        customer_id: original.customer_id,
-        product_id: item.product_id,
-        scenario_id: original.scenario_id,
-        order_number: itemOrderNumber,
+    for (const item of bundledItems) {
+      const itemOrderNumber = await generateOrderNumber(db, original.scenarioId);
+      const itemCostSnapshot = await resolveOrderCostSnapshot(db, item.productId, deliveryDate);
+      await db.insert(orders).values({
+        customerId: original.customerId,
+        productId: item.productId,
+        scenarioId: original.scenarioId,
+        orderNumber: itemOrderNumber,
         type: "subscription",
-        payment_method: paymentMethod,
-        amount: item.unit_amount * item.quantity,
+        paymentMethod,
+        amount: item.unitAmount * item.quantity,
         quantity: item.quantity,
-        shipping_fee: 0,
-        payment_fee: 0,
-        ...itemCostSnapshot,
+        shippingFee: 0,
+        paymentFee: 0,
+        ...costSnapshotToInsertFields(itemCostSnapshot),
         status: newStatus,
-        delivery_date: deliveryDate,
-        delivery_time_slot: original.delivery_time_slot,
-        agreed_terms_at: original.agreed_terms_at,
-        shipping_address: original.shipping_address,
-        parent_order_id: original.id,
-        billing_cycle_number: nextCycleNumber,
-        subscription_item_id: item.id,
+        deliveryDate,
+        deliveryTimeSlot: original.deliveryTimeSlot,
+        agreedTermsAt: original.agreedTermsAt,
+        shippingAddress: original.shippingAddress,
+        parentOrderId: original.id,
+        billingCycleNumber: nextCycleNumber,
+        subscriptionItemId: item.id,
       });
     }
 

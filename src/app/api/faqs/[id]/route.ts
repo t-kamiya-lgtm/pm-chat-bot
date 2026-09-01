@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productFaqs } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const updateSchema = z.object({
@@ -26,23 +28,24 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const input = parsed.data;
   const isReviewDecision = input.status === "published" || input.status === "rejected";
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("product_faqs")
-    .update({
-      ...(input.question !== undefined && { question: input.question }),
-      ...(input.answer !== undefined && { answer: input.answer }),
-      ...(input.categoryId !== undefined && { category_id: input.categoryId }),
-      ...(input.status !== undefined && { status: input.status }),
-      ...(isReviewDecision && {
-        reviewed_by: roleCheck.user.id,
-        reviewed_at: new Date().toISOString(),
-      }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ faq: data });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .update(productFaqs)
+      .set({
+        ...(input.question !== undefined && { question: input.question }),
+        ...(input.answer !== undefined && { answer: input.answer }),
+        ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
+        ...(input.status !== undefined && { status: input.status }),
+        ...(isReviewDecision && {
+          reviewedBy: roleCheck.user.id,
+          reviewedAt: new Date().toISOString(),
+        }),
+      })
+      .where(eq(productFaqs.id, id))
+      .returning();
+    return NextResponse.json({ faq: row });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

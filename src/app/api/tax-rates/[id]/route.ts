@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroupTaxRates, taxRates } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -13,13 +15,20 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { data: usedIn } = await supabase.from("product_group_tax_rates").select("id").eq("tax_rate_id", id).limit(1);
-  if (usedIn && usedIn.length > 0) {
-    return NextResponse.json({ error: "この税率は商品ジャンルの期間設定で使用中のため削除できません" }, { status: 400 });
-  }
+  try {
+    const db = await getDb();
+    const usedIn = await db
+      .select({ id: productGroupTaxRates.id })
+      .from(productGroupTaxRates)
+      .where(eq(productGroupTaxRates.taxRateId, id))
+      .limit(1);
+    if (usedIn.length > 0) {
+      return NextResponse.json({ error: "この税率は商品ジャンルの期間設定で使用中のため削除できません" }, { status: 400 });
+    }
 
-  const { error } = await supabase.from("tax_rates").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+    await db.delete(taxRates).where(eq(taxRates.id, id));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

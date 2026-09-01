@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customerRetentionActions } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 
 type RouteParams = { params: Promise<{ id: string; actionId: string }> };
@@ -10,12 +12,13 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   if (!roleCheck.ok) return roleCheck.response;
   const { id, actionId } = await params;
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("customer_retention_actions")
-    .delete()
-    .eq("id", actionId)
-    .eq("customer_id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const db = await getDb();
+  try {
+    await db
+      .delete(customerRetentionActions)
+      .where(and(eq(customerRetentionActions.id, actionId), eq(customerRetentionActions.customerId, id)));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

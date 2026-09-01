@@ -1,8 +1,10 @@
 import iconv from "iconv-lite";
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc, inArray } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { customers, orders, products } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
-import { readOrderFilters, applyOrderFilters } from "@/lib/order-filters";
+import { readOrderFilters, buildOrderFilterConditions } from "@/lib/order-filters";
 import {
   buildCoreSystemExportRows,
   CORE_SYSTEM_EXPORT_HEADER,
@@ -30,47 +32,104 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const filters = readOrderFilters((key) => searchParams.get(key));
 
-  const supabase = createSupabaseAdminClient();
-  let query = supabase
-    .from("orders")
-    .select("*")
-    .order("created_at", { ascending: false });
-  query = applyOrderFilters(query, filters);
-  if (!filters.showAll && !filters.orderIds?.length) query = query.limit(100);
+  const db = await getDb();
+  let orderRows;
+  try {
+    const condition = buildOrderFilterConditions(filters);
+    const baseQuery = db.select().from(orders).where(condition).orderBy(desc(orders.createdAt));
+    orderRows =
+      !filters.showAll && !filters.orderIds?.length ? await baseQuery.limit(100) : await baseQuery;
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
-  const { data: orders, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const customerIds = [...new Set((orders ?? []).map((o) => o.customer_id as string))];
+  const customerIds = [...new Set(orderRows.map((o) => o.customerId))];
   const productIds = [
-    ...new Set(
-      (orders ?? []).flatMap((o) =>
-        [o.product_id as string, o.addon_product_id as string | null].filter((id): id is string => Boolean(id)),
-      ),
-    ),
+    ...new Set(orderRows.flatMap((o) => [o.productId, o.addonProductId].filter((id): id is string => Boolean(id)))),
   ];
 
-  const [{ data: customers, error: customersError }, { data: products, error: productsError }] = await Promise.all([
-    supabase
-      .from("customers")
-      .select("id, name, name_kana, email, phone, address, gender, birth_date, smaregi_member_id")
-      .in("id", customerIds),
-    supabase
-      .from("products")
-      .select("id, name, price, smaregi_product_id, is_mail_deliverable")
-      .in("id", productIds),
-  ]);
-  if (customersError) return NextResponse.json({ error: customersError.message }, { status: 500 });
-  if (productsError) return NextResponse.json({ error: productsError.message }, { status: 500 });
+  let customerRows, productRows;
+  try {
+    [customerRows, productRows] = await Promise.all([
+      db
+        .select({
+          id: customers.id,
+          name: customers.name,
+          nameKana: customers.nameKana,
+          email: customers.email,
+          phone: customers.phone,
+          address: customers.address,
+          gender: customers.gender,
+          birthDate: customers.birthDate,
+          smaregiMemberId: customers.smaregiMemberId,
+        })
+        .from(customers)
+        .where(inArray(customers.id, customerIds)),
+      db
+        .select({
+          id: products.id,
+          name: products.name,
+          price: products.price,
+          smaregiProductId: products.smaregiProductId,
+          isMailDeliverable: products.isMailDeliverable,
+        })
+        .from(products)
+        .where(inArray(products.id, productIds)),
+    ]);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 
   const customerById = new Map<string, CoreSystemCustomerRow>(
-    (customers ?? []).map((c) => [c.id as string, c as CoreSystemCustomerRow]),
+    customerRows.map((c) => [
+      c.id,
+      {
+        name: c.name,
+        name_kana: c.nameKana,
+        email: c.email,
+        phone: c.phone,
+        address: c.address as CoreSystemCustomerRow["address"],
+        gender: c.gender,
+        birth_date: c.birthDate,
+        smaregi_member_id: c.smaregiMemberId,
+      },
+    ]),
   );
   const productById = new Map<string, CoreSystemProductRow>(
-    (products ?? []).map((p) => [p.id as string, p as CoreSystemProductRow]),
+    productRows.map((p) => [
+      p.id,
+      {
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        smaregi_product_id: p.smaregiProductId,
+        is_mail_deliverable: p.isMailDeliverable,
+      },
+    ]),
   );
 
-  const rows = buildCoreSystemExportRows({ orders: orders ?? [], customerById, productById });
+  const exportRows = orderRows.map((o) => ({
+    customer_id: o.customerId,
+    product_id: o.productId,
+    addon_product_id: o.addonProductId,
+    shipping_address: o.shippingAddress,
+    quantity: o.quantity,
+    created_at: o.createdAt,
+    order_number: o.orderNumber,
+    payment_method: o.paymentMethod,
+    delivery_date: o.deliveryDate,
+    delivery_time_slot: o.deliveryTimeSlot,
+    invoice_note: o.invoiceNote,
+    amount: o.amount,
+    addon_amount: o.addonAmount,
+    shipping_fee: o.shippingFee,
+    payment_fee: o.paymentFee,
+    discount_amount: o.discountAmount,
+    first_time_discount_amount: o.firstTimeDiscountAmount,
+    set_selections: o.setSelections,
+  }));
+
+  const rows = buildCoreSystemExportRows({ orders: exportRows, customerById, productById });
 
   const csv = [Array.from(CORE_SYSTEM_EXPORT_HEADER), ...rows]
     .map((row) => row.map(csvCell).join(","))

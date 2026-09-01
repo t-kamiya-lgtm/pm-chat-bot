@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { leads } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const updateSchema = z
@@ -25,18 +27,20 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("leads")
-    .update({
-      ...(parsed.data.contactedPhone !== undefined && { contacted_phone: parsed.data.contactedPhone }),
-      ...(parsed.data.contactedEmail !== undefined && { contacted_email: parsed.data.contactedEmail }),
-      ...(parsed.data.contactedSms !== undefined && { contacted_sms: parsed.data.contactedSms }),
-    })
-    .eq("id", id)
-    .select("*")
-    .single();
+  try {
+    const db = await getDb();
+    const [data] = await db
+      .update(leads)
+      .set({
+        ...(parsed.data.contactedPhone !== undefined && { contactedPhone: parsed.data.contactedPhone }),
+        ...(parsed.data.contactedEmail !== undefined && { contactedEmail: parsed.data.contactedEmail }),
+        ...(parsed.data.contactedSms !== undefined && { contactedSms: parsed.data.contactedSms }),
+      })
+      .where(eq(leads.id, id))
+      .returning();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ lead: data });
+    return NextResponse.json({ lead: data });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

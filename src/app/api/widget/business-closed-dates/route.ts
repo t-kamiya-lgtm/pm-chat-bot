@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { businessClosedDates } from "@/db/schema";
 
 /**
  * チャットウィジェット用の公開エンドポイント(認証不要)。
@@ -7,8 +8,11 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
  * 祝日・土日はクライアント側で計算するため含まない。
  */
 export async function GET() {
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("business_closed_dates").select("date");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ closedDates: (data ?? []).map((row) => row.date) });
+  try {
+    const db = await getDb();
+    const rows = await db.select({ date: businessClosedDates.date }).from(businessClosedDates);
+    return NextResponse.json({ closedDates: rows.map((row) => row.date) });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }

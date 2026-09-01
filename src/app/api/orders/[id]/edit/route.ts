@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { getStripeClient } from "@/lib/stripe";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { orders, subscriptions } from "@/db/schema";
 import { requireAdminRole } from "@/lib/require-role";
 import { shippingAddressSchema, subscriptionIntervalSchema } from "@/lib/checkout-schema";
 import { SUBSCRIPTION_INTERVAL_STRIPE_MAP, SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
@@ -9,6 +11,7 @@ import { getProductById } from "@/lib/products";
 import { getPaymentFee } from "@/lib/fees";
 import { diffFields, recordChangeLog } from "@/lib/customer-change-log";
 import { createDeferredSubscriptionRenewalOrder } from "@/lib/subscription-renewal";
+import type { PaymentMethod } from "@/lib/types";
 
 const contentOverrideSchema = z.object({
   productId: z.string().uuid().optional(),
@@ -54,37 +57,54 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
   const input = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select(
-      "id, customer_id, type, payment_method, amount, shipping_fee, payment_fee, addon_amount, is_addon_subscription, stripe_subscription_id, parent_order_id",
-    )
-    .eq("id", id)
-    .maybeSingle();
-  if (orderError) return NextResponse.json({ error: orderError.message }, { status: 500 });
+  const db = await getDb();
+  let order;
+  try {
+    [order] = await db
+      .select({
+        id: orders.id,
+        customerId: orders.customerId,
+        type: orders.type,
+        paymentMethod: orders.paymentMethod,
+        amount: orders.amount,
+        shippingFee: orders.shippingFee,
+        paymentFee: orders.paymentFee,
+        addonAmount: orders.addonAmount,
+        isAddonSubscription: orders.isAddonSubscription,
+        stripeSubscriptionId: orders.stripeSubscriptionId,
+        parentOrderId: orders.parentOrderId,
+      })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
   if (!order) return NextResponse.json({ error: "order not found" }, { status: 404 });
-  if (order.parent_order_id) {
+  if (order.parentOrderId) {
     return NextResponse.json(
       { error: "定期の親注文(初回)に対してのみ変更できます" },
       { status: 400 },
     );
   }
 
-  const isStripeSubscription = order.type === "subscription" && order.payment_method === "stripe";
+  const isStripeSubscription = order.type === "subscription" && order.paymentMethod === "stripe";
   const changedByEmail = roleCheck.user.email;
 
   const orderUpdate: Record<string, unknown> = {};
-  if (input.shippingAddress !== undefined) orderUpdate.shipping_address = input.shippingAddress;
-  if (input.deliveryDate !== undefined) orderUpdate.delivery_date = input.deliveryDate || null;
-  if (input.deliveryTimeSlot !== undefined) orderUpdate.delivery_time_slot = input.deliveryTimeSlot || null;
+  if (input.shippingAddress !== undefined) orderUpdate.shippingAddress = input.shippingAddress;
+  if (input.deliveryDate !== undefined) orderUpdate.deliveryDate = input.deliveryDate || null;
+  if (input.deliveryTimeSlot !== undefined) orderUpdate.deliveryTimeSlot = input.deliveryTimeSlot || null;
 
   if (Object.keys(orderUpdate).length > 0) {
-    const { error } = await supabase.from("orders").update(orderUpdate).eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    try {
+      await db.update(orders).set(orderUpdate).where(eq(orders.id, id));
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
     if (input.shippingAddress !== undefined) {
-      await recordChangeLog(supabase, {
-        customerId: order.customer_id,
+      await recordChangeLog(db, {
+        customerId: order.customerId,
         subscriptionId: null,
         action: "shipping_address_update",
         changes: diffFields([
@@ -96,7 +116,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   }
 
   if (input.subscriptionInterval !== undefined) {
-    if (!isStripeSubscription || !order.stripe_subscription_id) {
+    if (!isStripeSubscription || !order.stripeSubscriptionId) {
       return NextResponse.json(
         { error: "Stripeの定期購入以外はこのAPIでの頻度変更に対応していません" },
         { status: 400 },
@@ -104,15 +124,15 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
     try {
       const stripe = getStripeClient();
-      const subscription = await stripe.subscriptions.retrieve(order.stripe_subscription_id);
+      const subscription = await stripe.subscriptions.retrieve(order.stripeSubscriptionId);
       const items = subscription.items.data;
       if (items.length === 0) throw new Error("subscription item not found");
 
       const { interval, intervalCount } = SUBSCRIPTION_INTERVAL_STRIPE_MAP[input.subscriptionInterval];
-      const mainUnitAmount = order.amount + order.shipping_fee + order.payment_fee;
+      const mainUnitAmount = order.amount + order.shippingFee + order.paymentFee;
       // アドオンも定期便として同時申込されている場合、メインとは別のPrice/itemとして
       // 同一Subscription内に存在するため、そちらも新しい頻度のPriceへ差し替える。
-      const addonUnitAmount = order.is_addon_subscription ? (order.addon_amount ?? 0) : null;
+      const addonUnitAmount = order.isAddonSubscription ? (order.addonAmount ?? 0) : null;
 
       const mainItem = items.find((i) => i.price.unit_amount === mainUnitAmount) ?? items[0];
       const newMainPrice = await stripe.prices.create({
@@ -136,15 +156,15 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         }
       }
 
-      await stripe.subscriptions.update(order.stripe_subscription_id, {
+      await stripe.subscriptions.update(order.stripeSubscriptionId, {
         items: subscriptionItems,
         proration_behavior: "none",
       });
 
-      await supabase
-        .from("subscriptions")
-        .update({ interval: input.subscriptionInterval })
-        .eq("order_id", order.id);
+      await db
+        .update(subscriptions)
+        .set({ interval: input.subscriptionInterval })
+        .where(eq(subscriptions.orderId, order.id));
     } catch (err) {
       console.error("[orders/edit] failed to update subscription interval", { orderId: id, err });
       return NextResponse.json({ error: "Stripeでの頻度変更に失敗しました" }, { status: 500 });
@@ -156,7 +176,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: "定期購入の注文ではありません" }, { status: 400 });
     }
     if (isStripeSubscription) {
-      if (!order.stripe_subscription_id) {
+      if (!order.stripeSubscriptionId) {
         return NextResponse.json(
           { error: "Stripeのサブスクリプション情報が見つかりません" },
           { status: 400 },
@@ -164,15 +184,19 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       }
       try {
         const stripe = getStripeClient();
-        await stripe.subscriptions.cancel(order.stripe_subscription_id);
+        await stripe.subscriptions.cancel(order.stripeSubscriptionId);
       } catch (err) {
         console.error("[orders/edit] failed to cancel subscription", { orderId: id, err });
         return NextResponse.json({ error: "Stripeでの解約処理に失敗しました" }, { status: 500 });
       }
     }
-    await supabase.from("subscriptions").update({ status: "canceled" }).eq("order_id", order.id);
-    await recordChangeLog(supabase, {
-      customerId: order.customer_id,
+    try {
+      await db.update(subscriptions).set({ status: "canceled" }).where(eq(subscriptions.orderId, order.id));
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
+    await recordChangeLog(db, {
+      customerId: order.customerId,
       action: "subscription_cancel",
       changes: diffFields([{ field: "status", label: "状態", before: "継続中", after: "解約済み" }]),
       changedByEmail,
@@ -192,16 +216,27 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (order.type !== "subscription") {
       return NextResponse.json({ error: "定期購入の注文ではありません" }, { status: 400 });
     }
-    const { data: subscriptionRow, error: subError } = await supabase
-      .from("subscriptions")
-      .select("id, interval, override_product_id, override_quantity, override_amount, override_payment_method")
-      .eq("order_id", order.id)
-      .maybeSingle();
-    if (subError) return NextResponse.json({ error: subError.message }, { status: 500 });
+    let subscriptionRow;
+    try {
+      [subscriptionRow] = await db
+        .select({
+          id: subscriptions.id,
+          interval: subscriptions.interval,
+          overrideProductId: subscriptions.overrideProductId,
+          overrideQuantity: subscriptions.overrideQuantity,
+          overrideAmount: subscriptions.overrideAmount,
+          overridePaymentMethod: subscriptions.overridePaymentMethod,
+        })
+        .from(subscriptions)
+        .where(eq(subscriptions.orderId, order.id))
+        .limit(1);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
     if (!subscriptionRow) return NextResponse.json({ error: "subscription not found" }, { status: 404 });
 
     const effectivePaymentMethod =
-      input.contentOverride.paymentMethod ?? subscriptionRow.override_payment_method ?? order.payment_method;
+      input.contentOverride.paymentMethod ?? subscriptionRow.overridePaymentMethod ?? order.paymentMethod;
     const effectiveProductId = input.contentOverride.productId;
 
     let newShippingFee: number | undefined;
@@ -212,36 +247,36 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       newShippingFee = product.shipping_fee;
     }
     if (input.contentOverride.paymentMethod || effectiveProductId) {
-      newPaymentFee = await getPaymentFee(effectivePaymentMethod, "subscription");
+      newPaymentFee = await getPaymentFee(effectivePaymentMethod as PaymentMethod, "subscription");
     }
 
     const subscriptionUpdate: Record<string, unknown> = {};
-    if (input.contentOverride.productId !== undefined) subscriptionUpdate.override_product_id = input.contentOverride.productId;
-    if (input.contentOverride.quantity !== undefined) subscriptionUpdate.override_quantity = input.contentOverride.quantity;
-    if (input.contentOverride.amount !== undefined) subscriptionUpdate.override_amount = input.contentOverride.amount;
-    if (input.contentOverride.paymentMethod !== undefined) subscriptionUpdate.override_payment_method = input.contentOverride.paymentMethod;
+    if (input.contentOverride.productId !== undefined) subscriptionUpdate.overrideProductId = input.contentOverride.productId;
+    if (input.contentOverride.quantity !== undefined) subscriptionUpdate.overrideQuantity = input.contentOverride.quantity;
+    if (input.contentOverride.amount !== undefined) subscriptionUpdate.overrideAmount = input.contentOverride.amount;
+    if (input.contentOverride.paymentMethod !== undefined) subscriptionUpdate.overridePaymentMethod = input.contentOverride.paymentMethod;
     if (input.contentOverride.interval !== undefined) subscriptionUpdate.interval = input.contentOverride.interval;
-    if (newShippingFee !== undefined) subscriptionUpdate.override_shipping_fee = newShippingFee;
-    if (newPaymentFee !== undefined) subscriptionUpdate.override_payment_fee = newPaymentFee;
+    if (newShippingFee !== undefined) subscriptionUpdate.overrideShippingFee = newShippingFee;
+    if (newPaymentFee !== undefined) subscriptionUpdate.overridePaymentFee = newPaymentFee;
 
     if (Object.keys(subscriptionUpdate).length > 0) {
-      const { error: updateError } = await supabase
-        .from("subscriptions")
-        .update(subscriptionUpdate)
-        .eq("id", subscriptionRow.id);
-      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+      try {
+        await db.update(subscriptions).set(subscriptionUpdate).where(eq(subscriptions.id, subscriptionRow.id));
+      } catch (err) {
+        return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+      }
     }
 
-    await recordChangeLog(supabase, {
-      customerId: order.customer_id,
+    await recordChangeLog(db, {
+      customerId: order.customerId,
       subscriptionId: subscriptionRow.id,
       action: "subscription_content_update",
       changes: diffFields([
-        { field: "productId", label: "商品", before: subscriptionRow.override_product_id, after: input.contentOverride.productId },
-        { field: "quantity", label: "数量", before: subscriptionRow.override_quantity, after: input.contentOverride.quantity },
-        { field: "amount", label: "2回目以降価格", before: subscriptionRow.override_amount, after: input.contentOverride.amount },
+        { field: "productId", label: "商品", before: subscriptionRow.overrideProductId, after: input.contentOverride.productId },
+        { field: "quantity", label: "数量", before: subscriptionRow.overrideQuantity, after: input.contentOverride.quantity },
+        { field: "amount", label: "2回目以降価格", before: subscriptionRow.overrideAmount, after: input.contentOverride.amount },
         { field: "interval", label: "お届け頻度", before: subscriptionRow.interval, after: input.contentOverride.interval },
-        { field: "paymentMethod", label: "決済方法", before: subscriptionRow.override_payment_method, after: input.contentOverride.paymentMethod },
+        { field: "paymentMethod", label: "決済方法", before: subscriptionRow.overridePaymentMethod, after: input.contentOverride.paymentMethod },
       ]),
       changedByEmail,
     });
@@ -251,13 +286,16 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (order.type !== "subscription") {
       return NextResponse.json({ error: "定期購入の注文ではありません" }, { status: 400 });
     }
-    const { error: resumeError } = await supabase
-      .from("subscriptions")
-      .update({ status: "active", next_billing_date: input.resumeSubscription.nextBillingDate })
-      .eq("order_id", order.id);
-    if (resumeError) return NextResponse.json({ error: resumeError.message }, { status: 500 });
-    await recordChangeLog(supabase, {
-      customerId: order.customer_id,
+    try {
+      await db
+        .update(subscriptions)
+        .set({ status: "active", nextBillingDate: input.resumeSubscription.nextBillingDate })
+        .where(eq(subscriptions.orderId, order.id));
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
+    await recordChangeLog(db, {
+      customerId: order.customerId,
       action: "subscription_resume",
       changes: diffFields([
         { field: "status", label: "状態", before: "解約済み", after: "継続中" },
@@ -271,29 +309,33 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (order.type !== "subscription") {
       return NextResponse.json({ error: "定期購入の注文ではありません" }, { status: 400 });
     }
-    const { data: subscriptionRow, error: subError } = await supabase
-      .from("subscriptions")
-      .select("id, interval, next_billing_date")
-      .eq("order_id", order.id)
-      .maybeSingle();
-    if (subError) return NextResponse.json({ error: subError.message }, { status: 500 });
-    if (!subscriptionRow?.next_billing_date) {
+    let subscriptionRow;
+    try {
+      [subscriptionRow] = await db
+        .select({ id: subscriptions.id, interval: subscriptions.interval, nextBillingDate: subscriptions.nextBillingDate })
+        .from(subscriptions)
+        .where(eq(subscriptions.orderId, order.id))
+        .limit(1);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
+    if (!subscriptionRow?.nextBillingDate) {
       return NextResponse.json({ error: "次回お届け予定日が設定されていません" }, { status: 400 });
     }
-    const nextDate = new Date(subscriptionRow.next_billing_date);
+    const nextDate = new Date(subscriptionRow.nextBillingDate);
     nextDate.setDate(nextDate.getDate() + SUBSCRIPTION_INTERVAL_DAYS[subscriptionRow.interval as keyof typeof SUBSCRIPTION_INTERVAL_DAYS]);
     const newNextBillingDate = nextDate.toISOString().slice(0, 10);
-    const { error: skipError } = await supabase
-      .from("subscriptions")
-      .update({ next_billing_date: newNextBillingDate })
-      .eq("id", subscriptionRow.id);
-    if (skipError) return NextResponse.json({ error: skipError.message }, { status: 500 });
-    await recordChangeLog(supabase, {
-      customerId: order.customer_id,
+    try {
+      await db.update(subscriptions).set({ nextBillingDate: newNextBillingDate }).where(eq(subscriptions.id, subscriptionRow.id));
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
+    await recordChangeLog(db, {
+      customerId: order.customerId,
       subscriptionId: subscriptionRow.id,
       action: "subscription_skip",
       changes: diffFields([
-        { field: "nextBillingDate", label: "次回お届け予定日", before: subscriptionRow.next_billing_date, after: newNextBillingDate },
+        { field: "nextBillingDate", label: "次回お届け予定日", before: subscriptionRow.nextBillingDate, after: newNextBillingDate },
       ]),
       changedByEmail,
     });
@@ -303,12 +345,16 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (order.type !== "subscription") {
       return NextResponse.json({ error: "定期購入の注文ではありません" }, { status: 400 });
     }
-    const { data: subscriptionRow, error: subError } = await supabase
-      .from("subscriptions")
-      .select("id")
-      .eq("order_id", order.id)
-      .maybeSingle();
-    if (subError) return NextResponse.json({ error: subError.message }, { status: 500 });
+    let subscriptionRow;
+    try {
+      [subscriptionRow] = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(eq(subscriptions.orderId, order.id))
+        .limit(1);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
     if (!subscriptionRow) return NextResponse.json({ error: "subscription not found" }, { status: 404 });
     await createDeferredSubscriptionRenewalOrder(subscriptionRow.id);
   }

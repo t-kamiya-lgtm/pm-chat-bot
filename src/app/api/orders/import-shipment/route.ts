@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { orders } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 import { sendShipmentCompleteEmail } from "@/lib/order-status-emails";
 
@@ -84,21 +86,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   const errors: { line: number; orderNumber: string; reason: string }[] = [];
   let success = 0;
 
   for (const row of rows) {
-    const { data: matches, error: findError } = await supabase
-      .from("orders")
-      .select("id, import_status")
-      .eq("order_number", row.orderNumber);
-
-    if (findError) {
-      errors.push({ line: row.line, orderNumber: row.orderNumber, reason: findError.message });
+    let matches;
+    try {
+      matches = await db
+        .select({ id: orders.id, importStatus: orders.importStatus })
+        .from(orders)
+        .where(eq(orders.orderNumber, row.orderNumber));
+    } catch (err) {
+      errors.push({
+        line: row.line,
+        orderNumber: row.orderNumber,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       continue;
     }
-    if (!matches || matches.length === 0) {
+
+    if (matches.length === 0) {
       errors.push({ line: row.line, orderNumber: row.orderNumber, reason: "該当する注文が見つかりません" });
       continue;
     }
@@ -114,19 +122,23 @@ export async function POST(request: Request) {
     const order = matches[0];
 
     const shippedAt = parseShipDate(row.shipDate) ?? new Date();
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-        import_status: "shipped",
-        import_status_updated_at: new Date().toISOString(),
-        shipped_at: shippedAt.toISOString(),
-        carrier_name: row.carrierName || null,
-        tracking_number: row.trackingNumber || null,
-      })
-      .eq("id", order.id);
-
-    if (updateError) {
-      errors.push({ line: row.line, orderNumber: row.orderNumber, reason: updateError.message });
+    try {
+      await db
+        .update(orders)
+        .set({
+          importStatus: "shipped",
+          importStatusUpdatedAt: new Date().toISOString(),
+          shippedAt: shippedAt.toISOString(),
+          carrierName: row.carrierName || null,
+          trackingNumber: row.trackingNumber || null,
+        })
+        .where(eq(orders.id, order.id));
+    } catch (err) {
+      errors.push({
+        line: row.line,
+        orderNumber: row.orderNumber,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       continue;
     }
 

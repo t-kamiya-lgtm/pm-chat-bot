@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import { and, eq, isNull } from "drizzle-orm";
 import { getStripeClient } from "@/lib/stripe";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { orders, subscriptions } from "@/db/schema";
 import { recordCouponUsage } from "@/lib/coupons";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { createSubscriptionRenewalOrder } from "@/lib/subscription-renewal";
@@ -76,25 +78,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
   switch (event.type) {
     case "payment_intent.succeeded": {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      const { data: order } = await supabase
-        .from("orders")
-        .select("id, status, type, coupon_id, customer_id")
-        .eq("stripe_payment_intent_id", paymentIntent.id)
-        .maybeSingle();
+      const [order] = await db
+        .select({ id: orders.id, status: orders.status, type: orders.type, couponId: orders.couponId, customerId: orders.customerId })
+        .from(orders)
+        .where(eq(orders.stripePaymentIntentId, paymentIntent.id))
+        .limit(1);
 
       if (order && order.type === "one_time" && order.status !== "paid") {
         // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、受注ステータスは変更しない(未取込みのまま)
-        await supabase.from("orders").update({ status: "paid" }).eq("id", order.id);
+        await db.update(orders).set({ status: "paid" }).where(eq(orders.id, order.id));
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
-        await assignCustomerNumberIfNeeded(order.customer_id);
+        await assignCustomerNumberIfNeeded(order.customerId);
         // クーポンの使用回数は決済確定時点で加算する(与信のみで完了前の失敗・放棄では消費しない)
-        if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
+        if (order.couponId) await recordCouponUsage(db, order.couponId);
       }
       break;
     }
@@ -105,20 +107,19 @@ export async function POST(request: Request) {
       if (!subscriptionId) break;
 
       // 定期購入は「初回の注文行」1件のみをこの条件で特定する(2回目以降は別行として生成するため)
-      const { data: order } = await supabase
-        .from("orders")
-        .select("id, status, coupon_id, customer_id")
-        .eq("stripe_subscription_id", subscriptionId)
-        .is("parent_order_id", null)
-        .maybeSingle();
+      const [order] = await db
+        .select({ id: orders.id, status: orders.status, couponId: orders.couponId, customerId: orders.customerId })
+        .from(orders)
+        .where(and(eq(orders.stripeSubscriptionId, subscriptionId), isNull(orders.parentOrderId)))
+        .limit(1);
       if (!order) break;
 
       const periodEnd = invoice.lines.data[0]?.period?.end;
       if (periodEnd) {
-        await supabase
-          .from("subscriptions")
-          .update({ next_billing_date: new Date(periodEnd * 1000).toISOString().slice(0, 10) })
-          .eq("order_id", order.id);
+        await db
+          .update(subscriptions)
+          .set({ nextBillingDate: new Date(periodEnd * 1000).toISOString().slice(0, 10) })
+          .where(eq(subscriptions.orderId, order.id));
       }
 
       if (invoice.billing_reason === "subscription_cycle") {
@@ -126,12 +127,12 @@ export async function POST(request: Request) {
         await createSubscriptionRenewalOrder({ stripeSubscriptionId: subscriptionId, invoiceId: invoice.id });
       } else if (order.status !== "paid") {
         // Stripe注文はフルフィル担当が基幹システムへ手動で取り込むため、受注ステータスは変更しない(未取込みのまま)
-        await supabase.from("orders").update({ status: "paid" }).eq("id", order.id);
+        await db.update(orders).set({ status: "paid" }).where(eq(orders.id, order.id));
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
-        await assignCustomerNumberIfNeeded(order.customer_id);
+        await assignCustomerNumberIfNeeded(order.customerId);
         // クーポンの使用回数は初回決済確定時点で加算する(以降の定期課金では加算しない)
-        if (order.coupon_id) await recordCouponUsage(supabase, order.coupon_id);
+        if (order.couponId) await recordCouponUsage(db, order.couponId);
         // お試し→本品自動切替プラン(Subscription Schedule)は payment_settings.save_default_payment_method
         // が使えないため、初回決済で使われた支払い方法を顧客の既定支払い方法として明示的に保存する
         // (2回目以降、自動切替後のフェーズの請求もこの支払い方法で継続課金されるようにするため)。
@@ -145,16 +146,16 @@ export async function POST(request: Request) {
       // フルフィル担当が気づけるようにする(従来はここが未実装で、失敗した単品注文が
       // 「処理中」のまま放置されていた)。
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      const { data: order } = await supabase
-        .from("orders")
-        .select("id")
-        .eq("stripe_payment_intent_id", paymentIntent.id)
-        .maybeSingle();
+      const [order] = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.stripePaymentIntentId, paymentIntent.id))
+        .limit(1);
       if (order) {
-        await supabase
-          .from("orders")
-          .update({ status: "failed", import_status: "on_hold", import_status_updated_at: new Date().toISOString() })
-          .eq("id", order.id);
+        await db
+          .update(orders)
+          .set({ status: "failed", importStatus: "on_hold", importStatusUpdatedAt: new Date().toISOString() })
+          .where(eq(orders.id, order.id));
       }
       break;
     }
@@ -164,12 +165,11 @@ export async function POST(request: Request) {
       const subscriptionId = getSubscriptionIdFromInvoice(invoice);
       if (!subscriptionId) break;
 
-      const { data: order } = await supabase
-        .from("orders")
-        .select("id")
-        .eq("stripe_subscription_id", subscriptionId)
-        .is("parent_order_id", null)
-        .maybeSingle();
+      const [order] = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.stripeSubscriptionId, subscriptionId), isNull(orders.parentOrderId)))
+        .limit(1);
       if (!order) break;
 
       if (invoice.billing_reason === "subscription_cycle") {
@@ -177,16 +177,16 @@ export async function POST(request: Request) {
         // (invoice.paidで初めて生成するため)。決済済みの初回注文のstatusを誤って
         // 書き換えないよう、初回注文はimport_statusを「保留」にするだけに留め、
         // フルフィル担当が気づいて個別対応(顧客連絡・カード変更/代引き後払いへの切替等)できるようにする。
-        await supabase
-          .from("orders")
-          .update({ import_status: "on_hold", import_status_updated_at: new Date().toISOString() })
-          .eq("id", order.id);
+        await db
+          .update(orders)
+          .set({ importStatus: "on_hold", importStatusUpdatedAt: new Date().toISOString() })
+          .where(eq(orders.id, order.id));
       } else {
         // 定期初回の決済失敗。
-        await supabase
-          .from("orders")
-          .update({ status: "failed", import_status: "on_hold", import_status_updated_at: new Date().toISOString() })
-          .eq("id", order.id);
+        await db
+          .update(orders)
+          .set({ status: "failed", importStatus: "on_hold", importStatusUpdatedAt: new Date().toISOString() })
+          .where(eq(orders.id, order.id));
       }
       break;
     }
@@ -194,12 +194,11 @@ export async function POST(request: Request) {
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
-      const { data: order } = await supabase
-        .from("orders")
-        .select("id")
-        .eq("stripe_subscription_id", subscription.id)
-        .is("parent_order_id", null)
-        .maybeSingle();
+      const [order] = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.stripeSubscriptionId, subscription.id), isNull(orders.parentOrderId)))
+        .limit(1);
       if (!order) break;
 
       const status =
@@ -209,7 +208,7 @@ export async function POST(request: Request) {
             ? "paused"
             : "active";
 
-      await supabase.from("subscriptions").update({ status }).eq("order_id", order.id);
+      await db.update(subscriptions).set({ status }).where(eq(subscriptions.orderId, order.id));
       break;
     }
 

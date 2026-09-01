@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, eq, inArray, lte } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { orders, subscriptions } from "@/db/schema";
 import { createDeferredSubscriptionRenewalOrder } from "@/lib/subscription-renewal";
 
 export const runtime = "nodejs";
@@ -26,28 +28,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + RENEWAL_LEAD_DAYS);
   const cutoffDate = cutoff.toISOString().slice(0, 10);
 
-  const { data: dueSubscriptions, error } = await supabase
-    .from("subscriptions")
-    .select("id, order_id, override_payment_method")
-    .eq("status", "active")
-    .lte("next_billing_date", cutoffDate);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!dueSubscriptions || dueSubscriptions.length === 0) {
+  let dueSubscriptions;
+  try {
+    dueSubscriptions = await db
+      .select({ id: subscriptions.id, orderId: subscriptions.orderId, overridePaymentMethod: subscriptions.overridePaymentMethod })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.status, "active"), lte(subscriptions.nextBillingDate, cutoffDate)));
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+  if (dueSubscriptions.length === 0) {
     return NextResponse.json({ processed: 0 });
   }
 
   // 実効の決済方法(スタッフによる個別上書きがあればそちらを優先)がcod/deferred_invoiceのものだけを対象にする。
-  const orderIds = dueSubscriptions.map((s) => s.order_id);
-  const { data: orders } = await supabase.from("orders").select("id, payment_method").in("id", orderIds);
-  const paymentMethodByOrderId = new Map((orders ?? []).map((o) => [o.id, o.payment_method]));
+  const orderIds = dueSubscriptions.map((s) => s.orderId);
+  const orderRows = await db.select({ id: orders.id, paymentMethod: orders.paymentMethod }).from(orders).where(inArray(orders.id, orderIds));
+  const paymentMethodByOrderId = new Map(orderRows.map((o) => [o.id, o.paymentMethod]));
   const targets = dueSubscriptions.filter((s) => {
-    const effective = s.override_payment_method ?? paymentMethodByOrderId.get(s.order_id);
+    const effective = s.overridePaymentMethod ?? paymentMethodByOrderId.get(s.orderId);
     return effective === "cod" || effective === "deferred_invoice";
   });
 

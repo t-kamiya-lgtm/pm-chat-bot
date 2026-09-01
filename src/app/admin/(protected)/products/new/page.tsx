@@ -1,4 +1,6 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc, desc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { productGroups, products } from "@/db/schema";
 import { ProductForm } from "@/components/admin/ProductForm";
 
 export const dynamic = "force-dynamic";
@@ -9,22 +11,25 @@ export default async function NewProductPage({
   searchParams: Promise<{ productGroupId?: string }>;
 }) {
   const { productGroupId } = await searchParams;
-  const supabase = createSupabaseAdminClient();
-  const [{ data: productGroups }, { data: otherProducts }] = await Promise.all([
-    supabase.from("product_groups").select("id, name").order("created_at", { ascending: false }),
-    supabase
-      .from("products")
-      .select("id, name")
-      .eq("is_set", false)
-      .order("smaregi_product_id", { ascending: true, nullsFirst: false }),
+  const db = await getDb();
+  const [productGroupRows, otherProductRows] = await Promise.all([
+    db
+      .select({ id: productGroups.id, name: productGroups.name })
+      .from(productGroups)
+      .orderBy(desc(productGroups.createdAt)),
+    db
+      .select({ id: products.id, name: products.name })
+      .from(products)
+      .where(eq(products.isSet, false))
+      .orderBy(asc(products.smaregiProductId)),
   ]);
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">商品(品番)を登録</h1>
       <ProductForm
-        productGroups={productGroups ?? []}
-        otherProducts={otherProducts ?? []}
+        productGroups={productGroupRows}
+        otherProducts={otherProductRows}
         lockProductGroup={Boolean(productGroupId)}
         initialValues={
           productGroupId

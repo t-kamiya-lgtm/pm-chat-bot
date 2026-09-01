@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
 import { requireCatalogRole } from "@/lib/require-role";
 import { sendCancellationEmail } from "@/lib/order-status-emails";
 import { applyImportStatusChange } from "@/lib/order-import-status";
@@ -29,11 +29,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
   const results = await Promise.all(
     parsed.data.orderIds.map(async (orderId) => ({
       orderId,
-      result: await applyImportStatusChange(supabase, orderId, parsed.data.importStatus),
+      result: await applyImportStatusChange(db, orderId, parsed.data.importStatus),
     })),
   );
 

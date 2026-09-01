@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
 import { resolveApplicableCoupon } from "@/lib/coupons";
 
 /**
@@ -21,8 +21,8 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "invalid request" }, { status: 400 });
   const { scenarioId, code, subtotal, cartProductIds } = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const applied = await resolveApplicableCoupon(supabase, { scenarioId, code, subtotal, cartProductIds });
+  const db = await getDb();
+  const applied = await resolveApplicableCoupon(db, { scenarioId, code, subtotal, cartProductIds });
 
   if (!applied) {
     return NextResponse.json({

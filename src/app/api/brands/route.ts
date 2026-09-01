@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { desc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { brands } from "@/db/schema";
 import { requireCatalogRole } from "@/lib/require-role";
 
 const createSchema = z.object({
@@ -19,10 +21,13 @@ export async function GET() {
   const roleCheck = await requireCatalogRole();
   if (!roleCheck.ok) return roleCheck.response;
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.from("brands").select("*").order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ brands: data });
+  try {
+    const db = await getDb();
+    const rows = await db.select().from(brands).orderBy(desc(brands.createdAt));
+    return NextResponse.json({ brands: rows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -35,13 +40,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("brands")
-    .insert({ name: parsed.data.name, code: parsed.data.code ?? null })
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ brand: data }, { status: 201 });
+  try {
+    const db = await getDb();
+    const [row] = await db
+      .insert(brands)
+      .values({ name: parsed.data.name, code: parsed.data.code ?? null })
+      .returning();
+    return NextResponse.json({ brand: row }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

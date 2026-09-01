@@ -1,6 +1,6 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
+import { and, eq, lte } from "drizzle-orm";
+import { productGroupTaxRates, products, taxRates } from "@/db/schema";
+import type { Db } from "@/lib/db";
 
 export interface OrderCostSnapshot {
   cost_amount: number;
@@ -23,47 +23,46 @@ const EMPTY_SNAPSHOT: OrderCostSnapshot = {
  * 商品ジャンル(product_groups)に対して期間設定された税率をスナップショットとして求める。
  * 後から商品のコスト設定や税率メニューを変更しても、過去の注文の増分利益実績は変わらない
  * (価格・決済手数料と同じスナップショット方式)。
- * embed(結合)クエリはPostgRESTのリレーションキャッシュ更新待ちで失敗することがあるため使わず、
- * 単純なselectを複数回に分けてJS側で解決する。
  */
 export async function resolveOrderCostSnapshot(
-  supabase: SupabaseAdminClient,
+  db: Db,
   productId: string,
   orderDateIso: string,
 ): Promise<OrderCostSnapshot> {
-  const { data: product } = await supabase
-    .from("products")
-    .select("product_group_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount")
-    .eq("id", productId)
-    .maybeSingle();
+  const [product] = await db
+    .select({
+      productGroupId: products.productGroupId,
+      costAmount: products.costAmount,
+      bundleInsertCost: products.bundleInsertCost,
+      shippingCost: products.shippingCost,
+      salesCommissionAmount: products.salesCommissionAmount,
+    })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
   if (!product) return EMPTY_SNAPSHOT;
 
   const orderDate = orderDateIso.slice(0, 10);
   let taxRate: number | null = null;
-  if (product.product_group_id) {
-    const { data: assignments } = await supabase
-      .from("product_group_tax_rates")
-      .select("tax_rate_id, period_start, period_end")
-      .eq("product_group_id", product.product_group_id as string)
-      .lte("period_start", orderDate);
-    const applicable = (assignments ?? [])
-      .filter((a) => !a.period_end || (a.period_end as string) >= orderDate)
-      .sort((a, b) => (a.period_start < b.period_start ? 1 : -1))[0];
+  if (product.productGroupId) {
+    const assignments = await db
+      .select({ taxRateId: productGroupTaxRates.taxRateId, periodStart: productGroupTaxRates.periodStart, periodEnd: productGroupTaxRates.periodEnd })
+      .from(productGroupTaxRates)
+      .where(and(eq(productGroupTaxRates.productGroupId, product.productGroupId), lte(productGroupTaxRates.periodStart, orderDate)));
+    const applicable = assignments
+      .filter((a) => !a.periodEnd || a.periodEnd >= orderDate)
+      .sort((a, b) => (a.periodStart < b.periodStart ? 1 : -1))[0];
     if (applicable) {
-      const { data: taxRateRow } = await supabase
-        .from("tax_rates")
-        .select("rate")
-        .eq("id", applicable.tax_rate_id as string)
-        .maybeSingle();
-      taxRate = (taxRateRow?.rate as number | undefined) ?? null;
+      const [taxRateRow] = await db.select({ rate: taxRates.rate }).from(taxRates).where(eq(taxRates.id, applicable.taxRateId)).limit(1);
+      taxRate = taxRateRow ? Number(taxRateRow.rate) : null;
     }
   }
 
   return {
-    cost_amount: (product.cost_amount as number | null) ?? 0,
-    bundle_insert_cost: (product.bundle_insert_cost as number | null) ?? 0,
-    shipping_cost: (product.shipping_cost as number | null) ?? 0,
-    sales_commission_amount: (product.sales_commission_amount as number | null) ?? 0,
+    cost_amount: product.costAmount ?? 0,
+    bundle_insert_cost: product.bundleInsertCost ?? 0,
+    shipping_cost: product.shippingCost ?? 0,
+    sales_commission_amount: product.salesCommissionAmount ?? 0,
     tax_rate: taxRate,
   };
 }

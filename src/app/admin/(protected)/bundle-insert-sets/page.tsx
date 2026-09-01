@@ -1,28 +1,50 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { asc } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { bundleInsertItems, brands, products } from "@/db/schema";
 import { listBundleInsertSetsWithDetails, sumItemDistribution } from "@/lib/bundle-insert-sets-query";
 import { BundleInsertTabs } from "@/components/admin/BundleInsertTabs";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminBundleInsertSetsPage() {
-  const supabase = createSupabaseAdminClient();
-  // brandsとの結合(embed)はPostgRESTのリレーションキャッシュが新しいFKに追随するまで
-  // 失敗することがあるため使わず、別々に取得してJS側で紐付ける。
-  const [itemsRes, brandsRes, productsRes, { sets, error: setsError }] = await Promise.all([
-    supabase.from("bundle_insert_items").select("*").order("registered_date", { ascending: false }),
-    supabase.from("brands").select("id, name, code").order("name", { ascending: true }),
-    supabase.from("products").select("id, name, smaregi_product_id").order("smaregi_product_id", { ascending: true }),
-    listBundleInsertSetsWithDetails(supabase),
-  ]);
+  const db = await getDb();
 
-  const loadError = itemsRes.error?.message ?? brandsRes.error?.message ?? productsRes.error?.message ?? setsError;
-  const brandById = new Map((brandsRes.data ?? []).map((b) => [b.id as string, b]));
+  let loadError: string | null = null;
+  let items: unknown[] = [];
+  let sets: Awaited<ReturnType<typeof listBundleInsertSetsWithDetails>>["sets"] = [];
+  let brandRows: { id: string; name: string; code: string | null }[] = [];
+  let productRows: { id: string; name: string; smaregi_product_id: string | null }[] = [];
 
-  const items = (itemsRes.data ?? []).map((item) => ({
-    ...item,
-    brands: brandById.get(item.brand_id as string) ?? null,
-    distributedCount: sumItemDistribution(sets, item.id as string),
-  }));
+  try {
+    const [itemRows, brandResult, productResult, setsResult] = await Promise.all([
+      db.select().from(bundleInsertItems).orderBy(asc(bundleInsertItems.registeredDate)),
+      db.select({ id: brands.id, name: brands.name, code: brands.code }).from(brands).orderBy(asc(brands.name)),
+      db
+        .select({ id: products.id, name: products.name, smaregiProductId: products.smaregiProductId })
+        .from(products)
+        .orderBy(asc(products.smaregiProductId)),
+      listBundleInsertSetsWithDetails(db),
+    ]);
+
+    brandRows = brandResult;
+    productRows = productResult.map((p) => ({ id: p.id, name: p.name, smaregi_product_id: p.smaregiProductId }));
+    sets = setsResult.sets;
+
+    const brandById = new Map(brandRows.map((b) => [b.id, b]));
+    items = itemRows.map((item) => ({
+      id: item.id,
+      brand_id: item.brandId,
+      item_type: item.itemType,
+      name: item.name,
+      registered_date: item.registeredDate,
+      url: item.url,
+      status: item.status,
+      brands: brandById.get(item.brandId) ?? null,
+      distributedCount: sumItemDistribution(sets, item.id),
+    }));
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : String(err);
+  }
 
   return (
     <div>
@@ -38,8 +60,8 @@ export default async function AdminBundleInsertSetsPage() {
       <BundleInsertTabs
         items={items as never}
         sets={sets as never}
-        brands={(brandsRes.data ?? []) as { id: string; name: string; code: string | null }[]}
-        products={(productsRes.data ?? []) as { id: string; name: string; smaregi_product_id: string | null }[]}
+        brands={brandRows}
+        products={productRows}
       />
     </div>
   );
