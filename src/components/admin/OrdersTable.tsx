@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ImportStatus } from "@/lib/order-filters";
 import { Toast } from "@/components/admin/Toast";
+import { OrderDetailDialog } from "@/components/admin/OrderDetailDialog";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   stripe: "即時決済(Stripe)",
@@ -173,6 +174,7 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
   const [applying, setApplying] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const saveWidthsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 前回このブラウザで調整した列幅があれば復元する(マウント後に読み込むことでSSRとの表示差分を避ける)。
@@ -274,6 +276,9 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
   return (
     <div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+      {detailOrderId && (
+        <OrderDetailDialog orderId={detailOrderId} onClose={() => setDetailOrderId(null)} />
+      )}
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg border border-neutral-300 bg-sky-50 p-3 text-sm">
           <span>{selected.size}件選択中</span>
@@ -372,7 +377,20 @@ export function OrdersTable({ orders, exportQuery }: { orders: OrderRow[]; expor
                       onChange={() => toggleOne(order.id)}
                     />
                   </td>
-                  <td className="px-4 py-2 font-mono break-all">{order.order_number ?? "-"}</td>
+                  <td className="px-4 py-2 font-mono break-all">
+                    {order.order_number ? (
+                      <button
+                        type="button"
+                        onClick={() => setDetailOrderId(order.id)}
+                        className="text-sky-700 underline decoration-dotted hover:text-sky-900"
+                        title="クリックすると注文詳細(住所・電話番号・お届け先など)を表示します"
+                      >
+                        {order.order_number}
+                      </button>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="px-4 py-2">{new Date(order.created_at).toLocaleString("ja-JP")}</td>
                   <td className="px-4 py-2">{order.customers?.name ?? "-"}</td>
                   <td className="px-4 py-2">

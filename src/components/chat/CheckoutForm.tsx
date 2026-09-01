@@ -300,7 +300,7 @@ function stepQuestionText(step: WizardStep): string {
   if (step.kind === "address") return "ご注文者様のご住所を教えてください。";
   if (step.kind === "delivery") return "お届け希望日・時間帯を教えてください。";
   if (step.key === "paymentMethod") return "お支払い方法をお選びください。";
-  if (step.key === "invoiceNote") return "送り状への記載内容の指示がございましたら、下記にご入力ください。";
+  if (step.key === "invoiceNote") return "注文に関して留意事項がございましたらご入力ください。";
   return `${CHECKOUT_FIELD_LABELS[step.key]}を教えてください。`;
 }
 

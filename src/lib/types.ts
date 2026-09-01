@@ -251,7 +251,7 @@ export interface Order {
   stripeSubscriptionId: string | null;
   shippingAddress: ShippingAddress | null;
   surveyResponses: Record<string, string> | null;
-  /** 送り状への記載内容の指示(任意)。基幹システム連携(通販ゲート)の「伝票記事」向け。 */
+  /** お客様のご注文に関するコメント(任意)。基幹システム連携(通販ゲート)の「備考」向け。 */
   invoiceNote: string | null;
   couponId: string | null;
   couponCode: string | null;
