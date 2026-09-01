@@ -1,5 +1,7 @@
 import { Fragment } from "react";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { scenarios as scenariosTable, products as productsTable, brands as brandsTable, customers as customersTable, scenarioAccessLogs, orders } from "@/db/schema";
 import { DashboardViewToggle } from "@/components/admin/DashboardViewToggle";
 import { SplitStatsViewToggle } from "@/components/admin/SplitStatsViewToggle";
 import { PrintButton } from "@/components/admin/PrintButton";
@@ -105,59 +107,114 @@ export default async function AdminDashboardPage({
   const scenarioId = getParam("scenarioId") || "";
   const brandId = getParam("brandId") || "";
 
-  const supabase = createSupabaseAdminClient();
+  const db = await getDb();
 
-  const [{ data: scenarios }, { data: products }, { data: brands }, { data: customers }] = await Promise.all([
-    supabase.from("scenarios").select("id, name, order_code").order("display_order"),
-    supabase.from("products").select("id, name"),
-    supabase.from("brands").select("id, name, code").order("name"),
-    supabase.from("customers").select("id, name"),
-  ]);
-  const scenarioNames = Object.fromEntries((scenarios ?? []).map((s) => [s.id, s.name]));
-  const productNames = Object.fromEntries((products ?? []).map((p) => [p.id, p.name]));
-  const customerNamesById = new Map(
-    (customers ?? []).map((c) => [c.id as string, (c.name as string | null) || "(名称未設定)"]),
-  );
+  let scenarios: { id: string; name: string; order_code: string | null }[] = [];
+  let products: { id: string; name: string }[] = [];
+  let brands: { id: string; name: string; code: string | null }[] = [];
+  let customers: { id: string; name: string }[] = [];
+  let metaError: string | null = null;
+  try {
+    [scenarios, products, brands, customers] = await Promise.all([
+      db
+        .select({ id: scenariosTable.id, name: scenariosTable.name, order_code: scenariosTable.orderCode })
+        .from(scenariosTable)
+        .orderBy(asc(scenariosTable.displayOrder)),
+      db.select({ id: productsTable.id, name: productsTable.name }).from(productsTable),
+      db
+        .select({ id: brandsTable.id, name: brandsTable.name, code: brandsTable.code })
+        .from(brandsTable)
+        .orderBy(asc(brandsTable.name)),
+      db.select({ id: customersTable.id, name: customersTable.name }).from(customersTable),
+    ]);
+  } catch (err) {
+    metaError = err instanceof Error ? err.message : String(err);
+  }
+  const scenarioNames = Object.fromEntries(scenarios.map((s) => [s.id, s.name]));
+  const productNames = Object.fromEntries(products.map((p) => [p.id, p.name]));
+  const customerNamesById = new Map(customers.map((c) => [c.id, c.name || "(名称未設定)"]));
 
   const brandCodeToId = new Map(
-    (brands ?? []).filter((b) => b.code).map((b) => [(b.code as string).toUpperCase(), b.id as string]),
+    brands.filter((b) => b.code).map((b) => [b.code!.toUpperCase(), b.id]),
   );
   const scenarioIdsForBrand = brandId
-    ? (scenarios ?? [])
-        .filter((s) => resolveScenarioBrandId(s.order_code, brandCodeToId) === brandId)
-        .map((s) => s.id)
+    ? scenarios.filter((s) => resolveScenarioBrandId(s.order_code, brandCodeToId) === brandId).map((s) => s.id)
     : null;
 
   // ブランド絞り込み時、該当シナリオが1件もなければ以降のクエリを空扱いにする(空配列.inは全件ヒットしてしまうため)。
   const brandFilterYieldsNoResults = scenarioIdsForBrand !== null && scenarioIdsForBrand.length === 0;
 
-  let accessQuery = supabase
-    .from("scenario_access_logs")
-    .select("scenario_id, session_id, utm_source, utm_medium, utm_campaign, referrer, created_at")
-    .gte("created_at", `${dateFrom}T00:00:00+09:00`)
-    .lte("created_at", `${dateTo}T23:59:59+09:00`);
-  if (scenarioId) accessQuery = accessQuery.eq("scenario_id", scenarioId);
-  if (scenarioIdsForBrand) accessQuery = accessQuery.in("scenario_id", scenarioIdsForBrand);
-  const { data: accessLogs, error: accessError } = brandFilterYieldsNoResults
-    ? { data: [], error: null }
-    : await accessQuery;
+  let accessLogRows: AccessLogRow[] = [];
+  let orderRows: OrderRowWithCustomer[] = [];
+  let accessError: string | null = null;
+  let ordersError: string | null = null;
 
-  let orderQuery = supabase
-    .from("orders")
-    .select(
-      "id, customer_id, scenario_id, product_id, type, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, utm_source, utm_medium, utm_campaign, created_at, billing_cycle_number, session_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount",
-    )
-    .in("status", CONFIRMED_ORDER_STATUSES)
-    .gte("created_at", `${dateFrom}T00:00:00+09:00`)
-    .lte("created_at", `${dateTo}T23:59:59+09:00`);
-  if (scenarioId) orderQuery = orderQuery.eq("scenario_id", scenarioId);
-  if (scenarioIdsForBrand) orderQuery = orderQuery.in("scenario_id", scenarioIdsForBrand);
-  const { data: orders, error: ordersError } = brandFilterYieldsNoResults
-    ? { data: [], error: null }
-    : await orderQuery;
+  if (!brandFilterYieldsNoResults) {
+    const accessConditions = [
+      gte(scenarioAccessLogs.createdAt, `${dateFrom}T00:00:00+09:00`),
+      lte(scenarioAccessLogs.createdAt, `${dateTo}T23:59:59+09:00`),
+    ];
+    if (scenarioId) accessConditions.push(eq(scenarioAccessLogs.scenarioId, scenarioId));
+    if (scenarioIdsForBrand) accessConditions.push(inArray(scenarioAccessLogs.scenarioId, scenarioIdsForBrand));
 
-  const accessLogRows: AccessLogRow[] = accessLogs ?? [];
-  const orderRows: OrderRowWithCustomer[] = (orders ?? []) as unknown as OrderRowWithCustomer[];
+    try {
+      const rows = await db
+        .select({
+          scenario_id: scenarioAccessLogs.scenarioId,
+          session_id: scenarioAccessLogs.sessionId,
+          utm_source: scenarioAccessLogs.utmSource,
+          utm_medium: scenarioAccessLogs.utmMedium,
+          utm_campaign: scenarioAccessLogs.utmCampaign,
+          referrer: scenarioAccessLogs.referrer,
+          created_at: scenarioAccessLogs.createdAt,
+        })
+        .from(scenarioAccessLogs)
+        .where(and(...accessConditions));
+      accessLogRows = rows;
+    } catch (err) {
+      accessError = err instanceof Error ? err.message : String(err);
+    }
+
+    const orderConditions = [
+      inArray(orders.status, CONFIRMED_ORDER_STATUSES),
+      gte(orders.createdAt, `${dateFrom}T00:00:00+09:00`),
+      lte(orders.createdAt, `${dateTo}T23:59:59+09:00`),
+    ];
+    if (scenarioId) orderConditions.push(eq(orders.scenarioId, scenarioId));
+    if (scenarioIdsForBrand) orderConditions.push(inArray(orders.scenarioId, scenarioIdsForBrand));
+
+    try {
+      const rows = await db
+        .select({
+          id: orders.id,
+          customer_id: orders.customerId,
+          scenario_id: orders.scenarioId,
+          product_id: orders.productId,
+          type: orders.type,
+          amount: orders.amount,
+          addon_amount: orders.addonAmount,
+          discount_amount: orders.discountAmount,
+          first_time_discount_amount: orders.firstTimeDiscountAmount,
+          shipping_fee: orders.shippingFee,
+          payment_fee: orders.paymentFee,
+          utm_source: orders.utmSource,
+          utm_medium: orders.utmMedium,
+          utm_campaign: orders.utmCampaign,
+          created_at: orders.createdAt,
+          billing_cycle_number: orders.billingCycleNumber,
+          session_id: orders.sessionId,
+          cost_amount: orders.costAmount,
+          bundle_insert_cost: orders.bundleInsertCost,
+          shipping_cost: orders.shippingCost,
+          sales_commission_amount: orders.salesCommissionAmount,
+        })
+        .from(orders)
+        .where(and(...orderConditions));
+      orderRows = rows as unknown as OrderRowWithCustomer[];
+    } catch (err) {
+      ordersError = err instanceof Error ? err.message : String(err);
+    }
+  }
 
   // 注文自体にはreferrerを保存していないため、同一ウィジェットセッション(session_id)の
   // アクセスログから流入元を引き当てる。
@@ -216,9 +273,9 @@ export default async function AdminDashboardPage({
         シナリオ別・商品別・流入元別の「合計」表は、行の▸をクリックすると顧客単位の注文明細(生データ)が見られます。
       </p>
 
-      {(accessError || ordersError) && (
+      {(metaError || accessError || ordersError) && (
         <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          データの取得に失敗しました({accessError?.message ?? ordersError?.message})
+          データの取得に失敗しました({metaError ?? accessError ?? ordersError})
         </p>
       )}
 

@@ -1,4 +1,16 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { inArray } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import {
+  customers as customersTable,
+  orders as ordersTable,
+  scenarios as scenariosTable,
+  brands as brandsTable,
+  products as productsTable,
+  scenarioAccessLogs,
+  subscriptions as subscriptionsTable,
+  bundleInsertSets,
+  customerRetentionActions,
+} from "@/db/schema";
 import { resolveScenarioBrandId } from "@/lib/brand-resolution";
 import {
   buildCustomerProfiles,
@@ -132,52 +144,92 @@ export default async function AdminSubscriptionAnalysisV2Page({
   );
   const selectedAxes: SegmentAxis[] = selectedAxesRaw.length > 0 ? selectedAxesRaw : ["scenario"];
 
-  const supabase = createSupabaseAdminClient();
+  let customers: CustomerRowWithName[] = [];
+  let orders: LtvOrderRow[] = [];
+  let scenarios: { id: string; name: string; order_code: string | null }[] = [];
+  let brands: { id: string; name: string; code: string | null }[] = [];
+  let products: { id: string; name: string }[] = [];
+  let accessLogs: { session_id: string; referrer: string | null }[] = [];
+  let subscriptions: { order_id: string; interval: string; status: string }[] = [];
+  let bundleSetsRaw: BundleSetCriteria[] = [];
+  let retentionActions: { customer_id: string }[] = [];
+  let loadError: string | null = null;
 
-  const [
-    { data: customers },
-    { data: orders },
-    { data: scenarios },
-    { data: brands },
-    { data: products },
-    { data: accessLogs },
-    { data: subscriptions },
-    { data: bundleSetsRaw },
-    { data: retentionActions },
-  ] = await Promise.all([
-    supabase.from("customers").select("id, name, gender, birth_date"),
-    supabase
-      .from("orders")
-      .select(
-        "id, customer_id, scenario_id, product_id, type, payment_method, billing_cycle_number, quantity, amount, addon_amount, discount_amount, first_time_discount_amount, shipping_fee, payment_fee, created_at, session_id, cost_amount, bundle_insert_cost, shipping_cost, sales_commission_amount",
-      )
-      .in("status", CONFIRMED_ORDER_STATUSES),
-    supabase.from("scenarios").select("id, name, order_code"),
-    supabase.from("brands").select("id, name, code").order("name", { ascending: true }),
-    supabase.from("products").select("id, name"),
-    supabase.from("scenario_access_logs").select("session_id, referrer"),
-    supabase.from("subscriptions").select("order_id, interval, status"),
-    supabase
-      .from("bundle_insert_sets")
-      .select("id, name, brand_id, period_start, period_end, target_order_type, target_cycle_numbers, target_product_ids"),
-    supabase.from("customer_retention_actions").select("customer_id"),
-  ]);
+  try {
+    const db = await getDb();
+    [customers, orders, scenarios, brands, products, accessLogs, subscriptions, bundleSetsRaw, retentionActions] =
+      await Promise.all([
+        db
+          .select({
+            id: customersTable.id,
+            name: customersTable.name,
+            gender: customersTable.gender,
+            birth_date: customersTable.birthDate,
+          })
+          .from(customersTable),
+        db
+          .select({
+            id: ordersTable.id,
+            customer_id: ordersTable.customerId,
+            scenario_id: ordersTable.scenarioId,
+            product_id: ordersTable.productId,
+            type: ordersTable.type,
+            payment_method: ordersTable.paymentMethod,
+            billing_cycle_number: ordersTable.billingCycleNumber,
+            quantity: ordersTable.quantity,
+            amount: ordersTable.amount,
+            addon_amount: ordersTable.addonAmount,
+            discount_amount: ordersTable.discountAmount,
+            first_time_discount_amount: ordersTable.firstTimeDiscountAmount,
+            shipping_fee: ordersTable.shippingFee,
+            payment_fee: ordersTable.paymentFee,
+            created_at: ordersTable.createdAt,
+            session_id: ordersTable.sessionId,
+            cost_amount: ordersTable.costAmount,
+            bundle_insert_cost: ordersTable.bundleInsertCost,
+            shipping_cost: ordersTable.shippingCost,
+            sales_commission_amount: ordersTable.salesCommissionAmount,
+          })
+          .from(ordersTable)
+          .where(inArray(ordersTable.status, CONFIRMED_ORDER_STATUSES))
+          .then((rows) => rows as unknown as LtvOrderRow[]),
+        db.select({ id: scenariosTable.id, name: scenariosTable.name, order_code: scenariosTable.orderCode }).from(scenariosTable),
+        db.select({ id: brandsTable.id, name: brandsTable.name, code: brandsTable.code }).from(brandsTable).orderBy(brandsTable.name),
+        db.select({ id: productsTable.id, name: productsTable.name }).from(productsTable),
+        db.select({ session_id: scenarioAccessLogs.sessionId, referrer: scenarioAccessLogs.referrer }).from(scenarioAccessLogs),
+        db
+          .select({ order_id: subscriptionsTable.orderId, interval: subscriptionsTable.interval, status: subscriptionsTable.status })
+          .from(subscriptionsTable),
+        db
+          .select({
+            id: bundleInsertSets.id,
+            name: bundleInsertSets.name,
+            brand_id: bundleInsertSets.brandId,
+            period_start: bundleInsertSets.periodStart,
+            period_end: bundleInsertSets.periodEnd,
+            target_order_type: bundleInsertSets.targetOrderType,
+            target_cycle_numbers: bundleInsertSets.targetCycleNumbers,
+            target_product_ids: bundleInsertSets.targetProductIds,
+          })
+          .from(bundleInsertSets)
+          .then((rows) => rows as unknown as BundleSetCriteria[]),
+        db.select({ customer_id: customerRetentionActions.customerId }).from(customerRetentionActions),
+      ]);
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : String(err);
+  }
 
-  const customersById = new Map((customers ?? []).map((c) => [c.id as string, c as CustomerRowWithName]));
-  const scenarioNames = new Map((scenarios ?? []).map((s) => [s.id as string, s.name as string]));
-  const scenarioOrderCodes = new Map((scenarios ?? []).map((s) => [s.id as string, s.order_code as string | null]));
-  const brandCodeToId = new Map(
-    (brands ?? []).filter((b) => b.code).map((b) => [(b.code as string).toUpperCase(), b.id as string]),
-  );
-  const brandNames = new Map((brands ?? []).map((b) => [b.id as string, b.name as string]));
-  const productNames = new Map((products ?? []).map((p) => [p.id as string, p.name as string]));
-  const referrerBySessionId = new Map(
-    (accessLogs ?? []).map((l) => [l.session_id as string, l.referrer as string | null]),
-  );
-  const intervalByOrderId = new Map((subscriptions ?? []).map((s) => [s.order_id as string, s.interval as string]));
-  const statusByOrderId = new Map((subscriptions ?? []).map((s) => [s.order_id as string, s.status as string]));
-  const bundleSets: BundleSetCriteria[] = (bundleSetsRaw ?? []) as unknown as BundleSetCriteria[];
-  const customerIdsWithRetentionAction = new Set((retentionActions ?? []).map((r) => r.customer_id as string));
+  const customersById = new Map(customers.map((c) => [c.id, c]));
+  const scenarioNames = new Map(scenarios.map((s) => [s.id, s.name]));
+  const scenarioOrderCodes = new Map(scenarios.map((s) => [s.id, s.order_code]));
+  const brandCodeToId = new Map(brands.filter((b) => b.code).map((b) => [b.code!.toUpperCase(), b.id]));
+  const brandNames = new Map(brands.map((b) => [b.id, b.name]));
+  const productNames = new Map(products.map((p) => [p.id, p.name]));
+  const referrerBySessionId = new Map(accessLogs.map((l) => [l.session_id, l.referrer]));
+  const intervalByOrderId = new Map(subscriptions.map((s) => [s.order_id, s.interval]));
+  const statusByOrderId = new Map(subscriptions.map((s) => [s.order_id, s.status]));
+  const bundleSets: BundleSetCriteria[] = bundleSetsRaw;
+  const customerIdsWithRetentionAction = new Set(retentionActions.map((r) => r.customer_id));
 
   const ctx: SegmentContext = {
     scenarioNames,
@@ -191,13 +243,11 @@ export default async function AdminSubscriptionAnalysisV2Page({
     customerIdsWithRetentionAction,
   };
 
-  let orderRows: LtvOrderRow[] = (orders ?? []) as unknown as LtvOrderRow[];
+  let orderRows: LtvOrderRow[] = orders;
 
   if (brandId) {
     const scenarioIdsForBrand = new Set(
-      (scenarios ?? [])
-        .filter((s) => resolveScenarioBrandId(s.order_code as string | null, brandCodeToId) === brandId)
-        .map((s) => s.id as string),
+      scenarios.filter((s) => resolveScenarioBrandId(s.order_code, brandCodeToId) === brandId).map((s) => s.id),
     );
     orderRows = orderRows.filter((o) => o.scenario_id && scenarioIdsForBrand.has(o.scenario_id));
   }
@@ -256,6 +306,12 @@ export default async function AdminSubscriptionAnalysisV2Page({
       <p className="mb-4 text-sm text-neutral-500">
         施策(セグメント)ごとに開始時期が違うと、暦日の期間だけで比較するのはミスリードになります。各セグメントには「経過期間から確定できる固有到達回数」と、比較対象内で最も浅いセグメントに揃えた「共通比較回数」の両方を表示し、確定値と予測値(自動更新モデル)を区別します。
       </p>
+
+      {loadError && (
+        <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          データの取得に失敗しました({loadError})
+        </p>
+      )}
 
       <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
