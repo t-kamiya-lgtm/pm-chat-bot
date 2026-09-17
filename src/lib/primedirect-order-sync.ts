@@ -1,44 +1,48 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { customers, orders, products, smaregiSyncLogs } from "@/db/schema";
-import { createOrder, type CreateOrderInput } from "@/lib/adapters/smaregi-order-api";
+import { customers, orders, products, subscriptions, smaregiSyncLogs } from "@/db/schema";
+import { createOrder, type CreateOrderInput, type PeriodicalOrderCreateInput } from "@/lib/adapters/smaregi-order-api";
 import {
   findCustomerByEmail,
   generateTemporaryPassword,
   issueTemporaryPassword,
 } from "@/lib/adapters/smaregi-customer-api";
 import { sendMemberRegistrationEmail, sendSmaregiSyncFailureAlert } from "@/lib/email";
+import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
+import type { SubscriptionInterval } from "@/lib/types";
 import type { Db } from "@/lib/db";
 
 /**
- * Stripe決済で確定した注文を、primedirect.jp受注APIへ連携する
- * (new-chatbotリポジトリ docs/smaregi-cart-handoff-research.md 4.7・5.1で決定した方式)。
+ * 注文をprimedirect.jp受注APIへ連携する共通処理
+ * (new-chatbotリポジトリ docs/smaregi-cart-handoff-research.md 4.7・5.1・5.2で決定した方式)。
  *
  * - `customer_id: -1`を指定し、メールアドレスによる自動名寄せをスマレジ側に任せる
  *   (実機検証・API仕様書の両方で、同一メールアドレスの注文は既存顧客に統合されることを確認済み)。
- * - カードの2回目以降の請求はStripe Billingが担うため、このカード決済の連携では
- *   `periodical_order`は指定しない(代引き・後払いの定期購入とは別経路)。
- * - **未確定のまま残っている項目(5.5参照)**: `payment_id`のカード決済相当の実際の値、
- *   `payment_status`の決済済みに相当する実際の値、`ec_type`/`order_root`/`order_status`/
- *   `deliv_id`/`hasso_deliv_kbn`の実際に有効な値。本番の`debug-orders`エンドポイントでの
- *   確認、およびスマレジ側の管理画面設定の確認が必要。それまでは暫定値を使い、失敗時は
- *   `smaregi_sync_logs`に記録するのみでStripe Webhook本体の処理は止めない(fail-safe)。
- *
- * 本番接続(`SMAREGI_DOMAIN`/OAuth連携)が未設定の間は`createOrder`が例外を投げるため、
- * その間はここで捕捉してログに残すだけになる(=既存の基幹システム連携には一切影響しない)。
+ * - 新規に会員登録された場合のみ、仮パスワードを発行し会員登録完了メールを送る
+ *   (4.3.1・4.6.1。チャットはパスワードを扱わない方針のため)。
+ * - **未確定のまま残っている項目(5.5参照)**: `payment_id`の実際の値、`payment_status`の
+ *   決済済みに相当する実際の値、`ec_type`/`order_root`/`order_status`/`deliv_id`/
+ *   `hasso_deliv_kbn`の実際に有効な値。本番の`debug-orders`エンドポイントでの確認、
+ *   およびスマレジ側の管理画面設定の確認が必要。それまでは暫定値を使い、失敗時は
+ *   `smaregi_sync_logs`に記録するのみで呼び出し元の処理は止めない(fail-safe)。
+ * - 本番接続(`SMAREGI_DOMAIN`/OAuth連携)が未設定の間は`createOrder`が例外を投げるため、
+ *   その間はここで捕捉してログに残すだけになる(=既存の基幹システム連携には一切影響しない)。
  */
-export async function submitStripeOrderToSmaregi(orderId: string): Promise<void> {
+async function syncOrderToSmaregi(orderId: string, options: { paymentId: number; includePeriodicalOrder: boolean }): Promise<void> {
   const db = await getDb();
   let payload: CreateOrderInput | null = null;
   try {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!order) return;
 
-    const [[customer], [product], [addonProduct]] = await Promise.all([
+    const [[customer], [product], [addonProduct], [subscription]] = await Promise.all([
       db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1),
       db.select().from(products).where(eq(products.id, order.productId)).limit(1),
       order.addonProductId
         ? db.select().from(products).where(eq(products.id, order.addonProductId)).limit(1)
+        : Promise.resolve([null]),
+      options.includePeriodicalOrder && order.type === "subscription"
+        ? db.select().from(subscriptions).where(eq(subscriptions.orderId, orderId)).limit(1)
         : Promise.resolve([null]),
     ]);
     if (!customer || !product) return;
@@ -100,6 +104,10 @@ export async function submitStripeOrderToSmaregi(orderId: string): Promise<void>
       });
     }
 
+    const periodicalOrder = subscription
+      ? buildPeriodicalOrder({ interval: subscription.interval as SubscriptionInterval, nextBillingDate: subscription.nextBillingDate }, product, taxRate)
+      : undefined;
+
     payload = {
       ecOrderId: order.orderNumber ?? order.id,
       // 要確認: primedirect.jp契約側で有効なEC種類コード(4.6.2)
@@ -136,8 +144,7 @@ export async function submitStripeOrderToSmaregi(orderId: string): Promise<void>
       charge: order.paymentFee,
       chargeNotax: Math.round(order.paymentFee / (1 + taxRate)),
       paymentTotal: total,
-      // 要確認: primedirect.jp契約側で有効なカード決済のpayment_id(旧実装の実績値は77)
-      paymentId: 77,
+      paymentId: options.paymentId,
       // 要確認: 有効な配送方法ID
       delivId: 1,
       // 要確認: 有効な受注ルートID
@@ -149,6 +156,7 @@ export async function submitStripeOrderToSmaregi(orderId: string): Promise<void>
       reserveType: order.type === "subscription" ? "3" : "0",
       // 要確認: 決済済みに相当する実際の値(4.6.2・5.5)。判明するまでの暫定値。
       paymentStatus: 1,
+      periodicalOrder,
     };
 
     const response = await createOrder(payload);
@@ -183,6 +191,59 @@ export async function submitStripeOrderToSmaregi(orderId: string): Promise<void>
       errorMessage: err instanceof Error ? err.message : String(err),
     }).catch(() => {});
   }
+}
+
+/**
+ * 定期購入の初回受注に同時作成するperiodical_orderを組み立てる。
+ * 初回特別価格(product.firstTimePrice)と2回目以降の通常価格(product.price)を分離して
+ * 指定できる(4.6.3で確認済み。これが以前のperiodical_order価格コピー問題を解消する)。
+ */
+function buildPeriodicalOrder(
+  subscription: { interval: SubscriptionInterval; nextBillingDate: string | null },
+  product: { id: string; price: number; firstTimePrice: number | null; smaregiProductId: string | null },
+  taxRate: number,
+): PeriodicalOrderCreateInput | undefined {
+  if (!subscription.nextBillingDate) return undefined;
+  return {
+    periodType: "date",
+    periodDay: SUBSCRIPTION_INTERVAL_DAYS[subscription.interval],
+    nextPeriod: subscription.nextBillingDate,
+    details: [
+      {
+        productCode: product.smaregiProductId ?? product.id,
+        quantity: 1,
+        taxFlag: "込",
+        taxRule: 1,
+        // 初回特別価格(未設定なら通常価格と同額)。2回目以降は必ず通常価格になる
+        // (以前のperiodical_order価格コピー問題は、この初回/2回目以降の分離指定で解消される。4.6.3参照)。
+        firstPriceIntax: product.firstTimePrice ?? product.price,
+        firstTaxRate: taxRate,
+        secondPriceIntax: product.price,
+        secondTaxRate: taxRate,
+      },
+    ],
+  };
+}
+
+/**
+ * Stripe決済で確定した注文を連携する。カードの2回目以降の請求はStripe Billingが担うため、
+ * `periodical_order`は指定しない(代引き・後払いの定期購入とは別経路)。
+ */
+export async function submitStripeOrderToSmaregi(orderId: string): Promise<void> {
+  // 要確認: primedirect.jp契約側で有効なカード決済のpayment_id(旧実装の実績値は77)
+  await syncOrderToSmaregi(orderId, { paymentId: 77, includePeriodicalOrder: false });
+}
+
+/**
+ * 代引き・後払いの注文を連携する。定期購入の場合はperiodical_orderを同時作成し、
+ * 以降の周期課金・出荷はスマレジ純正の定期申込機構に任せる(5.2)。
+ * 【要確認】「代引き(配送時現金回収)」自体への対応可否は未確認(4.5 item 6)。
+ * 対応していない場合、代引き注文はここでエラーとしてログに残るのみになる(fail-safe)。
+ */
+export async function submitDeferredOrderToSmaregi(orderId: string, paymentMethod: "deferred_invoice" | "cod"): Promise<void> {
+  // 要確認: primedirect.jp契約側で有効なpayment_id(旧実装の実績値: 代引き=4, 後払い単品=44, 後払い定期=98)
+  const paymentId = paymentMethod === "cod" ? 4 : 44;
+  await syncOrderToSmaregi(orderId, { paymentId, includePeriodicalOrder: true });
 }
 
 async function recordSyncError(db: Db, orderId: string, payload: CreateOrderInput | null, err: unknown): Promise<void> {

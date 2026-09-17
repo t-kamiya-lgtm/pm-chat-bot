@@ -7,6 +7,7 @@ import { getPaymentFee, calculateTotal } from "@/lib/fees";
 import { getDb } from "@/lib/db";
 import { orders, subscriptions, leads } from "@/db/schema";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
+import { submitDeferredOrderToSmaregi } from "@/lib/primedirect-order-sync";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 import { generateOrderNumber } from "@/lib/order-number";
@@ -16,9 +17,11 @@ import { resolveOrderCostSnapshot } from "@/lib/order-cost-snapshot";
 
 /**
  * 後払い(スコアあと払い)・代金引換の注文受付。
- * 与信・請求は行わず、基幹システム連携アダプタ経由で顧客情報・注文内容を連携するのみ。
- * スマレジへのリアルタイム連携は行わない(スマレジ連携は廃止し、Stripe注文と同様に
- * スタッフが受注データをCSV書き出し→基幹システム「通販ゲート」へ手動取り込みする運用に統一)。
+ * 与信・請求は行わず、基幹システム連携アダプタ経由で顧客情報・注文内容を連携する(既存)。
+ * 加えて、primedirect.jp受注APIへも連携する(5.2の方針決定。詳細はprimedirect-order-sync.ts参照。
+ * 定期購入の場合は初回/2回目以降の価格を分離したperiodical_orderを同時作成し、以降の周期課金・
+ * 出荷はスマレジ純正の定期申込機構に任せる想定)。連携失敗は既存の基幹システム連携・注文受付
+ * 自体には影響しない(fail-safe)。
  */
 export async function POST(request: Request) {
   const body = await request.json();
@@ -195,6 +198,7 @@ export async function POST(request: Request) {
 
   if (accepted) {
     await sendOrderCompletionEmail(order.id);
+    await submitDeferredOrderToSmaregi(order.id, paymentMethod);
     await assignCustomerNumberIfNeeded(customer.id);
     if (appliedCoupon) {
       await recordCouponUsage(db, appliedCoupon.id);
