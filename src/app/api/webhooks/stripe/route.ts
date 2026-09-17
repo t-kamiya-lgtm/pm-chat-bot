@@ -8,6 +8,7 @@ import { recordCouponUsage } from "@/lib/coupons";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { createSubscriptionRenewalOrder } from "@/lib/subscription-renewal";
 import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
+import { submitStripeOrderToSmaregi } from "@/lib/primedirect-order-sync";
 import { assignCustomerNumberIfNeeded } from "@/lib/customer-number";
 
 export const runtime = "nodejs";
@@ -55,8 +56,9 @@ async function saveDefaultPaymentMethodFromInvoice(stripe: Stripe, invoice: Stri
 
 /**
  * Stripe Webhook受信。署名検証を行った上で、注文・サブスクリプション状態をDBに反映する。
- * Stripe決済の注文はスマレジには連携しないが、決済確定後にチャットシステムから基幹システムへ
- * 取り込む(受注確認はチャットシステム、入金突合せはStripe側で行う運用のため)。
+ * 決済確定後、チャットシステムから基幹システムへの取り込み(既存)に加えて、primedirect.jp
+ * 受注APIへも連携する(4.7の方針決定。本番接続の確認が済むまではエラーがログに残るのみで、
+ * 基幹システム連携には影響しない。詳細はsrc/lib/primedirect-order-sync.tsを参照)。
  */
 export async function POST(request: Request) {
   const stripe = getStripeClient();
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
         await db.update(orders).set({ status: "paid" }).where(eq(orders.id, order.id));
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
+        await submitStripeOrderToSmaregi(order.id);
         await assignCustomerNumberIfNeeded(order.customerId);
         // クーポンの使用回数は決済確定時点で加算する(与信のみで完了前の失敗・放棄では消費しない)
         if (order.couponId) await recordCouponUsage(db, order.couponId);
@@ -130,6 +133,7 @@ export async function POST(request: Request) {
         await db.update(orders).set({ status: "paid" }).where(eq(orders.id, order.id));
         await sendOrderCompletionEmail(order.id);
         await submitStripeOrderToCoreSystem(order.id);
+        await submitStripeOrderToSmaregi(order.id);
         await assignCustomerNumberIfNeeded(order.customerId);
         // クーポンの使用回数は初回決済確定時点で加算する(以降の定期課金では加算しない)
         if (order.couponId) await recordCouponUsage(db, order.couponId);

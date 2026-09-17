@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
+import { desc, eq } from "drizzle-orm";
 import { getCurrentAppUser } from "@/lib/auth";
 import { getSmaregiConnectionStatus } from "@/lib/smaregi-oauth";
+import { getDb } from "@/lib/db";
+import { orders, smaregiSyncLogs } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +28,26 @@ export default async function AdminSmaregiPage({
 
   const { connected, expiresAt } = await getSmaregiConnectionStatus();
 
+  const db = await getDb();
+  const recentLogs = await db
+    .select({
+      id: smaregiSyncLogs.id,
+      status: smaregiSyncLogs.status,
+      error: smaregiSyncLogs.error,
+      createdAt: smaregiSyncLogs.createdAt,
+      orderNumber: orders.orderNumber,
+    })
+    .from(smaregiSyncLogs)
+    .leftJoin(orders, eq(orders.id, smaregiSyncLogs.orderId))
+    .orderBy(desc(smaregiSyncLogs.createdAt))
+    .limit(20);
+
   return (
     <div>
       <h1 className="mb-1 text-2xl font-semibold">スマレジ連携</h1>
       <p className="mb-6 text-sm text-neutral-500">
-        代引き・後払いの注文をスマレジEC・リピートへ連携するためのOAuth2認証です。連携すると、以後は自動でアクセストークンが更新されます。
+        Stripe決済・代引き・後払いの注文を、primedirect.jp(スマレジEC・リピート上に構築された自社ECサイト)へ
+        連携するためのOAuth2認証です。連携すると、以後は自動でアクセストークンが更新されます。
       </p>
 
       {result && (
@@ -62,6 +80,44 @@ export default async function AdminSmaregiPage({
           {connected ? "再連携する" : "連携する"}
         </a>
       </div>
+
+      <h2 className="mt-8 mb-2 text-lg font-semibold">直近の連携ログ</h2>
+      <p className="mb-4 text-sm text-neutral-500">
+        注文確定時にprimedirect.jp受注APIへ連携した結果(新しい順、最大20件)。
+        未連携の間は「error」(smaregi is not connected yet)が記録され続けるのが正常な状態です。
+      </p>
+      {recentLogs.length === 0 ? (
+        <p className="text-sm text-neutral-500">まだ連携ログがありません。</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200 text-left text-neutral-500">
+                <th className="px-4 py-2 font-medium">日時</th>
+                <th className="px-4 py-2 font-medium">注文番号</th>
+                <th className="px-4 py-2 font-medium">結果</th>
+                <th className="px-4 py-2 font-medium">エラー内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentLogs.map((log) => (
+                <tr key={log.id} className="border-b border-neutral-100 last:border-0">
+                  <td className="px-4 py-2 whitespace-nowrap text-neutral-500">
+                    {new Date(log.createdAt).toLocaleString("ja-JP")}
+                  </td>
+                  <td className="px-4 py-2">{log.orderNumber ?? "-"}</td>
+                  <td className="px-4 py-2">
+                    <span className={log.status === "ok" ? "font-semibold text-green-700" : "font-semibold text-red-700"}>
+                      {log.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-neutral-600">{log.error ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

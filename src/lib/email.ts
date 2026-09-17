@@ -57,7 +57,8 @@ export interface SmaregiSyncFailureAlertInput {
 }
 
 /**
- * 代引き・後払い注文のスマレジEC連携に失敗した際、運用担当へ即時通知する。
+ * 注文のスマレジEC(primedirect.jp)連携に失敗した際、運用担当へ即時通知する
+ * (Stripe決済・代引き・後払いいずれの注文にも共通で使う)。
  * 管理画面上は取込みエラー(ピンク表示)になるが、気づかず出荷対応が漏れることを防ぐための能動的アラート。
  * SMAREGI_SYNC_ALERT_EMAIL未設定時は問い合わせ通知と同じ宛先(INQUIRY_NOTIFICATION_EMAIL)にフォールバックする。
  */
@@ -89,6 +90,39 @@ export async function sendSmaregiSyncFailureAlert(input: SmaregiSyncFailureAlert
   if (!res.ok) {
     throw new Error(`Failed to send smaregi sync failure alert: ${res.status}`);
   }
+}
+
+export interface MemberRegistrationEmailInput {
+  to: string;
+  name: string;
+  temporaryPassword: string;
+}
+
+/**
+ * チャット経由の初回注文で、primedirect.jp会員として自動登録された(customer_id=-1による
+ * 自動名寄せで新規作成された)顧客へ、会員登録完了メールを送る。
+ * 通販ゲート発行の購入完了メールとは別に、チャットシステムから直接配信する
+ * (4.3.1・4.6.1参照。パスワードはチャットが扱わず、仮パスワードでログイン後に
+ * 顧客自身に設定してもらう運用のため)。
+ * 既に会員登録済みの顧客(2回目以降の注文)には送らない(呼び出し側で判定する)。
+ */
+export async function sendMemberRegistrationEmail(input: MemberRegistrationEmailInput): Promise<void> {
+  const loginUrl = process.env.NEXT_PUBLIC_PRIMEDIRECT_LOGIN_URL || "https://www.primedirect.jp/mypage";
+  await sendResendEmail({
+    to: input.to,
+    from: process.env.ORDER_EMAIL_FROM || "chatbot@example.com",
+    subject: "【プライムダイレクト】会員登録が完了しました",
+    text: `${input.name} 様
+
+ご注文ありがとうございます。マイページのご利用のため、会員登録を行いました。
+以下の仮パスワードでログインいただき、マイページより本パスワードの設定をお願いいたします。
+
+■ログインURL: ${loginUrl}
+■メールアドレス: ${input.to}
+■仮パスワード: ${input.temporaryPassword}
+
+※このメールに心当たりがない場合は、本メールを破棄してください。`,
+  });
 }
 
 export interface SendEmailInput {

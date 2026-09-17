@@ -21,8 +21,9 @@
 - 代金引換: 自社基幹システムを利用(単発・定期両方に適用)。チャットボットは商品代金+代引手数料の合計金額を表示し、代引手数料の徴収・配送業者への連携は基幹システムが担当
 - 定期注文: カード決済分はStripe Billingで自動課金。後払い(スコアあと払い)・代金引換による定期注文は基幹システム側で継続管理
 - シナリオ: 選択肢分岐型トークフロー(管理画面でノーコード作成)
-- 商品登録: チャットボット内に商品マスタを保持し、スマレジ商品IDで紐付け(連携は当面モック)
-- 会員情報移行: 決済完了後、スマレジ会員登録I/Fへ連携(当面モック実装、メールアドレスで名寄せ)
+- 商品登録: チャットボット内に商品マスタを保持し、スマレジ商品ID(`smaregi_product_id`)で紐付け
+- 会員情報移行: 決済完了後、primedirect.jp受注APIへ連携(`customer_id: -1`によるメールアドレス
+  自動名寄せ。4.3・6.1参照)
 - ユーザー権限: 管理者 / 一般ユーザー(商品・シナリオ登録可)の2層
 - 管理画面ログイン: Googleログイン(自社ドメイン限定)
 - 商品QA: 商品仕様情報からQAを事前生成し管理画面でレビューした上で公開。ユーザーはFAQ一覧からの選択のみ(自由入力なし)、該当がなければチャット内埋め込みの問い合わせフォームへ
@@ -35,7 +36,7 @@
 ### 未確定事項(要確認・モックで進行)
 | 項目 | 内容 | 対応方針 |
 |---|---|---|
-| スマレジEC・リピートAPI連携 | 実装未着手(契約・アプリ登録は確認済み。詳細なAPI仕様の読み込みが必要) | スマレジEC・リピート管理画面の「外部アプリ連携」でチャットボット用アプリを新規登録し、OAuth2のクライアントID/シークレットIDを発行して本実装に着手 |
+| スマレジEC・リピートAPI連携 | 顧客API・受注API・定期申込APIのクライアント実装は完了(6.1)。本番のOAuth2接続(`SMAREGI_DOMAIN`)は未実施 | 本番接続後、`payment_id`/`payment_status`等の実際の値を`debug-orders`で確認し、プレースホルダ値を実値に更新する(9参照) |
 | 基幹システム(スコアあと払い・代金引換)連携仕様 | 顧客情報・注文内容の連携方法(API有無、データ形式)が未確認 | 本システムは注文データ連携までを担う想定で仮設計。仕様確認後にI/Fを確定 |
 | StripeアカウントのPayPay審査状況 | 追加情報提出済み、Stripe側の審査完了待ち | 承認され次第、決済手段として有効化。MVP実装はPayPay有無どちらでも動くよう設計 |
 | Stripeアカウントのレビュー(本人確認)状況 | ダッシュボード上で「レビュー中(2〜3日)」表示中 | 本番リリース前に完了しているか要確認 |
@@ -51,17 +52,17 @@
              └─ Stripe Billing(定期課金)
                      │
                      ▼
-        [バックエンド (Next.js API Routes / Vercel)]
+        [バックエンド (Next.js API Routes / Cloud Run)]
              ├─ 商品・シナリオ管理API
              ├─ 注文・会員データ管理
              ├─ Stripe Webhook受信 → 注文確定処理
-             ├─ スマレジ連携アダプタ (モック → 本実装)
+             ├─ primedirect.jp API連携 (顧客API・受注API・定期申込API。6.1参照)
              └─ 基幹システム連携アダプタ (モック → 本実装)
                   ※後払い(スコアあと払い)・代金引換の注文は与信・請求・代引金額の徴収を行わず、
                     顧客情報・注文内容を渡すのみ
                      │
                      ▼
-        [Supabase (Postgres / Auth / Storage)]
+        [Google Cloud SQL (PostgreSQL)] + [Firebase Authentication]
 
 [管理画面 (Next.js, Googleログイン)]
    ├─ 商品登録・編集
@@ -118,12 +119,16 @@
   金額案内も基幹システム側の運用に委ねる
 - 実際の代金徴収(配送員による集金・配送業者への手数料精算)は基幹システム・配送業者側の後続処理とする
 
-### 4.3 会員情報移行
-- 決済完了時に以下をスマレジ連携アダプタ経由で送信(モック実装。本番はスマレジAPI)
-  - 基本情報: 氏名・メールアドレス・電話番号・住所
-  - 注文履歴・購入商品
-  - 定期注文情報: 周期・次回発送予定日・ステータス
-- 既存会員判定: メールアドレス一致で既存スマレジ会員と紐付け。一致しない場合は新規会員として登録
+### 4.3 会員情報移行【2026年更新】
+- 決済完了時、受注API(`customer_id: -1`)経由でprimedirect.jpへ注文データを連携する。
+  メールアドレスによる自動名寄せはスマレジ側が行う(既存会員なら統合、なければ新規作成。
+  実機検証・API仕様書の両方で動作確認済み)
+- 新規に会員登録された場合のみ、仮パスワード(`pre_password`)を発行し、チャットシステムから
+  会員登録完了メールを送る。チャットはパスワードを一切扱わない(顧客はマイページで本パスワードを
+  設定する)
+- 既存会員(2回目以降の注文)には会員登録完了メールを再送しない
+- 詳細な設計判断の経緯は`t-kamiya-lgtm/new-chatbot`リポジトリの
+  `docs/smaregi-cart-handoff-research.md`を参照
 
 ### 4.4 商品登録機能(管理画面)
 - 商品名・説明・価格・画像・スマレジ商品ID(紐付け用)・定期注文可否・周期選択肢・送料(商品ごとに設定、0円=送料無料)を登録
@@ -170,23 +175,32 @@
 - `subscriptions` : id, order_id, interval, next_billing_date, status(active/paused/canceled)
 - `smaregi_sync_logs` : id, order_id, payload(jsonb), status, error(nullable) — モック連携の送信ログ
 
-## 6. 外部連携インターフェース(モック定義)
+## 6. 外部連携インターフェース
 
-### 6.1 スマレジ連携アダプタ(スマレジEC・リピートAPI)
-```
-interface SmaregiAdapter {
-  findMemberByEmail(email: string): Promise<SmaregiMember | null>
-  createMember(input: MemberInput): Promise<SmaregiMember>
-  syncOrder(memberId: string, order: OrderInput): Promise<void>
-  getProduct(smaregiProductId: string): Promise<SmaregiProduct | null>
-}
-```
+### 6.1 スマレジ連携(primedirect.jp API v2)【2026年更新: モックから実装済みへ移行中】
+
+**個人情報ゼロ保持化の方針転換(詳細は`t-kamiya-lgtm/new-chatbot`リポジトリの
+`docs/smaregi-cart-handoff-research.md`を参照)により、旧`SmaregiAdapter`モック設計を破棄し、
+実際のprimedirect.jp API v2(受注API・顧客API・定期申込API)を直接呼び出す方式に変更した。**
+
+- `src/lib/adapters/smaregi-client.ts`: 低レベルクライアント(search/write、Shift-JISデコード等)
+- `src/lib/adapters/smaregi-customer-api.ts`: メールアドレスでの顧客検索、仮パスワード発行
+- `src/lib/adapters/smaregi-order-api.ts`: 受注データ作成(`customer_id: -1`による自動名寄せ、
+  定期購入は初回/2回目以降価格を分離した`periodical_order`の同時作成に対応)
+- `src/lib/primedirect-order-sync.ts`: 上記を組み合わせ、Stripe決済・代引き・後払いいずれの
+  注文からも呼び出せる連携処理(`submitStripeOrderToSmaregi`/`submitDeferredOrderToSmaregi`)。
+  新規会員登録時は仮パスワードを発行し、会員登録完了メールを送る(パスワードはチャットが
+  扱わない方針のため)
+
 連携先は「スマレジ・プラットフォームAPI」(スマレジ本体のPOS/アプリマーケット向けAPI)ではなく、
-契約中の**スマレジEC・リピート**が提供する専用API(スマレジEC・リピートAPI)。
+契約中の**スマレジEC・リピート**上に構築された自社ECサイト**primedirect.jp**が提供する専用API。
 利用は無料で、スマレジEC・リピート管理画面の「ショップ基本設定 > 外部アプリ連携」からアプリケーション名・
 リダイレクトURLを登録すると、OAuth2のクライアントID/シークレットIDが発行される(契約・アプリ登録経路は確認済み)。
-MVPでは `MockSmaregiAdapter` を実装し、DB内に疑似レスポンスを保存。
-本番接続時は同インターフェースを満たす `SmaregiApiAdapter` に差し替える。
+
+**未接続・未確認のまま残っている事項**(本番の`SMAREGI_DOMAIN`/OAuth接続、および
+`/api/admin/smaregi/debug-orders`での実データ確認が必要):
+`payment_id`/`payment_status`/`ec_type`/`order_root`/`order_status`/`deliv_id`/`hasso_deliv_kbn`の
+実際に有効な値、「代引き(配送時現金回収)」自体への対応可否。
 
 ### 6.2 基幹システム連携アダプタ(スコアあと払い・代金引換)
 ```
@@ -219,22 +233,35 @@ interface ProductQaGenerator {
 商品情報・仕様情報の登録/更新をトリガーに呼び出し、生成結果は `product_faqs` に `draft` として保存する。
 管理画面でのレビュー(承認/修正/却下)を経て `published` になったもののみチャットに表示する。
 
-## 7. 非機能要件
+## 7. 非機能要件【2026年更新: Google Cloud移行後】
 - 決済情報(カード番号等)は自社サーバーで保持せず、Stripeに委譲(PCI DSS SAQ A準拠)
 - Stripe Webhookは署名検証を実施
-- 管理画面アクセスはGoogleログイン + 自社ドメイン制限 + ロールベースアクセス制御
-- 個人情報(氏名・住所等)は保管時に必要最小限のアクセス制御(Supabase RLS)を設定
+- 管理画面アクセスはGoogleログイン(Firebase Authentication、自社Google Workspaceドメイン限定)
+  + ロールベースアクセス制御
+- 個人情報(氏名・住所等)は、Cloud SQLのIAMデータベース認証・サービスアカウント権限による
+  アクセス制御を設定。さらに、個人情報ゼロ保持化の方針転換(4.3参照)により、決済完了後は
+  primedirect.jp側へパススルーし、チャット側DBでの長期保持自体を段階的に縮小する方向で設計中
+  (詳細は`t-kamiya-lgtm/new-chatbot`リポジトリの調査結果を参照)
 
-## 8. 技術スタック
-- フロントエンド/バックエンド: Next.js(App Router), Vercelホスティング
-- DB/認証/ストレージ: Supabase(Postgres, Auth, Storage)
+## 8. 技術スタック【2026年更新: Supabase/VercelからGoogle Cloudへ全面移行済み】
+- フロントエンド/バックエンド: Next.js(App Router), Cloud Runホスティング
+- DB: Google Cloud SQL(PostgreSQL) + Drizzle ORM
+- 認証: Google Cloud Identity Platform(Firebase Authentication)
+- 定期実行: Cloud Scheduler
 - 決済: Stripe(Payment Element, Billing, Webhook)
+- スマレジ連携: primedirect.jp API v2(6.1参照)
 - リポジトリ: GitHub
 
-## 9. 今後のステップ
-1. スマレジEC・リピート管理画面の「外部アプリ連携」でチャットボット用アプリを新規登録し、クライアントID/シークレットIDを発行
-2. スマレジEC・リピートAPI仕様(会員登録・注文連携・商品情報取得エンドポイント)の詳細確認
-3. 基幹システム(スコアあと払い・代金引換)への注文データ連携方式(API有無、データ形式)のヒアリング
-4. StripeアカウントのPayPay審査完了、および本人確認(アカウントレビュー)完了の確認
-5. 上記確定後、スマレジ/基幹システム連携アダプタの本実装
-6. MVP実装(管理画面・チャットウィジェット・Stripe連携)
+## 9. 今後のステップ【2026年更新】
+1. ~~スマレジEC・リピート管理画面の「外部アプリ連携」でアプリ登録~~ → 完了(契約・アプリ登録経路確認済み)。
+   実際の本番接続(OAuth2クライアントID/シークレットの設定、`SMAREGI_DOMAIN`)はまだ未実施
+2. ~~スマレジEC・リピートAPI仕様の詳細確認~~ → 一次情報(顧客API・受注API・定期申込API・
+   ログインAPI)を確認済み。`smaregi-customer-api.ts`/`smaregi-order-api.ts`として実装済み(6.1)
+3. 本番接続後、`/api/admin/smaregi/debug-orders`で`payment_id`/`payment_status`等の実際の値を
+   確認し、`primedirect-order-sync.ts`内のプレースホルダ値を実値に更新する
+4. 「代引き(配送時現金回収)」自体への対応可否を確認する(未確認のまま。対応がない場合は
+   現行の基幹システム連携を維持する前提で設計する)
+5. チャット側DBに残っている個人情報(`customers`/`orders`テーブルの氏名・住所等)を段階的に
+   primedirect.jpからの都度取得に置き換える設計・実装(`customer-detail.ts`/
+   `CustomerDetailView.tsx`等、影響範囲の洗い出しが必要。詳細は新設計検討リポジトリ参照)
+6. 基幹システム(スコアあと払い・代金引換)への注文データ連携方式(API有無、データ形式)のヒアリング

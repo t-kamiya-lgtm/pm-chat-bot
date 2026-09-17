@@ -4,6 +4,7 @@ import { customers, orders, subscriptionItems, subscriptions } from "@/db/schema
 import { generateOrderNumber } from "@/lib/order-number";
 import { sendOrderCompletionEmail } from "@/lib/order-completion-email";
 import { submitStripeOrderToCoreSystem } from "@/lib/core-system-sync";
+import { submitStripeOrderToSmaregi } from "@/lib/primedirect-order-sync";
 import { getCoreSystemAdapter } from "@/lib/adapters/core-system";
 import { SUBSCRIPTION_INTERVAL_DAYS } from "@/lib/subscription-intervals";
 import { resolveOrderCostSnapshot, type OrderCostSnapshot } from "@/lib/order-cost-snapshot";
@@ -116,6 +117,7 @@ export async function createSubscriptionRenewalOrder(params: {
 
     await sendOrderCompletionEmail(newOrder.id);
     await submitStripeOrderToCoreSystem(newOrder.id);
+    await submitStripeOrderToSmaregi(newOrder.id);
   } catch (err) {
     console.error("[subscription-renewal] unexpected error", { params, err });
   }
