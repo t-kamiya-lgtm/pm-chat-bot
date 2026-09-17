@@ -2,7 +2,12 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { customers, orders, products, smaregiSyncLogs } from "@/db/schema";
 import { createOrder, type CreateOrderInput } from "@/lib/adapters/smaregi-order-api";
-import { findCustomerByEmail } from "@/lib/adapters/smaregi-customer-api";
+import {
+  findCustomerByEmail,
+  generateTemporaryPassword,
+  issueTemporaryPassword,
+} from "@/lib/adapters/smaregi-customer-api";
+import { sendMemberRegistrationEmail, sendSmaregiSyncFailureAlert } from "@/lib/email";
 import type { Db } from "@/lib/db";
 
 /**
@@ -37,6 +42,10 @@ export async function submitStripeOrderToSmaregi(orderId: string): Promise<void>
         : Promise.resolve([null]),
     ]);
     if (!customer || !product) return;
+
+    // 注文作成前に既存会員かどうかを確認しておく(注文成功後に「新規登録された」と誤判定して
+    // 既存会員へ会員登録完了メールを再送しないようにするため)。
+    const existingBefore = await findCustomerByEmail(customer.email).catch(() => null);
 
     const [lastName, firstName] = customer.name.split(/\s+/);
     const [lastNameKana, firstNameKana] = (customer.nameKana ?? "").split(/\s+/);
@@ -145,19 +154,34 @@ export async function submitStripeOrderToSmaregi(orderId: string): Promise<void>
     const response = await createOrder(payload);
     await db.insert(smaregiSyncLogs).values({ orderId, payload: { request: payload, response }, status: "ok" });
 
-    // 自動名寄せの結果を可能な範囲でチャット側にも反映する(表示用の参照キーとしてのみ利用、PIIの二重保持はしない)。
-    if (!customer.smaregiMemberId) {
+    if (existingBefore) {
+      // 既存会員(2回目以降の注文、または他チャネルで既に会員登録済み)。会員登録完了メールは送らない。
+      await db
+        .update(customers)
+        .set({ smaregiMemberId: existingBefore.customer_id, smaregiSyncedAt: new Date().toISOString() })
+        .where(eq(customers.id, customer.id));
+    } else {
+      // 今回の注文で新規に会員登録された(customer_id=-1による自動作成)とみなし、
+      // 仮パスワードを発行して会員登録完了メールを送る(4.6.1・4.7参照)。
       const matched = await findCustomerByEmail(customer.email).catch(() => null);
       if (matched) {
+        const temporaryPassword = generateTemporaryPassword();
+        await issueTemporaryPassword(matched.customer_id, temporaryPassword);
         await db
           .update(customers)
           .set({ smaregiMemberId: matched.customer_id, smaregiSyncedAt: new Date().toISOString() })
           .where(eq(customers.id, customer.id));
+        await sendMemberRegistrationEmail({ to: customer.email, name: customer.name, temporaryPassword });
       }
     }
   } catch (err) {
     console.error("[primedirect-order-sync] failed to submit order", { orderId, err });
     await recordSyncError(db, orderId, payload, err);
+    await sendSmaregiSyncFailureAlert({
+      orderId,
+      orderNumber: payload?.ecOrderId ?? null,
+      errorMessage: err instanceof Error ? err.message : String(err),
+    }).catch(() => {});
   }
 }
 
